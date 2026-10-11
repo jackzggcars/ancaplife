@@ -4703,66 +4703,280 @@ const st=document.createElement('style');st.textContent=`
 // Nothing here changes game rules. It only watches clicks, cash and the placement code.
 (function(){
 const $q=s=>document.querySelector(s),R=Math.random;
-// ---------- sound: tiny synth, no assets. M toggles it ----------
-let AC=null,muted=false,master=null;try{muted=localStorage.getItem('ancap.mute')==='1'}catch(e){}
-function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=.5;master.connect(AC.destination)}catch(e){return null}}if(AC.state==='suspended')AC.resume();return AC}
-function tone(f0,f1,dur,type,vol,delay){const a=ac();if(!a)return;const t=a.currentTime+(delay||0),o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.setValueAtTime(f0,t);if(f1!==f0)o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);
- g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.02)}
+// ---------- sound: layered synth (no assets). Room reverb, noise textures, pitch variance and a combo ladder so repeats never feel stale ----------
+let AC=null,muted=false,master=null,NB=null,lastAct=0,combo=0;try{muted=localStorage.getItem('ancap.mute')==='1'}catch(e){}
+function ac(){
+ if(!AC){try{
+  AC=new(window.AudioContext||window.webkitAudioContext)();
+  const comp=AC.createDynamicsCompressor();comp.threshold.value=-14;comp.knee.value=18;comp.ratio.value=5;comp.attack.value=.003;comp.release.value=.2;
+  master=AC.createGain();master.gain.value=.62;master.connect(comp);comp.connect(AC.destination);
+  const len=Math.floor(AC.sampleRate*1.3),buf=AC.createBuffer(2,len,AC.sampleRate);
+  for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2)}
+  const cv=AC.createConvolver();cv.buffer=buf;const wet=AC.createGain();wet.gain.value=.2;master.connect(cv);cv.connect(wet);wet.connect(comp);
+  const nl=Math.floor(AC.sampleRate);NB=AC.createBuffer(1,nl,AC.sampleRate);const nd=NB.getChannelData(0);for(let i=0;i<nl;i++)nd[i]=Math.random()*2-1;
+ }catch(e){AC=null;return null}}
+ if(AC.state==='suspended')AC.resume();return AC}
+function tone(f0,f1,dur,type,vol,delay,o){const a=ac();if(!a)return;o=o||{};const t=a.currentTime+(delay||0),os=a.createOscillator(),g=a.createGain();os.type=type||'sine';
+ os.frequency.setValueAtTime(f0,t);if(f1!==f0)os.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);
+ g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(Math.max(.0002,vol),t+(o.atk||.006));g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+ os.connect(g);let out=g;if(o.lp){const f=a.createBiquadFilter();f.type='lowpass';f.frequency.value=o.lp;g.connect(f);out=f}
+ out.connect(master);os.start(t);os.stop(t+dur+.03)}
+function noise(dur,vol,delay,o){const a=ac();if(!a||!NB)return;o=o||{};const t=a.currentTime+(delay||0),s=a.createBufferSource(),g=a.createGain(),f=a.createBiquadFilter();
+ s.buffer=NB;s.loop=true;f.type=o.type||'lowpass';f.Q.value=o.q||.7;f.frequency.setValueAtTime(o.f0||1000,t);if(o.f1)f.frequency.exponentialRampToValueAtTime(Math.max(30,o.f1),t+dur);
+ g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(Math.max(.0002,vol),t+(o.atk||.004));g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+ s.connect(f);f.connect(g);g.connect(master);s.start(t,Math.random()*.5);s.stop(t+dur+.03)}
+const PENT=[0,2,4,7,9,12,14,16],pv=()=>1+(R()-.5)*.05;
+// rapid repeats climb a pentatonic ladder (resets after a pause), so a streak of placements sounds like a run, not a loop
+function ladder(){const n=performance.now();combo=(n-lastAct<2600)?Math.min(combo+1,PENT.length-1):0;lastAct=n;return Math.pow(2,PENT[combo]/12)}
 const SFX={
- click(){tone(470,320,.05,'square',.035)},
- tick(){tone(1250,1250,.014,'square',.02)},
- spend(){tone(988,988,.07,'triangle',.11);tone(1319,1319,.2,'triangle',.11,.07);tone(2637,2637,.22,'sine',.035,.07)},
- gain(){[523,659,784].forEach((f,i)=>tone(f,f,.1,'triangle',.09,i*.055))},
- place(){tone(170,42,.22,'sine',.34);tone(320,90,.06,'square',.06);tone(2200,1800,.05,'triangle',.04,.02)},
- err(){tone(140,85,.2,'sawtooth',.07)},
- hire(){tone(660,880,.09,'triangle',.1);tone(880,1175,.14,'triangle',.1,.09)},
- fanfare(){[523,659,784,1047].forEach((f,i)=>tone(f,f,.16,'triangle',.11,i*.085));tone(2093,2093,.4,'sine',.05,.34)},
- pop(){tone(300,720,.09,'sine',.1)}};
-const cool={};function sfx(n,gap){if(muted)return;const t=performance.now();if(gap&&t-(cool[n]||0)<gap)return;cool[n]=t;try{SFX[n]&&SFX[n]()}catch(e){}}
+ press(){const k=pv();tone(190*k,105*k,.05,'square',.04,0,{lp:1500});noise(.015,.03,0,{type:'highpass',f0:2500})},
+ click(){const k=pv();tone(520*k,300*k,.045,'square',.03);noise(.02,.025,0,{type:'highpass',f0:3000})},
+ hover(){tone(1900*pv(),1900,.012,'sine',.011)},
+ tick(){tone(1250*pv(),1250,.014,'square',.016)},
+ snap(){const k=pv();tone(900*k,700*k,.03,'triangle',.05);noise(.015,.03,0,{type:'bandpass',f0:2200,q:3})},
+ select(){const k=pv();tone(440*k,880*k,.09,'triangle',.09);tone(1320*k,1320*k,.16,'sine',.05,.045);noise(.12,.03,0,{type:'bandpass',f0:600,f1:3000,q:1.2})},
+ deselect(){const k=pv();tone(700*k,380*k,.08,'triangle',.06);noise(.08,.02,0,{type:'bandpass',f0:2500,f1:500,q:1})},
+ lift(){const k=pv();tone(230*k,560*k,.1,'sine',.11);tone(900*k,1400*k,.07,'triangle',.03,.03);noise(.09,.03,0,{type:'bandpass',f0:800,f1:2600,q:1.4})},
+ rot(){const k=pv();tone(520*k,780*k,.05,'triangle',.07);tone(780*k,620*k,.06,'triangle',.05,.045)},
+ // heavy things land lower and thud harder; sparkle tail climbs with your streak
+ place(sz){const s=sz==null?.5:sz,lo=125-s*55,k=pv(),L=ladder();
+  tone(lo*1.6,lo*.3,.26,'sine',.5);tone(lo*3,lo*.8,.07,'square',.07);noise(.1,.18,0,{type:'lowpass',f0:900,f1:120});noise(.03,.1,0,{type:'highpass',f0:4000});
+  [0,4,7].forEach((st,i)=>{const f=880*L*Math.pow(2,st/12)*k;tone(f,f,.2,'sine',.035,.05+i*.045)})},
+ err(){const k=pv();tone(160*k,95*k,.12,'sawtooth',.07,0,{lp:900});tone(150*k,88*k,.14,'sawtooth',.07,.11,{lp:900})},
+ stamp(){tone(130,40,.18,'sine',.55);noise(.06,.2,0,{type:'lowpass',f0:1200,f1:200});noise(.14,.07,.05,{type:'highpass',f0:5000});tone(1568,1568,.45,'sine',.06,.08);tone(2349,2349,.4,'sine',.04,.08)},
+ kaching(){noise(.04,.1,0,{type:'highpass',f0:3500});tone(1976,1976,.5,'triangle',.09,.04);tone(2960,2960,.6,'sine',.06,.04);tone(3951,3951,.5,'sine',.035,.04);
+  for(let i=0;i<7;i++){const f=2400+R()*2400;tone(f,f*.97,.09,'sine',.035,.12+i*.04+R()*.02)}},
+ build(){for(let i=0;i<4;i++){const t=i*.15;tone(190,120,.06,'square',.08,t,{lp:2200});noise(.05,.16,t,{type:'bandpass',f0:1800,q:2})}tone(523,523,.45,'triangle',.06,.68);tone(784,784,.5,'triangle',.06,.76)},
+ spend(a){const n=Math.min(7,2+Math.round(Math.log10(Math.max(10,a||100))*.9)),L=ladder();
+  tone(988*L,988*L,.07,'triangle',.1);tone(1319*L,1319*L,.2,'triangle',.1,.07);tone(2637*L,2637*L,.22,'sine',.035,.07);
+  for(let i=0;i<n;i++){const f=1800+R()*1800;tone(f,f*.96,.07,'sine',.03,.1+i*.045)}},
+ gain(a){const L=ladder(),n=Math.min(8,3+Math.round(Math.log10(Math.max(10,a||100))*.9));
+  for(let i=0;i<n;i++){const f=523*L*Math.pow(2,PENT[i%PENT.length]/12);tone(f,f,.12,'triangle',.08,i*.05);tone(f*2,f*2,.14,'sine',.03,i*.05)}},
+ coin(n){const f=1500*Math.pow(2,((n||0)%10)/12);tone(f,f*1.01,.08,'sine',.045);tone(f*2,f*2,.06,'triangle',.02)},
+ hire(){tone(660,880,.09,'triangle',.1);tone(880,1175,.14,'triangle',.1,.09);noise(.05,.1,.12,{type:'bandpass',f0:2000,q:2});noise(.05,.1,.2,{type:'bandpass',f0:2400,q:2})},
+ open(){noise(.5,.1,0,{type:'bandpass',f0:300,f1:1400,q:1});tone(1047,1047,.9,'sine',.09,.2);tone(1568,1568,.9,'sine',.05,.2);tone(784,784,1,'sine',.08,.55);tone(1175,1175,1,'sine',.05,.55);
+  noise(1,.05,.6,{type:'bandpass',f0:700,q:.6,atk:.3});[523,659,784,1047].forEach((f,i)=>tone(f,f,.18,'triangle',.07,.9+i*.07))},
+ fanfare(){[523,659,784,1047,1319].forEach((f,i)=>{tone(f,f,.2,'triangle',.1,i*.075);tone(f*2,f*2,.3,'sine',.03,i*.075)});tone(2093,2093,.6,'sine',.05,.4);tone(131,131,.7,'sine',.14,0);noise(.5,.05,.38,{type:'highpass',f0:6000})},
+ pop(){const k=pv();tone(300*k,720*k,.09,'sine',.1)},
+ whoosh(d){const dur=d||.5;noise(dur,.1,0,{type:'bandpass',f0:250,f1:3200,q:.9,atk:dur*.45});noise(dur*.7,.06,dur*.35,{type:'bandpass',f0:3000,f1:300,q:.9,atk:.05})},
+ swish(up){noise(.14,.05,0,{type:'bandpass',f0:up?500:2400,f1:up?2600:500,q:1})},
+ on(){tone(600,900,.06,'triangle',.07)},
+ off(){tone(700,450,.06,'triangle',.07)}};
+const cool={};function sfx(n,gap,arg){if(muted)return;const t=performance.now();if(gap&&t-(cool[n]||0)<gap)return;cool[n]=t;try{SFX[n]&&SFX[n](arg)}catch(e){}}
 window.sfx=sfx;
 // ---------- 2D effects ----------
+const prefersReduced=!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+const vib=p=>{try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}};
 function floatText(txt,x,y,cls){const d=document.createElement('div');d.className='jx-float '+cls;d.textContent=txt;d.style.left=x+'px';d.style.top=y+'px';document.body.appendChild(d);setTimeout(()=>d.remove(),1150)}
-function burst(x,y,n,cols){for(let i=0;i<n;i++){const c=document.createElement('i');c.className='jx-chip';const a=R()*6.283,v=40+R()*90;c.style.cssText=`left:${x}px;top:${y}px;--c:${cols[i%cols.length]};--dx:${Math.cos(a)*v}px;--dy:${Math.sin(a)*v-26}px;--r:${(R()-.5)*540}deg;width:${5+R()*6}px;height:${5+R()*6}px`;document.body.appendChild(c);setTimeout(()=>c.remove(),760)}}
+function burst(x,y,n,cols,pw){pw=pw||1;for(let i=0;i<n;i++){const c=document.createElement('i');c.className='jx-chip';const a=R()*6.283,v=(40+R()*90)*pw;c.style.cssText=`left:${x}px;top:${y}px;--c:${cols[i%cols.length]};--dx:${Math.cos(a)*v}px;--dy:${Math.sin(a)*v-26*pw}px;--r:${(R()-.5)*540}deg;width:${5+R()*6}px;height:${5+R()*6}px`;document.body.appendChild(c);setTimeout(()=>c.remove(),760)}}
 function flash(){const f=document.createElement('div');f.className='jx-flash';document.body.appendChild(f);setTimeout(()=>f.remove(),420)}
+// coins arc between the button you pressed and the cash counter, each landing with its own rising tick and a bump
+function coinsFly(x0,y0,x1,y1,n,onHit){
+ if(!document.body.animate)return;
+ for(let i=0;i<n;i++){const c=document.createElement('i');c.className='jx-coin';document.body.appendChild(c);
+  const mx=(x0+x1)/2+(R()-.5)*160,my=Math.min(y0,y1)-40-R()*90,T=p=>`translate(${p[0]}px,${p[1]}px) translate(-50%,-50%)`;
+  const a=c.animate([{transform:T([x0,y0])+' scale(.3) rotate(0deg)',opacity:0},{transform:T([mx,my])+' scale(1.1) rotate(180deg)',opacity:1,offset:.45},{transform:T([x1,y1])+' scale(.6) rotate(360deg)',opacity:1}],
+   {duration:600+R()*220,delay:i*48,easing:'cubic-bezier(.35,0,.25,1)',fill:'both'});
+  a.onfinish=()=>{c.remove();onHit&&onHit(i)}}}
+function bump(el,s){if(!el||!el.animate)return;el.animate([{transform:'scale(1)'},{transform:`scale(${s||1.14})`,offset:.35},{transform:'scale(1)'}],{duration:340,easing:'cubic-bezier(.2,1.6,.4,1)'})}
 const NOFX=new Set(['skip','skipdone','skipstop','newgame','frplay','frnew','start','signout','speed','skipmenu']);
-const LABEL={hire:['HIRED','hire'],open:['DOORS OPEN','fanfare'],sign:['SIGNED','gain'],wizard:null};
+const LABEL={hire:['HIRED','hire'],sign:['SIGNED','gain'],wizard:null};
+const CEL={lease:['LEASED','stamp'],buy:['PURCHASED','kaching'],build:['BUILDING!','build'],open:['DOORS OPEN','open']};
+// ---------- camera: impact shake + FOV punch (wraps the render call; the game's own camera code is untouched) ----------
+const SHK={a:0,f:0,l:0},_rr=renderer.render.bind(renderer);
+function shake(a){if(!prefersReduced)SHK.a=Math.min(1.3,SHK.a+a)}
+function punch(a){if(!prefersReduced)SHK.f=Math.min(3,Math.max(SHK.f,a))}
+renderer.render=function(sc,cam){
+ if(cam!==camera||(SHK.a<.01&&SHK.f<.02)){SHK.l=0;return _rr(sc,cam)}
+ const now=performance.now(),dt=Math.min(.05,(now-(SHK.l||now))/1000);SHK.l=now;
+ const p=camera.position.clone(),f0=camera.fov,mag=CAM.dist*.0032*SHK.a*SHK.a;
+ camera.translateX((R()-.5)*2*mag);camera.translateY((R()-.5)*2*mag);camera.fov=f0-SHK.f;camera.updateProjectionMatrix();
+ try{_rr(sc,cam)}finally{camera.position.copy(p);camera.fov=f0;camera.updateProjectionMatrix()}
+ SHK.a*=Math.exp(-dt*8);SHK.f*=Math.exp(-dt*7)};
+// ---------- tiny tween/particle runner ----------
+const FX=[];let raf=0;
+function tick(now){raf=0;const dt=Math.min(.05,(now-(tick.t||now))/1000);tick.t=now;
+ for(let i=FX.length-1;i>=0;i--){const f=FX[i];f.t+=dt;let end=true;try{end=f.run(f.t)}catch(e){end=true}if(end){FX.splice(i,1);try{f.done&&f.done()}catch(e){}}}
+ if(FX.length)raf=requestAnimationFrame(tick);else tick.t=0}
+function add(f){FX.push(f);if(!raf)raf=requestAnimationFrame(tick)}
+const easeOutBack=k=>1+2.70158*Math.pow(k-1,3)+1.70158*Math.pow(k-1,2);
+// ---------- shop floor effects (inside a building) ----------
+let RING=null,CHIP=null,DUSTG=null,MARKG=null;
+function floorRing(x,z,to,col,life,delay){
+ if(!IN||!IN.grp)return;if(!RING)RING=new THREE.RingGeometry(.9,1,48).rotateX(-Math.PI/2);
+ const grp=IN.grp,rm=new THREE.Mesh(RING,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
+ rm.position.set(x,.07,z);rm.renderOrder=8;rm.scale.setScalar(.01);grp.add(rm);
+ add({t:-(delay||0),run(t){if(t<0)return false;const k=t/life;if(k>=1)return true;const e=1-Math.pow(1-k,3);rm.scale.setScalar(.3+to*e);rm.material.opacity=.95*(1-k);return false},done(){grp.remove(rm);rm.material.dispose()}})}
+function dust(x,z,rad,n){
+ if(!IN||!IN.grp)return;if(!DUSTG)DUSTG=new THREE.SphereGeometry(1,6,5);const grp=IN.grp;
+ for(let i=0;i<n;i++){const a=R()*6.283,v=.5+R()*1.1,s0=.05+R()*.05,life=.55+R()*.3,x0=x+Math.cos(a)*rad*.5,z0=z+Math.sin(a)*rad*.5,
+  m=new THREE.Mesh(DUSTG,new THREE.MeshBasicMaterial({color:0xd8d2bd,transparent:true,opacity:.5,depthWrite:false}));m.renderOrder=8;m.position.set(x0,.08,z0);grp.add(m);
+  add({t:0,run(t){if(t>life)return true;const k=t/life,d=v*life*(1-(1-k)*(1-k))*.6;m.position.set(x0+Math.cos(a)*d,.08+.5*k*(1-k*.4),z0+Math.sin(a)*d);m.scale.setScalar(s0+.16*k);m.material.opacity=.5*(1-k);return false},done(){grp.remove(m);m.material.dispose()}})}}
+function chips(x,z,rad,n){
+ if(!IN||!IN.grp)return;if(!CHIP)CHIP=new THREE.BoxGeometry(.07,.07,.07);const grp=IN.grp;
+ for(let i=0;i<n;i++){const c=new THREE.Mesh(CHIP,new THREE.MeshBasicMaterial({color:i%3?0xffd800:0xffffff,transparent:true}));const a=R()*6.283,v=1.1+R()*1.7,vy=1.8+R()*2.2,x0=x+Math.cos(a)*rad*.5,z0=z+Math.sin(a)*rad*.5;
+  c.position.set(x0,.12,z0);c.renderOrder=8;grp.add(c);
+  add({t:0,run(t){if(t>.75)return true;c.position.set(x0+Math.cos(a)*v*t,Math.max(.04,.12+vy*t-4.6*t*t),z0+Math.sin(a)*v*t);c.rotation.x+=.3;c.rotation.y+=.2;c.material.opacity=Math.min(1,(.75-t)*3);return false},done(){grp.remove(c);c.material.dispose()}})}}
+function placeFX(P,idx){
+ if(!IN||!IN.grp)return;const it=P.it,m=IN.items.find(o=>o.userData.idx===idx),fp=ifoot(it.id,it.r),area=fp[0]*fp[1],sz=clamp(area/7,0,1),rad=Math.max(fp[0],fp[1])*.62+.25;
+ const impact=()=>{sfx('place',0,sz);shake(.22+.5*sz);punch(.4+.8*sz);vib(sz>.5?22:12);
+  floorRing(it.x,it.z,rad*2.4,0xffd800,.55,0);floorRing(it.x,it.z,rad*3.8,0xffffff,.75,.07);dust(it.x,it.z,rad,10+Math.round(sz*8));chips(it.x,it.z,rad,12)};
+ // the piece drops in from above, hits, squashes and settles
+ if(m){const H=.7,fall=.11;let hit=false;m.position.y=H;
+  add({t:0,run(t){if(t<fall){const k=t/fall;m.position.y=H*(1-k*k);m.scale.set(1-.04*k,1+.1*k,1-.04*k);return false}
+   if(!hit){hit=true;m.position.y=0;impact()}
+   const k=(t-fall)/.5;if(k>=1){m.scale.set(1,1,1);return true}const e=Math.exp(-4.2*k)*Math.cos(k*11);m.scale.set(1+.26*e,1-.46*e,1+.26*e);return false}})}
+ else impact()}
+// the footprint under the piece you're holding: green where it fits, red where it doesn't. The piece itself floats and bobs.
+let MARK=null;
+function clearMark(){if(MARK){MARK.parent&&MARK.parent.remove(MARK);MARK.material.dispose();MARK=null}}
+function placingAnim(now){
+ if(!IN||!IN.placing||!IN.placing.ghost){clearMark();return}
+ const P=IN.placing,it=P.it,g=P.ghost,fp=ifoot(it.id,it.r);if(!MARKG)MARKG=new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2);
+ if(!MARK||MARK.parent!==IN.grp){clearMark();MARK=new THREE.Mesh(MARKG,new THREE.MeshBasicMaterial({color:0x3ddc84,transparent:true,opacity:.3,depthWrite:false,side:THREE.DoubleSide}));MARK.renderOrder=7;IN.grp.add(MARK)}
+ MARK.position.set(it.x,.035,it.z);MARK.scale.set(fp[0],1,fp[1]);MARK.material.color.set(P.ok?0x3ddc84:0xff4b4b);MARK.material.opacity=.24+.1*Math.sin(now*.01);
+ g.position.y=.02+.2+.05*Math.sin(now*.008);
+ if(P.shk){g.position.x=it.x+Math.sin(now*.09)*P.shk;P.shk*=.86;if(P.shk<.003)P.shk=0}}
+const _ic=interiorClick;
+interiorClick=function(x,y){const P=IN&&IN.placing,ok=P&&P.ok,from=P&&P.from;const res=_ic.apply(this,arguments);
+ if(P&&!ok){sfx('err');P.shk=.1;shake(.12);vib(24)}else if(P&&ok&&IN&&!IN.placing){placeFX(P,from!=null?from:IN.site.layout.length-1)}
+ return res};
+const _im=interiorMove;
+interiorMove=function(x,y){const P=IN&&IN.placing,px=P&&P.it.x,pz=P&&P.it.z;const res=_im.apply(this,arguments);if(P&&IN&&IN.placing===P&&P.ok&&(P.it.x!==px||P.it.z!==pz))sfx('snap',45);return res};
+const _sp=startPlacing;
+startPlacing=function(id,from){clearItemHover();const had=IN&&IN.placing,r=_sp.apply(this,arguments);
+ if(IN&&IN.placing&&!had){sfx('lift');vib(6);const it=IN.placing.it,fp=ifoot(it.id,it.r);floorRing(it.x,it.z,Math.max(fp[0],fp[1])*1.6,0xffffff,.4,0)}return r};
+const _cp=cancelPlacing;
+cancelPlacing=function(){const had=IN&&IN.placing;const r=_cp.apply(this,arguments);if(had)sfx('deselect',60);return r};
+const _ir=interiorRotate;
+interiorRotate=function(){const P=IN&&IN.placing,g=P&&P.ghost,r0=g?g.rotation.y:0;_ir.apply(this,arguments);
+ if(P&&g){sfx('rot',30);const r1=g.rotation.y;let dr=r1-r0;while(dr>Math.PI)dr-=6.2832;while(dr<-Math.PI)dr+=6.2832;
+  add({t:0,run(t){const k=Math.min(1,t/.16);g.rotation.y=r1-dr*(1-easeOutBack(k));return k>=1}})}};
+// ---------- map effects: lots ----------
+function lotInfo(lot){try{const L=liveFor(lot);if(!L||!L.grp)return null;const r=localRing(L,lot),c=centroid(r);let rad=0;for(const p of r)rad=Math.max(rad,Math.hypot(p[0]-c[0],p[1]-c[1]));return{L,r,c,rad:clamp(rad,2.5,80),h:Math.max(1,lotH(lot))}}catch(e){return null}}
+function lotScreen(lot){try{const p=ecef(lot.lat,lot.lon,Math.max(2,lotH(lot)*.6)).sub(ORIGIN).project(camera);if(p.z>1||!isFinite(p.x))return null;return[(p.x*.5+.5)*innerWidth,(-p.y*.5+.5)*innerHeight]}catch(e){return null}}
+let MRING=null;
+function ringFX(info,delay,to,col,life){
+ if(!MRING)MRING=new THREE.RingGeometry(.93,1,56).rotateX(-Math.PI/2);const grp=info.L.grp;
+ const m=new THREE.Mesh(MRING,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0,depthTest:false,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
+ m.position.set(info.c[0],.45,-info.c[1]);m.renderOrder=26;m.scale.setScalar(.01);grp.add(m);
+ add({t:-(delay||0),run(t){if(t<0)return false;const k=t/life;if(k>=1)return true;const e=1-Math.pow(1-k,3);m.scale.setScalar(.2+to*e);m.material.opacity=(k<.1?k*10:1)*(1-k)*.95;return false},done(){grp.remove(m);m.material.dispose()}})}
+function beamFX(info,col,life){
+ const hgt=info.h+60,g=new THREE.CylinderGeometry(info.rad*.5,info.rad*.7,hgt,28,1,true),grp=info.L.grp,
+  m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0,depthTest:false,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
+ m.position.set(info.c[0],hgt/2,-info.c[1]);m.renderOrder=25;grp.add(m);
+ add({t:0,run(t){const k=t/life;if(k>=1)return true;m.material.opacity=Math.pow(1-k,1.6)*.55*(k<.08?k/.08:1);const s=1-.55*k;m.scale.set(s,1+k*.2,s);return false},done(){grp.remove(m);g.dispose();m.material.dispose()}})}
+let CONFG=null;
+function confetti3D(info,n,spread){
+ if(!CONFG)CONFG=new THREE.BoxGeometry(1,1,.12);const sz=clamp(CAM.dist*.0045,.18,2.5),grp=info.L.grp;
+ for(let i=0;i<n;i++){const m=new THREE.Mesh(CONFG,new THREE.MeshBasicMaterial({color:[0xffd800,0xffffff,0x6fd48a,0xff8a3a][i%4],transparent:true,depthTest:false}));
+  m.scale.set(sz*(.8+R()*.8),sz*(1+R()),1);m.renderOrder=27;
+  const a=R()*6.283,sp=(.35+R()*.65)*info.rad*(spread||1),vy=10+R()*18,rx=(R()-.5)*14,ry=(R()-.5)*14,life=1.2+R()*.7;
+  m.position.set(info.c[0],info.h+.5,-info.c[1]);grp.add(m);
+  add({t:0,run(t){if(t>life)return true;m.position.set(info.c[0]+Math.cos(a)*sp*t,info.h+.5+vy*t-14*t*t,-info.c[1]+Math.sin(a)*sp*t);m.rotation.x=rx*t;m.rotation.y=ry*t;m.material.opacity=Math.min(1,(life-t)*3);return false},done(){grp.remove(m);m.material.dispose()}})}}
+function popScale(sp,dur){const b=sp.scale.clone();add({t:0,run(t){const k=t/dur;if(k>=1){sp.scale.copy(b);return true}const e=Math.exp(-5*k)*Math.cos(k*14);sp.scale.set(b.x*(1+.35*e),b.y*(1+.35*e),1);return false}})}
+function outlineOf(lot,color,op){const L=liveFor(lot);if(!L||!L.grp)return null;const r=localRing(L,lot),h=Math.max(.6,lotH(lot)+1),p=[];
+ for(let k=0;k<r.length;k++){const a=r[k],b=r[(k+1)%r.length];p.push(a[0],h,-a[1],b[0],h,-b[1],a[0],.3,-a[1],a[0],h,-a[1],a[0],.3,-a[1],b[0],.3,-b[1])}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+ const m=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color,depthTest:false,transparent:true,opacity:op}));m.renderOrder=18;L.grp.add(m);return m}
+// selecting a lot: outline rises out of the ground with a bounce, a soft floor tint fades in, a ring pulses out, the pin bounces, a chime plays
+let lastSelKey=null,FILL=null;
+const _ds=drawSel;
+drawSel=function(){_ds.apply(this,arguments);
+ try{if(FILL){FILL.parent&&FILL.parent.remove(FILL);FILL.geometry.dispose();FILL.material.dispose();FILL=null}
+  const lot=ui.selLot;
+  if(!lot){if(lastSelKey){lastSelKey=null;sfx('deselect',60)}return}
+  if(!SEL)return;
+  const fresh=lot.key!==lastSelKey;lastSelKey=lot.key;const info=lotInfo(lot);
+  if(info){try{const sh=new THREE.Shape(info.r.map(p=>new THREE.Vector2(p[0],p[1]))),g=new THREE.ShapeGeometry(sh).rotateX(-Math.PI/2);
+   FILL=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:0xffde00,transparent:true,opacity:0,depthTest:false,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));
+   FILL.position.y=.35;FILL.renderOrder=19;FILL.userData.born=performance.now();info.L.grp.add(FILL)}catch(e){FILL=null}}
+  if(fresh){
+   if(!prefersReduced){const S=SEL;S.scale.y=.02;add({t:0,run(t){const k=Math.min(1,t/.38);S.scale.y=Math.max(.02,easeOutBack(k));return k>=1}})}
+   sfx('select',40);vib(6);
+   if(info)ringFX(info,0,info.rad*1.9,0xffde00,.55);
+   const P=PINS.get(lot.key);if(P&&P.sprite)popScale(P.sprite,.45)}
+ }catch(e){}};
+// new pins pop in
+const knownPins=new Set(),T0=performance.now();
+const _rp=refreshPins;
+refreshPins=function(force){const r=_rp.apply(this,arguments);
+ try{const live=performance.now()-T0>8000;   // not during the opening load, when every pin appears at once
+  for(const[k,P]of PINS){if(knownPins.has(k))continue;knownPins.add(k);if(live&&P.sprite)popScale(P.sprite,.5)}for(const k of[...knownPins])if(!PINS.has(k))knownPins.delete(k)}catch(e){}
+ return r};
+// flying somewhere sounds like flying somewhere
+const _ft=flyTo;
+flyTo=function(lat,lon,dist,then,heading){
+ try{const a=ecef(CAM.lat,CAM.lon,0).normalize(),b=ecef(lat,lon,0).normalize(),surf=Math.acos(clamp(a.dot(b),-1,1))*R_E;
+  if(surf>1500||Math.abs(Math.log(dist/CAM.dist))>.7)sfx('whoosh',250,clamp(.35+Math.log10(Math.max(10,surf))*.12,.4,1.2))}catch(e){}
+ return _ft.apply(this,arguments)};
+// ---------- hover: the lot under the cursor lights up (map), the piece under the cursor lights up (shop) ----------
+let HOV=null,hovKey=null,hovTimer=0,hovCost=0,hovSlow=0,hovOff=false,IH=null,IHidx=-1;
+function clearHover(){if(HOV){HOV.parent&&HOV.parent.remove(HOV);HOV.geometry.dispose();HOV.material.dispose();HOV=null}hovKey=null;if(canvas.style.cursor==='pointer'&&!IH)canvas.style.cursor=''}
+function clearItemHover(){if(IH){IH.parent&&IH.parent.remove(IH);IH.geometry.dispose();IH.material.dispose();IH=null}IHidx=-1}
+function lotHover(x,y){
+ if(ui.interior||ui.modal||ui.busy||!ui.started||camAlt()>30000){if(hovKey)clearHover();return}
+ const t0=performance.now();let lot=null;try{lot=pickLot(x,y)}catch(e){}
+ hovCost=hovCost*.7+(performance.now()-t0)*.3;if(hovCost>16&&++hovSlow>6){hovOff=true;clearHover();return}   // too heavy on this device: switch hover picking off
+ if(lot&&lot.key===hovKey)return;
+ clearHover();if(!lot)return;hovKey=lot.key;canvas.style.cursor='pointer';
+ if(!(ui.selLot&&ui.selLot.key===lot.key)){HOV=outlineOf(lot,0xffffff,.55);sfx('hover',50)}}
+function itemHover(x,y){
+ if(!IN||IN.placing||ui.modal){if(IH){clearItemHover();canvas.style.cursor=''}return}
+ raycaster.setFromCamera({x:x/innerWidth*2-1,y:-(y/innerHeight)*2+1},camera);
+ const hit=raycaster.intersectObjects(IN.items,false)[0];
+ if(!hit){if(IH){clearItemHover();canvas.style.cursor=''}return}
+ const idx=hit.object.userData.idx;if(idx===IHidx)return;
+ clearItemHover();IHidx=idx;const o=hit.object;
+ IH=new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry,28),new THREE.LineBasicMaterial({color:0xffde00,depthTest:false,transparent:true,opacity:.95}));
+ IH.position.copy(o.position);IH.rotation.copy(o.rotation);IH.scale.copy(o.scale);IH.renderOrder=22;IN.grp.add(IH);canvas.style.cursor='pointer';sfx('hover',40)}
+canvas.addEventListener('pointermove',e=>{if(hovOff||e.pointerType==='touch'||e.buttons||typeof ui==='undefined')return;clearTimeout(hovTimer);
+ hovTimer=setTimeout(()=>{try{ui.interior?itemHover(e.clientX,e.clientY):lotHover(e.clientX,e.clientY)}catch(err){}},ui.interior?30:110)},{passive:true});
+canvas.addEventListener('pointerdown',()=>{clearTimeout(hovTimer);clearHover()});
+canvas.addEventListener('pointerleave',()=>{clearTimeout(hovTimer);clearHover();clearItemHover()});
+// ---------- one steady animation loop: breathing selection glow, held-piece marker, hover clean-up ----------
+function anim(now){
+ try{if(SEL&&SEL.material)SEL.material.opacity=.7+.3*Math.sin(now*.0065);
+  if(FILL){const k=Math.min(1,(now-FILL.userData.born)/260);FILL.material.opacity=k*(.1+.06*Math.sin(now*.0065))}
+  placingAnim(now);if(IH&&(!IN||IH.parent!==IN.grp))clearItemHover()}catch(e){}
+ requestAnimationFrame(anim)}
+requestAnimationFrame(anim);
+// ---------- big moments: lease signed, property bought, construction started, doors open ----------
+function mapCelebrate(kind,lot,cx,cy){
+ const c=CEL[kind],info=lotInfo(lot),sp=lotScreen(lot)||[cx,cy],major=kind==='open'||kind==='buy';
+ sfx(c[1]);floatText(c[0],sp[0],sp[1]-10,'info');burst(sp[0],sp[1],major?30:20,['#ffd800','#fff','#6fd48a','#ff8a3a'],1.6);
+ shake(major?.6:.45);punch(major?1.4:1);vib(major?[18,40,18]:[15]);
+ if(info){ringFX(info,0,info.rad*3,0xffd800,.8);ringFX(info,.12,info.rad*4.6,0xffffff,.95);beamFX(info,0xffd800,major?1.1:.8);confetti3D(info,major?36:22,1.4)}
+ if(major)flash()}
+document.addEventListener('pointerdown',e=>{
+ if(typeof G==='undefined'||!G||!ui||!ui.started)return;
+ const t=e.target.closest&&e.target.closest('button:not(:disabled),[data-act],[data-fl],[data-cx],.crow,.prow,.bcard,.evbtn');if(!t||t.dataset.juice==='mute')return;sfx('press')},true);
 document.addEventListener('click',e=>{
  if(typeof G==='undefined'||!G||!ui||!ui.started)return;
  const t=e.target.closest&&e.target.closest('button,[data-act],[data-fl],[data-cx],.crow,.prow,.bcard,.evbtn');
  if(!t)return;
  if(t.dataset.juice==='mute'){muted=!muted;try{localStorage.setItem('ancap.mute',muted?'1':'0')}catch(_){}t.textContent=muted?'×':'♪';t.title=muted?'Sound off':'Sound on';if(!muted)sfx('pop');return}
- const a=t.dataset.act||'',c0=G.cash,r=t.getBoundingClientRect(),x=e.clientX||r.left+r.width/2,y=e.clientY||r.top+r.height/2;
- sfx('click');
- setTimeout(()=>{if(typeof G==='undefined'||!G||NOFX.has(a)||ui.skip)return;const d=G.cash-c0;
-  if(d<=-1){floatText('−'+big(-d).replace('−',''),x,y,'spend');burst(x,y,Math.min(18,6+Math.round(Math.log10(-d+1)*2)),['#ffd800','#ffd800','#fff']);sfx('spend');if(-d>=5000)flash()}
-  else if(d>=1){floatText('+'+big(d).replace('−',''),x,y,'gain');burst(x,y,8,['#6fd48a','#ffd800','#fff']);sfx('gain')}
-  else if(LABEL[a]){floatText(LABEL[a][0],x,y,'info');burst(x,y,10,['#ffd800','#fff']);sfx(LABEL[a][1])}
+ const a=t.dataset.act||'',c0=G.cash,ns0=G.sites.length,np0=G.props.length,r=t.getBoundingClientRect(),x=e.clientX||r.left+r.width/2,y=e.clientY||r.top+r.height/2;
+ if(e.detail===0)sfx('click');   // keyboard activation has no pointerdown, so it gets its click here
+ setTimeout(()=>{if(typeof G==='undefined'||!G||NOFX.has(a)||ui.skip)return;
+  const d=G.cash-c0,ce=document.getElementById('cash'),cr=ce?ce.getBoundingClientRect():null,cx=cr?cr.left+cr.width/2:60,cy=cr?cr.top+cr.height/2:30;
+  let kind=null,lot=null;
+  try{if(G.sites.length>ns0){kind='lease';lot=siteLot(G.sites[G.sites.length-1])}
+   else if(G.props.length>np0){kind='buy';lot=lotByKey(G.props[G.props.length-1].key)}
+   else if(a==='build'&&d<=-1&&ui.selLot){kind='build';lot=ui.selLot}
+   else if(a==='open'){const s=G.sites.find(q=>q.id===ui.site);if(s&&s.status==='open'){kind='open';lot=siteLot(s)}}}catch(err){kind=null}
+  const hit=i=>{sfx('coin',0,i);bump(ce,1.1);bump(document.getElementById('moneybox'),1.05)};
+  if(d<=-1){floatText('−'+big(-d).replace('−',''),x,y,'spend');burst(x,y,Math.min(18,6+Math.round(Math.log10(-d+1)*2)),['#ffd800','#ffd800','#fff']);
+   coinsFly(cx,cy,x,y,Math.min(9,3+Math.round(Math.log10(-d+1))),null);if(!kind)sfx('spend',0,-d);if(-d>=5000)flash()}
+  else if(d>=1){floatText('+'+big(d).replace('−',''),x,y,'gain');burst(x,y,8,['#6fd48a','#ffd800','#fff']);
+   coinsFly(x,y,cx,cy,Math.min(10,3+Math.round(Math.log10(d+1)*1.2)),hit);sfx('gain',0,d)}
+  else if(LABEL[a]&&!kind){floatText(LABEL[a][0],x,y,'info');burst(x,y,10,['#ffd800','#fff']);sfx(LABEL[a][1])}
+  if(kind&&lot)mapCelebrate(kind,lot,x,y);
  },0)},true);
-// ---------- kit placement: squash-and-stretch slam, dust ring, flying debris ----------
-const FX=[];let raf=0;
-function tick(now){raf=0;const dt=Math.min(.05,(now-(tick.t||now))/1000);tick.t=now;
- for(let i=FX.length-1;i>=0;i--){const f=FX[i];f.t+=dt;if(f.run(f.t)){FX.splice(i,1);f.done&&f.done()}}
- if(FX.length)raf=requestAnimationFrame(tick);else tick.t=0}
-function add(f){FX.push(f);if(!raf)raf=requestAnimationFrame(tick)}
-let RING=null,CHIP=null;
-function placeFX(P,idx){
- if(!IN||!IN.grp)return;const it=P.it,m=IN.items.find(o=>o.userData.idx===idx);
- sfx('place');
- if(m){add({t:0,run(t){const k=t/.5;if(k>=1){m.scale.set(1,1,1);return true}const e=Math.exp(-4.2*k)*Math.cos(k*11);m.scale.set(1+.22*e,1-.42*e,1+.22*e);return false}})}
- const rad=Math.max(...ifoot(it.id,it.r))*.62+.25;
- if(!RING)RING=new THREE.RingGeometry(.86,1,40).rotateX(-Math.PI/2);
- const rm=new THREE.Mesh(RING,new THREE.MeshBasicMaterial({color:0xffd800,transparent:true,opacity:.95,depthWrite:false,side:THREE.DoubleSide}));rm.position.set(it.x,.07,it.z);rm.renderOrder=8;IN.grp.add(rm);
- add({t:0,run(t){const k=t/.55;if(k>=1)return true;const e=1-Math.pow(1-k,3);rm.scale.setScalar(.3+rad*2.4*e);rm.material.opacity=.95*(1-k);return false},done(){IN.grp&&IN.grp.remove(rm);rm.material.dispose()}});
- if(!CHIP)CHIP=new THREE.BoxGeometry(.07,.07,.07);
- for(let i=0;i<10;i++){const c=new THREE.Mesh(CHIP,new THREE.MeshBasicMaterial({color:i%3?0xffd800:0xffffff,transparent:true}));const a=R()*6.283,v=1.1+R()*1.5,vy=1.6+R()*1.8;c.position.set(it.x+Math.cos(a)*rad*.5,.12,it.z+Math.sin(a)*rad*.5);c.renderOrder=8;IN.grp.add(c);
-  add({t:0,run(t){if(t>.7)return true;c.position.x+=Math.cos(a)*v*.016;c.position.z+=Math.sin(a)*v*.016;c.position.y=Math.max(.04,.12+vy*t-4.6*t*t);c.rotation.x+=.3;c.rotation.y+=.2;c.material.opacity=Math.min(1,(.7-t)*3);return false},done(){IN.grp&&IN.grp.remove(c);c.material.dispose()}})}
-}
-const _ic=interiorClick;
-interiorClick=function(x,y){const P=IN&&IN.placing,ok=P&&P.ok,from=P&&P.from;const res=_ic.apply(this,arguments);
- if(P&&!ok){sfx('err')}else if(P&&ok&&IN&&!IN.placing){placeFX(P,from!=null?from:IN.site.layout.length-1)}
- return res};
-const _im=interiorMove;
-interiorMove=function(x,y){const P=IN&&IN.placing,px=P&&P.it.x,pz=P&&P.it.z;const res=_im.apply(this,arguments);if(P&&IN&&IN.placing===P&&P.ok&&(P.it.x!==px||P.it.z!==pz))sfx('tick',45);return res};
+// hover tick on buttons and rows (mouse only, and only once the browser has allowed sound)
+let lastHov=null;
+document.addEventListener('pointerover',e=>{if(e.pointerType==='touch')return;const t=e.target.closest&&e.target.closest('button:not(:disabled),.crow,.prow,.bcard,.evbtn,.fl-card');if(!t||t===lastHov)return;lastHov=t;if(AC&&AC.state==='running')sfx('hover',40)},true);
+document.addEventListener('change',e=>{const t=e.target;if(t&&t.type==='checkbox')sfx(t.checked?'on':'off')});
 // ---------- the weekly board report is a card now, not a wall ----------
 window.weekCard=function(Rp){
  const grade=Rp.profit>0&&Rp.fail===0?(Rp.profit>Math.max(5000,netWorth()*.04)?'A':'B'):Rp.profit>0?'C':'D';
@@ -4774,11 +4988,13 @@ window.weekCard=function(Rp){
 // ---------- sound on the existing popups ----------
 const seen={};const once=(k,ms)=>{const t=performance.now();if(t-(seen[k]||0)<ms)return false;seen[k]=t;return true};
 new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes){if(n.nodeType!==1)continue;
- if(n.classList.contains('fl-done'))sfx('fanfare');
+ if(n.classList.contains('fl-done')){sfx('fanfare');shake(.3);punch(.6);flash()}
  else if(n.classList.contains('fl-day'))sfx('gain');
  else if(n.classList.contains('toast')){if(n.classList.contains('warn'))sfx('err',800);else sfx('pop',600)}
  else if((n.classList.contains('fl-perkbtn')||(n.querySelector&&n.querySelector('.fl-perkbtn')))&&once('perk',45000))sfx('fanfare');
  else if((n.classList.contains('fl-event')||(n.querySelector&&n.querySelector('.fl-event')))&&once('event',45000))sfx('err')}}).observe(document.body,{childList:true,subtree:true});
+new MutationObserver(ms=>{for(const m of ms){const n=m.target;if(!n||m.attributeName!=='hidden'||!n.matches)continue;
+ if(n.matches('.panel,#modal,.dropdown,#ibar')){const shown=!n.hidden;if(typeof ui!=='undefined'&&ui.started)sfx('swish',90,shown)}}}).observe(document.body,{attributes:true,subtree:true,attributeFilter:['hidden']});
 // ---------- sound toggle ----------
 const mc=$q('#mapctl');if(mc){const b=document.createElement('button');b.dataset.juice='mute';b.type='button';b.textContent=muted?'×':'♪';b.title=muted?'Sound off':'Sound on';b.setAttribute('aria-label','Toggle sound');mc.appendChild(b)}
 // ---------- CSS: one language for the whole UI, borrowed from the objective tracker (square slab, hard edge, yellow spine) ----------
@@ -4810,6 +5026,8 @@ const st=document.createElement('style');st.textContent=`
 /* progress bars run a hazard-stripe barber pole */
 .fl-bar i,.meter i,.fl-xp i{background-color:var(--sodium)!important;background-image:repeating-linear-gradient(135deg,rgba(0,0,0,.2) 0 6px,transparent 6px 12px)!important;background-size:17px 17px;animation:jxStripe .9s linear infinite;transition:width .55s cubic-bezier(.2,1,.3,1)!important}
 @keyframes jxStripe{to{background-position:17px 0}}
+/* coins that fly to and from the cash counter */
+.jx-coin{position:fixed;left:0;top:0;z-index:71;width:15px;height:15px;border-radius:50%;pointer-events:none;background:radial-gradient(circle at 35% 30%,#fff6a8,#ffd800 55%,#b58a00);box-shadow:0 0 0 2px #7a5c00,0 0 10px rgba(255,216,0,.8)}
 /* floating numbers and chips */
 .jx-float{position:fixed;z-index:70;pointer-events:none;font:700 24px var(--f-mono);letter-spacing:-.03em;white-space:nowrap;transform:translate(-50%,-50%);animation:jxF 1.05s cubic-bezier(.2,.8,.3,1) forwards;text-shadow:-2px 0 #000,2px 0 #000,0 -2px #000,0 2px #000,-2px -2px #000,2px 2px #000,-2px 2px #000,2px -2px #000}
 .jx-float.spend{color:#ffd800}.jx-float.gain{color:var(--good)}.jx-float.info{color:#fff;font-family:var(--f-display);font-weight:900;font-size:34px;letter-spacing:.04em}
