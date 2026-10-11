@@ -4358,5 +4358,215 @@ function renderFront(force){const el=$('#front');if(!el||el.hidden)return;
 function frontPlay(){const inp=$('#frname');if(inp){G.company=(inp.value||'').trim()||'Free Enterprise Co.'}else if(!G.company)G.company='Free Enterprise Co.';$('#front').hidden=true;{const v=$('#front video');if(v)v.pause()}ui.started=true;save();renderAll();netSync()}
 
 </script>
+<script>
+// ANCAP LIFE · CAREER LAYER
+// The daily loop: PRODUCE (your shops) → DISTRIBUTE (B2B contracts that eat spare capacity) → MANAGE RISK (regulator heat,
+// market swings, rival corporations) → REINVEST (corporate departments, IPO). Ranks take you from hustler to CEO and beyond.
+(function(){
+const CX_RANKS=[
+ {t:'Hustler',nw:0,max:2,un:'Lease your first shops'},
+ {t:'Shopkeeper',nw:75e3,max:3,un:'B2B contracts from local clients'},
+ {t:'Owner-Operator',nw:2e5,max:5,un:'Furniture factories · bigger contracts'},
+ {t:'Entrepreneur',nw:6e5,max:8,un:'Found your corporation · AI data centres'},
+ {t:'Regional Boss',nw:2e6,max:14,un:'Corporate clients · more contract slots'},
+ {t:'Mogul',nw:6e6,max:25,un:'Government contracts · department level 4'},
+ {t:'Tycoon',nw:2e7,max:40,un:'Department level 5 · hostile takeovers of rivals'},
+ {t:'Corporate CEO',nw:6e7,max:80,un:'Take the company public (IPO) · quarterly earnings'},
+ {t:'Chairman',nw:2.5e8,max:999,un:'Legend status: every rank beyond is a new prestige tier'}];
+const CX_LOCK={factory:2,datacenter:3};
+const CX_DEPTS={
+ mkt:{n:'Marketing',d:'+6% customers at every business per level'},
+ rnd:{n:'R&D',d:'+4 quality everywhere per level (raises reputation ceilings)'},
+ logi:{n:'Logistics',d:'+25% contract delivery speed per level, +1 contract slot every 2 levels'},
+ legal:{n:'Legal',d:'Regulator heat cools faster, fines are smaller'},
+ fin:{n:'Treasury',d:'Idle cash earns 0.015% a day per level'},
+ hr:{n:'People',d:'Each week, staff may gain a skill level (more likely per level)'}};
+const CX_MARKETS=[
+ {id:'calm',n:'Calm markets',d:'Business as usual.',m:{}},
+ {id:'foodboom',n:'Foodie boom',d:'Everyone is eating out. Food businesses +25%.',m:{food:1.25}},
+ {id:'techhype',n:'Tech hype cycle',d:'Gadgets and compute are hot. Tech +30%, data centres +20%.',m:{tech:1.3,datacenter:1.2}},
+ {id:'recession',n:'Recession',d:'Belts tighten. All demand −15%, but staff are cheaper to keep.',m:{all:.85}},
+ {id:'tourist',n:'Tourist season',d:'Visitors flood the cities. Retail and food +15%.',m:{retail:1.15,food:1.15,grocery:1.1}},
+ {id:'energy',n:'Energy crisis',d:'Power is scarce. Data centres −25%, factories −10%.',m:{datacenter:.75,factory:.9}},
+ {id:'harvest',n:'Bumper harvest',d:'Farms flood the market. Farms −20%, groceries +10%.',m:{farm:.8,grocery:1.1}},
+ {id:'build',n:'Housing boom',d:'Everyone is furnishing new homes. Factories +35%.',m:{factory:1.35}},
+ {id:'fashion',n:'Fashion week',d:'Style is everything. Boutiques +40%.',m:{retail:1.4}}];
+const CX_CLIENTS={
+ local:[['Corner Café Collective','#7be08f'],['St. Mary\'s School','#7be08f'],['Riverside Hotel','#7be08f'],['Village Fête Committee','#7be08f'],['Harbour Gym','#7be08f']],
+ corp:[['Hargreave Logistics','#5fb0ff'],['Northwind Airlines','#5fb0ff'],['Omnicore Group','#5fb0ff'],['Brightline Rail','#5fb0ff'],['Vantage Hospitals','#5fb0ff']],
+ gov:[['City Council','#c9a0ff'],['Ministry of Defence','#c9a0ff'],['National Health Trust','#c9a0ff'],['Olympic Committee','#c9a0ff']],
+ shady:[['"Mr. Black" (cash, no questions)','#ff6a5a'],['Offshore Holdings Ltd','#ff6a5a'],['A man in a very nice car','#ff6a5a']]};
+const CX_RIVALS=[{n:'Gristmill Corp',c:'#ff8a3a'},{n:'Lindqvist & Sons',c:'#5fb0ff'},{n:'Halcyon Holdings',c:'#c86bff'},{n:'Mercer Global',c:'#7be08f'}];
+const R=Math.random,pick=a=>a[Math.floor(R()*a.length)],rnd2=(a,b)=>a+R()*(b-a);
+const fmt=v=>big(v);
+
+function cx(){if(!G)return null;if(!G.cx)G.cx={rank:0,heat:8,contracts:[],offers:[],done:0,failed:0,corp:null,dept:{mkt:0,rnd:0,logi:0,legal:0,fin:0,hr:0},market:{id:'calm',until:7},rivals:CX_RIVALS.map((r,i)=>({n:r.n,c:r.c,nw:3e5*(1+i*.7),g:rnd2(.004,.009)})),ipo:null,brief:null,seen:0,log:[]};
+ const C=G.cx;if(!C.dept)C.dept={mkt:0,rnd:0,logi:0,legal:0,fin:0,hr:0};return C}
+window.cx=cx;
+function rankIdx(nw){let r=0;for(let i=0;i<CX_RANKS.length;i++)if(nw>=CX_RANKS[i].nw)r=i;return r}
+function legend(nw){let n=0,t=CX_RANKS[CX_RANKS.length-1].nw*4;while(nw>=t){n++;t*=4}return n}
+function rankName(i,nw){const r=CX_RANKS[i].t;if(i===CX_RANKS.length-1){const l=legend(nw);return l?`Legend ${['I','II','III','IV','V','VI','VII','VIII','IX','X'][Math.min(9,l-1)]}`:r}return r}
+function deptCost(k,l){return Math.round(25000*Math.pow(2.4,l)*(k==='fin'?1.3:1)/1000)*1000}
+function deptMax(){const r=cx().rank;return r>=6?5:r>=5?4:3}
+function capDay(s){try{const c=siteCaps(s);return c.perH*s.hours}catch(e){return 0}}
+function ticket(type){const own=G.sites.filter(s=>s.type===type&&s.last&&s.last.cust);if(own.length){const r=own.reduce((a,s)=>a+s.last.rev,0),c=own.reduce((a,s)=>a+s.last.cust,0);return r/Math.max(1,c)}const b=BIZ[type];return b.products.reduce((a,p)=>a+p.ref,0)/b.products.length}
+function slots(){const C=cx();return 2+Math.floor(C.rank/2)+Math.floor((C.dept.logi||0)/2)}
+
+// ---------- hooks into the simulation ----------
+const _vh=visitorsH;visitorsH=function(s,o){let v=_vh(s,o);const C=G&&G.cx;if(!C)return v;const b=BIZ[s.type],M=(CX_MARKETS.find(m=>m.id===C.market.id)||CX_MARKETS[0]).m;
+ v*=(M[b.cat]||1)*(M.all||1)*(1+.06*(C.dept.mkt||0));return v};
+const _sc=siteCaps;siteCaps=function(s){const c=_sc(s),C=G&&G.cx;if(C&&C.dept&&C.dept.rnd)c.quality=Math.min(100,c.quality+4*C.dept.rnd);return c};
+const _nw=netWorth;netWorth=function(){let v=_nw();const C=G&&G.cx;if(C&&C.ipo)v+=C.ipo.cap*C.ipo.stake;return v};
+const _sd=simDay;simDay=function(){const c0=G.cash;_sd.apply(this,arguments);try{careerDay(c0)}catch(e){console.warn('career',e)}};
+const _ds=doSign;doSign=function(){const w=ui.wiz,C=cx(),need=w&&CX_LOCK[w.type];
+ if(need!=null&&C.rank<need){toast(`${BIZ[w.type].n} unlocks at ${CX_RANKS[need].t}. Grow your net worth to ${fmt(CX_RANKS[need].nw)}.`,'warn');return}
+ const open=G.sites.length,mx=CX_RANKS[C.rank].max;if(open>=mx){toast(`As a ${CX_RANKS[C.rank].t} you can run ${mx} businesses. Reach ${CX_RANKS[Math.min(C.rank+1,CX_RANKS.length-1)].t} to run more.`,'warn');return}
+ return _ds.apply(this,arguments)};
+const _mw=mWizard;mWizard=function(){let h=_mw();const C=cx();for(const t in CX_LOCK)if(C.rank<CX_LOCK[t])h=h.replace(new RegExp('(data-id="'+t+'"[^>]*>)'),`$1<span class="cxlock">🔒 ${CX_RANKS[CX_LOCK[t]].t}</span>`);return h};
+const _rm=renderModal;renderModal=function(){const m=ui.modal;if(m&&(m.kind==='empire'||m.kind==='rankup'||m.kind==='report')){$('#modal').hidden=false;$('#modal .modal').innerHTML=m.kind==='empire'?mEmpire():m.kind==='rankup'?mRankup():mReport();return}return _rm()};
+const _rt=renderTop;renderTop=function(){_rt.apply(this,arguments);try{cxTop()}catch(e){}};
+
+// ---------- the day ----------
+function careerDay(c0){
+ const C=cx(),nw=netWorth(),open=G.sites.filter(s=>s.status==='open'),log=[];
+ // market conditions rotate every 6-10 days
+ if(G.day>=C.market.until){const prev=C.market.id;let m;do m=pick(CX_MARKETS);while(m.id===prev);C.market={id:m.id,until:G.day+6+Math.floor(R()*5)};news(`Market shift: ${m.n}. ${m.d}`,'market');log.push(['market',m.n])}
+ // treasury interest
+ if(C.dept.fin&&G.cash>0){const i=G.cash*.00015*C.dept.fin;G.cash+=i}
+ // DISTRIBUTION: contracts consume spare capacity
+ for(const k of C.contracts){const sites=open.filter(s=>s.type===k.type);let prog=0;
+  for(const s of sites){const cap=capDay(s),used=s.last&&s.last.open?s.last.cust:0;prog+=Math.max(0,cap-used)*.9+cap*.12}
+  prog*=1+.25*(C.dept.logi||0);prog=Math.min(prog,k.units-k.done);k.done+=prog;G.cash-=prog*k.unitCost;k.left--;}
+ for(const k of C.contracts.slice()){if(k.done>=k.units-.5){C.contracts.splice(C.contracts.indexOf(k),1);G.cash+=k.pay;C.done++;const cl=k.cl;C.rel=C.rel||{};C.rel[cl]=(C.rel[cl]||0)+1;
+   for(const s of open.filter(s=>s.type===k.type))s.rep=Math.min(100,s.rep+2);news(`Contract delivered for ${k.cl}: +${fmt(k.pay)}`,'good');log.push(['done',k])}
+  else if(k.left<=0){C.contracts.splice(C.contracts.indexOf(k),1);const pen=Math.round(k.pay*.3);G.cash-=pen;C.failed++;for(const s of open.filter(s=>s.type===k.type))s.rep=Math.max(0,s.rep-6);news(`Missed the ${k.cl} deadline. Penalty ${fmt(pen)} and a dent in your reputation`,'warn');log.push(['fail',k])}}
+ // new offers every morning
+ C.offers=C.offers.filter(o=>o.exp>G.day);if(C.rank>=1&&open.length){const n=Math.min(4,1+Math.floor(R()*2)+(C.rank>=4?1:0));for(let i=0;i<n&&C.offers.length<5;i++){const o=mkOffer(C,open);if(o)C.offers.push(o)}}
+ // RISK: regulator heat
+ const dcs=open.filter(s=>s.type==='datacenter').length,shady=C.contracts.filter(k=>k.kind==='shady').length;
+ C.heat+=Math.max(0,open.length-3)*.3+dcs*1.4+shady*1.2+(G.cash>2e6?.5:0)-(1.6+1.4*(C.dept.legal||0));C.heat=clamp(C.heat,0,100);
+ if(C.heat>35&&R()<(C.heat-35)/260)incident(C,open,log);
+ // rivals grow, and sometimes snipe
+ for(const r of C.rivals){r.nw*=1+r.g+(R()-.5)*.02+(C.market.id==='recession'?-.004:0);if(R()<.004)r.g=rnd2(.003,.011)}
+ if(R()<.05&&C.offers.length){const r=pick(C.rivals),o=C.offers.splice(Math.floor(R()*C.offers.length),1)[0];news(`${r.n} undercut you and won the ${o.cl} contract`,'warn')}
+ // HR: skills grow
+ if(C.dept.hr&&G.day%7===0)for(const s of G.sites)for(const x of s.staff)if(x.skill<5&&R()<.12*C.dept.hr)x.skill++;
+ // IPO quarter
+ if(C.ipo)ipoDay(C,log);
+ // rank ups
+ const ri=rankIdx(nw),lg=legend(nw);if(ri>C.rank||(ri===CX_RANKS.length-1&&lg>(C.legend||0))){const was=C.rank;C.rank=ri;C.legend=lg;C.pendingRank={from:was,to:ri,lg};news(`Promotion: you are now ${rankName(ri,nw)}`,'goal')}
+ // weekly board report
+ C.wk=C.wk||{start:G.day,c0:c0,cust:0,done0:C.done,fail0:C.failed};for(const s of open)if(s.last)C.wk.cust+=s.last.cust||0;
+ if(G.day-C.wk.start>=7){C.report={days:7,profit:G.cash-C.wk.c0,cust:C.wk.cust,done:C.done-C.wk.done0,fail:C.failed-C.wk.fail0,heat:C.heat,nw,rank:C.rank};C.wk={start:G.day,c0:G.cash,cust:0,done0:C.done,fail0:C.failed}}
+ C.brief={day:G.day,log,profit:G.cash-c0};C.seen=Math.min(C.seen,G.day-1);
+}
+function mkOffer(C,open){
+ const types=[...new Set(open.map(s=>s.type))];let type=pick(types),tease=false;
+ if(R()<.15){const all=Object.keys(BIZ).filter(t=>!types.includes(t)&&!(CX_LOCK[t]>C.rank));if(all.length){type=pick(all);tease=true}}
+ let kind='local';const rr=R();if(C.rank>=5&&rr<.15)kind='gov';else if(C.rank>=4&&rr<.45)kind='corp';else if(rr>.86)kind='shady';
+ const[cl,col]=pick(CX_CLIENTS[kind]);const sites=open.filter(s=>s.type===type),cap=sites.reduce((a,s)=>a+capDay(s),0)||40;
+ const days=3+Math.floor(R()*8);
+ const pace=sites.length?sites.reduce((a,x)=>a+Math.max(0,capDay(x)-(x.last?x.last.cust:0))*.9+capDay(x)*.12,0)*(1+.25*(C.dept.logi||0)):40;
+ const units=Math.max(10,Math.round(pace*days*rnd2(.55,1.05)*(kind==='gov'?1.15:1))),tk=ticket(type);
+ const pay=Math.round(units*tk*rnd2(1.05,1.4)*({local:1,corp:1.1,gov:1.15,shady:1.9}[kind])/10)*10;
+ return{id:'k'+Math.floor(R()*1e9),type,kind,cl,col,units,days,pay,unitCost:tk*.32,exp:G.day+2+Math.floor(R()*2),tease,heat:kind==='shady'?14:kind==='gov'?-4:0}}
+function incident(C,open,log){
+ const ins=1/(1+.35*(C.dept.legal||0));const t=pick(['fine','raid','audit','protest']);let msg='';
+ if(t==='fine'){const f=Math.round(Math.max(800,G.cash*.04)*ins);G.cash-=f;msg=`Regulators fined you ${fmt(f)} for "irregularities"`}
+ else if(t==='raid'&&open.length){const s=pick(open);s.shutUntil=G.day+2;msg=`Inspectors raided ${s.name}: closed for 2 days`}
+ else if(t==='audit'){const f=Math.round(Math.max(1500,netWorth()*.015)*ins);G.cash-=f;msg=`Tax audit: back-taxes of ${fmt(f)}`}
+ else if(open.length){const s=pick(open);s.rep=Math.max(0,s.rep-10);msg=`Protesters picketed ${s.name}. Reputation −10`}
+ if(msg){C.heat=Math.max(0,C.heat-18);news(msg,'warn');log.push(['risk',msg])}}
+function ipoDay(C,log){const P=C.ipo;const q=P.q;q.profit+=G.lastProfit;
+ P.cap=Math.max(1e6,(P.trail||Math.max(1,G.lastProfit)*365)*14*P.conf);
+ if(G.day-q.start>=28){const hit=q.profit>=q.target;P.trail=q.profit*13;
+  if(hit){P.conf=Math.min(2.5,P.conf*1.15);const bonus=Math.round(P.cap*.004);G.cash+=bonus;news(`Quarterly earnings beat target (${fmt(q.profit)} vs ${fmt(q.target)}). Shares jump, board pays you ${fmt(bonus)}`,'goal');log.push(['ipo','beat'])}
+  else{P.conf=Math.max(.4,P.conf*.82);news(`Missed the quarterly target (${fmt(q.profit)} vs ${fmt(q.target)}). Shares slide`,'warn');log.push(['ipo','miss'])}
+  P.hist=(P.hist||[]).concat([{t:q.target,p:q.profit,hit}]).slice(-8);P.q={start:G.day,profit:0,target:Math.round(Math.max(q.target*1.12,q.profit*1.08))}}}
+
+// ---------- UI ----------
+let cxTab='today';
+function cxTop(){if(!G||!ui.started)return;const C=cx();let b=document.getElementById('cxbtn');
+ if(!b){const gc=document.getElementById('goalchip');if(!gc)return;b=document.createElement('button');b.id='cxbtn';b.dataset.cx='open';gc.parentNode.insertBefore(b,gc)}
+ const nw=netWorth(),alerts=C.offers.filter(o=>!o.seen).length+(C.contracts.some(k=>k.left<=1)?1:0);
+ const html=`<span class="cxr">${esc(rankName(C.rank,nw))}</span><span class="cxheat" style="--h:${C.heat}%" title="Regulator heat ${Math.round(C.heat)}"></span>${alerts?`<span class="cxbadge">${alerts}</span>`:''}`;if(b._h!==html){b._h=html;b.innerHTML=html}
+ if(C.pendingRank&&!ui.modal){ui.modal={kind:'rankup'};renderModal()}
+ else if(C.report&&!ui.modal&&!ui.skip){ui.modal={kind:'report'};renderModal()}}
+function mRankup(){const C=cx(),P=C.pendingRank,nw=netWorth();const r=CX_RANKS[P.to];
+ return`<div class="cxrank"><p class="eyebrow">Promotion</p><div class="cxrk-from">${esc(CX_RANKS[P.from].t)}</div><div class="cxrk-arrow">▼</div><h2 class="cxrk-to">${esc(rankName(P.to,nw))}</h2><div class="cxrk-un"><b>Unlocked</b>${esc(r.un)}<br><b>Business limit</b>${r.max>=999?'Unlimited':r.max}</div>${P.to+1<CX_RANKS.length?`<p class="fine">Next: ${esc(CX_RANKS[P.to+1].t)} at ${fmt(CX_RANKS[P.to+1].nw)} net worth.</p>`:''}<button class="btn" data-cx="rankok">Let's go</button></div>`}
+function mReport(){const C=cx(),Rp=C.report;const grade=Rp.profit>0&&Rp.fail===0?(Rp.profit>Math.max(5000,netWorth()*.04)?'A':'B'):Rp.profit>0?'C':'D';
+ return`<div class="mhead"><p class="eyebrow">Weekly board report</p><h2 class="h">Grade ${grade}</h2></div><div class="mbody"><div class="cxgrid">${stat('Cash change',(Rp.profit>=0?'+':'−')+fmt(Math.abs(Rp.profit)),Rp.profit>=0?'up':'down')}${stat('Customers',Rp.cust.toLocaleString('en-US'))}${stat('Contracts delivered',Rp.done)}${stat('Contracts missed',Rp.fail,Rp.fail?'down':'')}${stat('Regulator heat',Math.round(Rp.heat),Rp.heat>50?'down':'')}${stat('Net worth',fmt(Rp.nw))}</div>
+ <p class="cxadv">${esc(advice())}</p></div><div class="mfoot"><button class="ghost" data-cx="open">Open Empire</button><button class="btn" data-cx="reportok">Next week</button></div>`}
+function stat(l,v,c){return`<div><small>${l}</small><b class="${c||''}">${v}</b></div>`}
+function advice(){const C=cx(),open=G.sites.filter(s=>s.status==='open');
+ if(!open.length)return'Open a business: nothing happens until you are trading.';
+ if(C.heat>60)return'The regulators are circling. Turn down shady deals, or invest in Legal before the next raid.';
+ if(C.rank>=3&&!C.corp)return'You are big enough to found a corporation. Departments multiply everything you own.';
+ const spare=open.reduce((a,s)=>a+Math.max(0,capDay(s)-(s.last?s.last.cust:0)),0);if(C.contracts.length&&spare<10)return'Your contracts are starving for capacity. Buy kit or hire staff so production outruns walk-in demand.';
+ if(C.offers.length&&C.contracts.length<slots())return'There are contracts on the table. Spare capacity is free money: take one you can deliver.';
+ const best=open.slice().sort((a,b)=>(b.last?b.last.profit:0)-(a.last?a.last.profit:0))[0];if(best&&G.sites.length<CX_RANKS[C.rank].max)return`${best.name} is your best earner. Open another ${BIZ[best.type].n.toLowerCase()} somewhere busier.`;
+ if(G.sites.length>=CX_RANKS[C.rank].max)return`You are at your business limit. Push net worth to ${fmt(CX_RANKS[Math.min(C.rank+1,CX_RANKS.length-1)].nw)} for a promotion.`;
+ return'Reinvest: buy buildings to kill rent, upgrade departments, and keep heat low.'}
+function mEmpire(){const C=cx(),nw=netWorth(),ri=C.rank,nx=CX_RANKS[ri+1];const M=CX_MARKETS.find(m=>m.id===C.market.id)||CX_MARKETS[0];
+ const tabs=[['today','Today'],['contracts','Contracts'+(C.offers.length?` · ${C.offers.length}`:'')],['risk','Risk'],['corp','Corporation'],['rivals','Rivals']];
+ let body='';
+ if(cxTab==='today'){const prog=nx?clamp((nw-CX_RANKS[ri].nw)/(nx.nw-CX_RANKS[ri].nw),0,1):1;const Bf=C.brief;
+  body=`<div class="cxcareer"><div><small>Rank</small><b>${esc(rankName(ri,nw))}</b></div><div class="cxprog"><div class="meter"><i style="width:${prog*100}%"></i></div><small>${nx?`${fmt(nw)} / ${fmt(nx.nw)} to ${esc(nx.t)}`:'Top rank. Legend tiers continue forever.'}</small></div></div>
+  <div class="cxloop">${[['1','Produce',`${G.sites.filter(s=>s.status==='open').length}/${CX_RANKS[ri].max} businesses open`],['2','Distribute',`${C.contracts.length}/${slots()} contracts running`],['3','Manage risk',`Heat ${Math.round(C.heat)}/100`],['4','Reinvest',C.corp?`${Object.values(C.dept).reduce((a,b)=>a+b,0)} dept levels`:ri>=3?'Found your corporation':`Corp at Entrepreneur`]].map(x=>`<div><span>${x[0]}</span><b>${x[1]}</b><small>${x[2]}</small></div>`).join('')}</div>
+  <div class="box cxmkt"><small>This week's market</small><b>${esc(M.n)}</b><span>${esc(M.d)} Changes in ${Math.max(1,C.market.until-G.day)} days.</span></div>
+  <p class="cxadv"><b>Advisor:</b> ${esc(advice())}</p>
+  ${Bf&&Bf.log.length?`<h3 class="eyebrow">Yesterday</h3><ul class="cxlog">${Bf.log.map(l=>`<li>${l[0]==='done'?`✅ Delivered for ${esc(l[1].cl)} (+${fmt(l[1].pay)})`:l[0]==='fail'?`❌ Missed ${esc(l[1].cl)}`:l[0]==='risk'?`⚠️ ${esc(l[1])}`:l[0]==='market'?`📈 Market: ${esc(l[1])}`:l[0]==='ipo'?`📊 Quarter ${l[1]==='beat'?'beaten':'missed'}`:''}</li>`).join('')}</ul>`:''}`}
+ if(cxTab==='contracts'){for(const o of C.offers)o.seen=1;
+  body=`<p class="muted">Clients buy in bulk. Contracts are filled from <b>spare capacity</b>: what your businesses could make beyond walk-in demand. Build extra kit and staff to deliver more. Slots: ${C.contracts.length}/${slots()}.</p>
+  <h3 class="eyebrow">Running</h3>${C.contracts.length?C.contracts.map(k=>`<div class="cxk"><div><b style="color:${k.col}">${esc(k.cl)}</b><small>${Math.round(k.units).toLocaleString('en-US')} × ${esc(BIZ[k.type].n)} output · ${k.left} day${k.left===1?'':'s'} left</small><div class="meter"><i style="width:${k.done/k.units*100}%"></i></div></div><span class="mono">${fmt(k.pay)}</span></div>`).join(''):'<p class="fine">None yet.</p>'}
+  <h3 class="eyebrow">On offer</h3>${C.rank<1?`<p class="fine">Clients start calling when you reach Shopkeeper (${fmt(CX_RANKS[1].nw)}).</p>`:C.offers.length?C.offers.map(o=>{const have=G.sites.some(s=>s.type===o.type&&s.status==='open');const cap=G.sites.filter(s=>s.type===o.type&&s.status==='open').reduce((a,s)=>a+Math.max(0,capDay(s)-(s.last?s.last.cust:0))*.9+capDay(s)*.12,0)*(1+.25*C.dept.logi);const est=cap>0?Math.ceil(o.units/cap):99;
+   return`<div class="cxk offer"><div><b style="color:${o.col}">${esc(o.cl)}</b>${o.kind==='shady'?'<span class="cxtag bad">+heat</span>':o.kind==='gov'?'<span class="cxtag good">−heat</span>':''}<small>${Math.round(o.units).toLocaleString('en-US')} units of ${esc(BIZ[o.type].n)} output in ${o.days} days · ${have?`your pace ≈ ${est>30?'too slow':est+' days'}`:'you don\'t run one yet'} · offer ends in ${o.exp-G.day}d</small></div><div class="cxa"><span class="mono">${fmt(o.pay)}</span><button class="btn sm" data-cx="take" data-id="${o.id}" ${!have||C.contracts.length>=slots()?'disabled':''}>Sign</button></div></div>`}).join(''):'<p class="fine">No offers today. New clients call every morning.</p>'}`}
+ if(cxTab==='risk'){const lv=C.heat<30?'Low':C.heat<55?'Watched':C.heat<75?'Under investigation':'Raid imminent';
+  body=`<div class="cxheatbig"><div class="meter"><i style="width:${C.heat}%;background:${C.heat<35?'var(--good)':C.heat<60?'var(--sodium)':'var(--bad)'}!important"></i></div><b>${Math.round(C.heat)}/100 · ${lv}</b></div>
+  <p class="muted">Regulator heat rises with size, data centres, shady clients and big cash piles. Above 35, fines, raids, audits and protests start to land. Every incident cools things down a bit.</p>
+  <ul class="cxlog"><li>Businesses beyond 3: +${(Math.max(0,G.sites.filter(s=>s.status==='open').length-3)*.3).toFixed(1)}/day</li><li>Data centres: +${(G.sites.filter(s=>s.type==='datacenter'&&s.status==='open').length*1.4).toFixed(1)}/day</li><li>Shady contracts: +${(C.contracts.filter(k=>k.kind==='shady').length*1.2).toFixed(1)}/day</li><li>Natural cooling: −${(1.6+1.4*(C.dept.legal||0)).toFixed(1)}/day${C.dept.legal?' (with Legal)':''}</li></ul>
+  <div class="btnrow"><button class="btn ghost" data-cx="lobby" ${G.cash<lobbyCost()?'disabled':''}>Hire lobbyists · ${fmt(lobbyCost())} (−20 heat)</button></div>`}
+ if(cxTab==='corp'){if(!C.corp){body=ri<3?`<p class="muted">Corporations are for Entrepreneurs (${fmt(CX_RANKS[3].nw)} net worth). Keep growing.</p>`:`<p>Incorporate ${esc(G.company)} to unlock departments: permanent upgrades that boost every business you own.</p><button class="btn" data-cx="found" ${G.cash<50000?'disabled':''}>Found the corporation · $50,000</button>`}
+  else{body=`<p class="muted">Department levels are permanent and apply everywhere. Max level ${deptMax()} at your rank.</p>`+Object.entries(CX_DEPTS).map(([k,d])=>{const l=C.dept[k]||0,c=deptCost(k,l);return`<div class="cxk"><div><b>${d.n} <span class="cxlv">${'■'.repeat(l)}${'□'.repeat(5-l)}</span></b><small>${esc(d.d)}</small></div><div class="cxa">${l>=deptMax()?'<span class="fine">Max</span>':`<button class="btn sm" data-cx="dept" data-id="${k}" ${G.cash<c?'disabled':''}>Upgrade · ${fmt(c)}</button>`}</div></div>`}).join('');
+   if(ri>=7){if(!C.ipo)body+=`<div class="box"><h3 class="eyebrow">Go public</h3><p>Sell 30% of the company on the stock market. You get a pile of cash now, then face quarterly earnings targets from shareholders forever.</p><button class="btn" data-cx="ipo">Ring the opening bell</button></div>`;
+    else{const P=C.ipo;body+=`<div class="box"><h3 class="eyebrow">Stock market</h3><div class="cxgrid">${stat('Market cap',fmt(P.cap))}${stat('Your stake',Math.round(P.stake*100)+'%')}${stat('Confidence',Math.round(P.conf*100)+'%',P.conf<1?'down':'up')}${stat('Quarter profit',fmt(P.q.profit))}${stat('Target',fmt(P.q.target))}${stat('Days left',28-(G.day-P.q.start))}</div></div>`}}}}
+ if(cxTab==='rivals'){const me={n:G.company+' (you)',nw,c:'var(--sodium)',me:1};const L=C.rivals.concat([me]).sort((a,b)=>b.nw-a.nw);
+  body=`<p class="muted">Rival corporations grow every day, snipe your contracts and pounce in recessions. Pass them all.</p><ol class="cxriv">${L.map((r,i)=>`<li class="${r.me?'me':''}"><span>${i+1}</span><b style="color:${r.c}">${esc(r.n)}</b><span class="mono">${fmt(r.nw)}</span>${!r.me&&ri>=6&&nw>r.nw*1.5?`<button class="btn sm" data-cx="takeover" data-id="${esc(r.n)}" ${G.cash<r.nw*.6?'disabled':''}>Take over · ${fmt(r.nw*.6)}</button>`:''}</li>`).join('')}</ol>`}
+ return`<div class="mhead"><p class="eyebrow">${esc(G.company||'Your company')} · day ${G.day+1}</p><h2 class="h">Empire</h2></div><nav class="tabs cxtabs">${tabs.map(([k,t])=>`<button data-cx="tab" data-id="${k}" class="${cxTab===k?'on':''}">${t}</button>`).join('')}</nav><div class="mbody">${body}</div><div class="mfoot"><button class="btn" data-act="close">Back to work</button></div>`}
+function lobbyCost(){return Math.round(Math.max(5000,netWorth()*.01)/500)*500}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-cx]');if(!t||t.disabled||!G)return;const a=t.dataset.cx,id=t.dataset.id,C=cx();
+ if(a==='open'){cxTab=C.brief&&C.offers.length&&cxTab==='today'?'today':cxTab;ui.modal={kind:'empire'};renderModal()}
+ else if(a==='tab'){cxTab=id;renderModal()}
+ else if(a==='rankok'){C.pendingRank=null;closeModal();renderTop()}
+ else if(a==='reportok'){C.report=null;closeModal();renderTop()}
+ else if(a==='take'){const o=C.offers.find(x=>x.id===id);if(!o||C.contracts.length>=slots())return;C.offers=C.offers.filter(x=>x!==o);C.contracts.push(Object.assign(o,{done:0,left:o.days}));C.heat=clamp(C.heat+o.heat,0,100);toast(`Signed with ${o.cl}`,'good');renderModal();save()}
+ else if(a==='lobby'){const c=lobbyCost();if(G.cash<c)return;G.cash-=c;C.heat=Math.max(0,C.heat-20);toast('Lobbyists dispatched. Heat −20','good');renderModal();renderTop();save()}
+ else if(a==='found'){if(G.cash<5e4)return;G.cash-=5e4;C.corp={day:G.day};news(`${G.company} is now a corporation`,'goal');renderModal();renderTop();save()}
+ else if(a==='dept'){const l=C.dept[id]||0,c=deptCost(id,l);if(G.cash<c||l>=deptMax())return;G.cash-=c;C.dept[id]=l+1;toast(`${CX_DEPTS[id].n} upgraded to level ${l+1}`,'good');renderModal();renderTop();save()}
+ else if(a==='ipo'){const base=Math.max(G.lastProfit,1000)*365*14;const raise=Math.round(base*.3);G.cash+=raise;C.ipo={cap:base,stake:.7,conf:1,trail:Math.max(G.lastProfit,1000)*365,q:{start:G.day,profit:0,target:Math.round(Math.max(G.lastProfit,1000)*28*1.05)}};news(`${G.company} floats on the stock exchange, raising ${fmt(raise)}`,'goal');renderModal();renderTop();save()}
+ else if(a==='takeover'){const r=C.rivals.find(x=>x.n===id);if(!r)return;const c=r.nw*.6;if(G.cash<c)return;G.cash-=c;C.rivals=C.rivals.filter(x=>x!==r);for(const k in C.dept)if(C.dept[k]<5&&Math.random()<.5)C.dept[k]++;const nr=CX_RIVALS.find(x=>!C.rivals.some(y=>y.n===x.n)&&x.n!==r.n)||{n:'Upstart '+Math.floor(R()*99),c:'#ffffff'};C.rivals.push({n:nr.n+(C.rivals.some(y=>y.n===nr.n)?' II':''),c:nr.c,nw:netWorth()*.4,g:.01});news(`Hostile takeover: ${G.company} swallowed ${r.n}. Their best people joined your departments`,'goal');renderModal();renderTop();save()}
+});
+const st=document.createElement('style');st.textContent=`
+#cxbtn{display:flex;align-items:center;gap:8px;background:#141414;border:2px solid #2a2a2a;border-radius:999px;padding:5px 12px 5px 10px;color:var(--paper);font-weight:800;font-size:12px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;position:relative;white-space:nowrap;flex-shrink:0}
+#cxbtn:hover{border-color:var(--sodium)}#cxbtn .cxr{color:var(--sodium)}#cxbtn .cxheat{width:34px;height:6px;border-radius:4px;background:#2a2a2a;position:relative;overflow:hidden}#cxbtn .cxheat::after{content:'';position:absolute;left:0;top:0;bottom:0;width:var(--h);background:linear-gradient(90deg,#7be08f,#ffde00 45%,#ff5d4d)}
+#cxbtn .cxbadge{position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:999px;min-width:18px;height:18px;font-size:11px;line-height:18px;text-align:center;box-shadow:0 0 0 2px #000;animation:cxp 1.4s infinite}@keyframes cxp{50%{transform:scale(1.15)}}
+.cxtabs{position:static;margin:0 0 4px;background:none}
+.cxcareer{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;margin-bottom:12px}.cxcareer b{font-size:22px;color:var(--sodium);display:block}.cxcareer small{color:var(--muted);font-size:12px}.cxprog .meter{margin-bottom:4px}
+.cxloop{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.cxloop div{background:#1b1b1b;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px}.cxloop span{width:22px;height:22px;border-radius:50%;background:var(--sodium);color:#000;font-weight:800;font-size:12px;display:grid;place-items:center}.cxloop b{font-size:14px}.cxloop small{color:var(--muted);font-size:11.5px}
+.cxmkt{display:flex;flex-direction:column;gap:2px}.cxmkt small{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.08em}.cxmkt b{font-size:17px}.cxmkt span{font-size:13px;color:var(--muted)}
+.cxadv{background:#1a1700;border-left:4px solid var(--sodium);padding:10px 12px;border-radius:8px;font-size:13.5px}.cxlog{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:5px;font-size:13px}
+.cxk{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:#1b1b1b;border-radius:12px;padding:10px 12px;margin-bottom:8px}.cxk small{display:block;color:var(--muted);font-size:12px;margin:2px 0 6px}.cxk .mono{font-size:17px;color:var(--sodium)}.cxa{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.cxtag{font-size:10px;font-weight:800;border-radius:999px;padding:2px 7px;margin-left:8px;text-transform:uppercase}.cxtag.bad{background:rgba(255,93,77,.18);color:var(--bad)}.cxtag.good{background:rgba(123,224,143,.15);color:var(--good)}
+.cxlv{color:var(--sodium);letter-spacing:1px;font-size:11px;margin-left:6px}.cxheatbig .meter{height:14px}.cxheatbig b{display:block;margin:6px 0 10px;font-size:17px}
+.cxgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px}.cxgrid div{background:#1b1b1b;border-radius:10px;padding:8px 10px;display:flex;flex-direction:column}.cxgrid small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}.cxgrid b{font-size:20px}
+.cxriv{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}.cxriv li{display:grid;grid-template-columns:24px 1fr auto auto;gap:10px;align-items:center;background:#1b1b1b;border-radius:10px;padding:9px 12px}.cxriv li.me{box-shadow:inset 0 0 0 2px var(--sodium)}
+.cxrank{text-align:center;padding:30px 24px 24px}.cxrk-from{color:var(--muted);text-decoration:line-through;font-size:16px}.cxrk-arrow{color:var(--sodium);margin:4px 0}.cxrk-to{font-family:var(--f-display);font-size:54px;color:var(--sodium);margin:0 0 14px;line-height:1;animation:cxin .6s cubic-bezier(.2,1.6,.4,1)}@keyframes cxin{from{transform:scale(.4);opacity:0}}
+.cxrk-un{background:#1b1b1b;border-radius:12px;padding:12px 14px;margin:0 auto 12px;max-width:360px;font-size:14px;line-height:1.6}.cxrk-un b{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.cxlock{display:inline-block;background:#000;color:var(--sodium);font-size:11px;font-weight:800;border-radius:999px;padding:2px 8px;margin-bottom:4px}
+@media (max-width:640px){.cxloop{grid-template-columns:1fr 1fr}#cxbtn .cxheat{display:none}}`;document.head.appendChild(st);
+setTimeout(()=>{try{if(G){cx();renderTop()}}catch(e){}},1500);
+})();
+
+</script>
 
 </body></html>
