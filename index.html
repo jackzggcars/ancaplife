@@ -4568,5 +4568,122 @@ setTimeout(()=>{try{if(G){cx();renderTop()}}catch(e){}},1500);
 })();
 
 </script>
+<script>
+// ANCAP LIFE · FLOW LAYER: one clear objective at a time, XP & level-up perk picks, profit streaks, end-of-day beats.
+(function(){
+const R=Math.random,fmt=v=>big(v);
+function F(){if(!G)return null;if(!G.fl)G.fl={mi:0,xp:0,lvl:1,perks:{},streak:0,best:0,pendingPerk:0,choice:null,dn:0,cm:0,proc:null};return G.fl}
+window.flowState=F;
+const open=()=>G.sites.filter(s=>s.status==='open');
+const totProfit=()=>G.sites.reduce((a,s)=>a+s.hist.reduce((x,h)=>x+h.profit,0),0);
+const totCust=()=>G.sites.reduce((a,s)=>a+s.hist.reduce((x,h)=>x+h.cust,0),0);
+const reqOk=s=>BIZ[s.type].equip.filter(e=>e.req).every(e=>eqActive(s,e.id)>0);
+const C=()=>(typeof cx==='function'?cx():{rank:0,done:0,heat:0,contracts:[],dept:{}});
+// hand-built opening chain, then procedural missions forever
+const MISSIONS=[
+ {t:'Lease your first shop',h:'Zoom into a city and click a building glowing yellow.',p:()=>G.sites.length?1:0,r:0,x:40},
+ {t:'Place the required kit',h:'Open your shop → Kit tab → Buy, then click the floor to place it.',p:()=>{const s=G.sites[0];if(!s)return 0;const q=BIZ[s.type].equip.filter(e=>e.req);return q.filter(e=>eqActive(s,e.id)>0).length/q.length},r:500,x:60,go:'equip'},
+ {t:'Hire your first employee',h:'Staff tab → pick someone with good skill dots.',p:()=>G.sites.some(s=>s.staff.length)?1:0,r:300,x:40,go:'staff'},
+ {t:'Stock your shelves',h:'Menu tab → buy a week of each supply.',p:()=>{const s=G.sites[0];if(!s)return 0;const k=bizSupplies(BIZ[s.type]);return k.filter(x=>s.inv[x]&&s.inv[x].q>0).length/k.length},r:300,x:40,go:'menu'},
+ {t:'Open for business',h:'Overview tab → Open for business. Then speed time up.',p:()=>open().length?1:0,r:1000,x:80,go:'overview'},
+ {t:'Serve 150 customers',h:'Keep the doors open. Speed up time with 3×.',p:()=>totCust()/150,r:800,x:80},
+ {t:'Bank $1,000 profit',h:'Price near the market and keep stock topped up.',p:()=>Math.max(0,totProfit())/1000,r:1000,x:100},
+ {t:'Add an extra piece of kit',h:'More kit = more capacity = more sales. Kit tab.',p:()=>G.sites.some(s=>BIZ[s.type].equip.some(e=>!e.req&&eqActive(s,e.id)>0)||BIZ[s.type].equip.some(e=>e.req&&eqActive(s,e.id)>1))?1:0,r:600,x:80,go:'equip'},
+ {t:'Reach Shopkeeper rank',h:'Grow net worth to $75,000. Contracts unlock.',p:()=>netWorth()/75000,r:1500,x:150},
+ {t:'Sign your first contract',h:'Empire button (top bar) → Contracts → Sign one you can deliver.',p:()=>(C().contracts.length||C().done)?1:0,r:800,x:100,emp:1},
+ {t:'Open a second business',h:'Step outside, zoom out and lease another yellow building.',p:()=>Math.min(1,open().length/2),r:3000,x:200},
+ {t:'Deliver 3 contracts',h:'Spare capacity fills contracts. Build beyond walk-in demand.',p:()=>C().done/3,r:2500,x:200,emp:1},
+ {t:'Earn a three-star shop',h:'Quality, fair prices and no stockouts raise reputation.',p:()=>Math.max(0,...G.sites.map(s=>s.rep))/60,r:2000,x:150},
+];
+function procMission(f){const lv=f.lvl,k=Math.floor(R()*6),nw=netWorth();
+ const T=[
+  ()=>{const n=Math.round(Math.max(500,(G.lastProfit||300)*1.4)/50)*50;return{t:`Make ${fmt(n)} profit in one day`,h:'Fix your bottleneck, then add marketing.',kind:'day',n}},
+  ()=>{const n=C().done+2+Math.floor(lv/4);return{t:`Deliver ${n-C().done} more contracts`,h:'Empire → Contracts.',kind:'con',n,emp:1}},
+  ()=>{const n=open().length+1;return{t:`Run ${n} businesses at once`,h:'Lease another building. Mix business types for different markets.',kind:'biz',n}},
+  ()=>{const n=Math.round(nw*1.35/1000)*1000;return{t:`Reach ${fmt(n)} net worth`,h:'Profit, buildings and stakes all count.',kind:'nw',n}},
+  ()=>({t:'Keep regulator heat under 30 for 5 days',h:'Avoid shady deals; invest in Legal.',kind:'heat',n:5,c:0}),
+  ()=>{const n=Math.min(95,Math.round(Math.max(...G.sites.map(s=>s.rep),40)+8));return{t:`Get a business to ${n} reputation`,h:'Quality kit, a manager, skilled staff.',kind:'rep',n}}];
+ const m=T[k]();m.r=Math.round(Math.max(1500,nw*.03)/100)*100;m.x=120+lv*15;m.start=G.day;return m}
+function procProg(m){const c=C();switch(m.kind){case'day':return Math.max(0,G.lastProfit)/m.n;case'con':return c.done/m.n;case'biz':return open().length/m.n;case'nw':return netWorth()/m.n;case'heat':return m.c/m.n;case'rep':return Math.max(...G.sites.map(s=>s.rep),0)/m.n}return 0}
+function cur(){const f=F();if(f.mi<MISSIONS.length)return MISSIONS[f.mi];if(!f.proc)f.proc=procMission(f);return f.proc}
+function curProg(){const f=F(),m=cur();return clamp(f.mi<MISSIONS.length?m.p():procProg(m),0,1)}
+// ---------- perks: pick 1 of 3 on level-up ----------
+const PERKS=[
+ {id:'walk',n:'Word of Mouth',d:'+8% customers at every business',ic:'📣'},
+ {id:'food',n:'Secret Recipe',d:'+15% customers at food businesses',ic:'🍔'},
+ {id:'retail',n:'Window Dressing',d:'+15% customers at shops & boutiques',ic:'🛍️'},
+ {id:'wage',n:'Union Buster',d:'Get back 8% of all wages every day',ic:'✂️'},
+ {id:'contract',n:'Silver Tongue',d:'New contract offers pay 15% more',ic:'🤝'},
+ {id:'heat',n:'Friends in High Places',d:'Regulator heat cools 1 point faster per day',ic:'🕴️'},
+ {id:'rep',n:'Five-Star Service',d:'Every business gains a little reputation daily',ic:'⭐'},
+ {id:'grant',n:'Angel Investor',d:'Instant cash injection',ic:'💰',once:1},
+ {id:'stock',n:'Supply Chain Guru',d:'Get back 6% of supply costs every day',ic:'📦'}];
+function perkLvl(id){return(F().perks[id]||0)}
+function rollPerks(){const pool=PERKS.slice().sort(()=>R()-.5);return pool.slice(0,3).map(p=>p.id)}
+// ---------- sim hooks ----------
+const _vh=visitorsH;visitorsH=function(s,o){let v=_vh(s,o);const f=G&&G.fl;if(!f)return v;const cat=BIZ[s.type].cat;v*=1+.08*perkLvl('walk');if(cat==='food')v*=1+.15*perkLvl('food');if(cat==='retail'||cat==='grocery'||cat==='tech')v*=1+.15*perkLvl('retail');return v};
+const _sd=simDay;simDay=function(){const f=F(),c=C(),done0=c.done||0,offers0=new Set((c.offers||[]).map(o=>o.id));_sd.apply(this,arguments);try{dayEnd(f,c,done0,offers0)}catch(e){console.warn('flow',e)}};
+function dayEnd(f,c,done0,offers0){
+ const lp=G.lastProfit;let bonus=0;
+ if(lp>0){f.streak++;bonus=Math.round(lp*Math.min(f.streak,10)*.01);G.cash+=bonus}else f.streak=0;f.best=Math.max(f.best,f.streak);
+ for(const s of G.sites){const L=s.last;if(!L)continue;if(perkLvl('wage'))G.cash+=L.wages*.08*perkLvl('wage');if(perkLvl('stock'))G.cash+=L.cogs*.06*perkLvl('stock');if(perkLvl('rep')&&s.status==='open')s.rep=Math.min(100,s.rep+.4*perkLvl('rep'))}
+ if(perkLvl('heat')&&c.heat!=null)c.heat=Math.max(0,c.heat-perkLvl('heat'));
+ if(perkLvl('contract')&&c.offers)for(const o of c.offers)if(!offers0.has(o.id))o.pay=Math.round(o.pay*(1+.15*perkLvl('contract')));
+ let xp=0;if(lp>0)xp+=8+Math.min(60,Math.round(lp/60));xp+=((c.done||0)-done0)*35;
+ const m=cur();if(m.kind==='heat'){m.c=(c.heat<30)?(m.c||0)+1:0}
+ gainXP(xp);f.day={d:G.day,lp,bonus,streak:f.streak,xp};
+ if(!ui.skip)dayBanner(f.day);checkMission();
+}
+function gainXP(x){const f=F();if(!x)return;f.xp+=x;let need;while(f.xp>=(need=xpNeed(f.lvl))){f.xp-=need;f.lvl++;f.pendingPerk++;}}
+function xpNeed(l){return Math.round(100*Math.pow(1.32,l-1))}
+function checkMission(){const f=F();if(!G||!ui.started)return;const m=cur();if(curProg()<1)return;
+ G.cash+=m.r||0;const x=m.x||50;celebrate(m);if(f.mi<MISSIONS.length)f.mi++;else f.proc=null;f.cm++;gainXP(x);renderTop();save()}
+// ---------- UI ----------
+function hud(){if(!G||!ui.started){const h=document.getElementById('flhud');if(h)h.hidden=true;return}
+ let h=document.getElementById('flhud');if(!h){h=document.createElement('div');h.id='flhud';document.body.appendChild(h)}
+ const leftOpen=!$('#left').hidden&&!ui.interior;h.hidden=leftOpen||!!ui.modal&&ui.modal.kind!=='perk'?false:false;h.classList.toggle('dim',leftOpen);
+ const f=F(),m=cur(),p=curProg();const need=xpNeed(f.lvl);
+ const html=`<div class="fl-lvl"><span class="fl-badge">${f.lvl}</span><div class="fl-xp"><i style="width:${f.xp/need*100}%"></i></div><span class="fl-streak ${f.streak>=3?'hot':''}" title="Profit streak: +${Math.min(f.streak,10)}% bonus on daily profit">🔥${f.streak}</span></div>
+ <div class="fl-obj" data-fl="go"><small>OBJECTIVE ${f.cm+1}</small><b>${esc(m.t)}</b><span>${esc(m.h)}</span><div class="fl-bar"><i style="width:${p*100}%"></i></div><em>${m.r?'+'+fmt(m.r)+' · ':''}+${m.x} XP</em></div>
+ ${f.pendingPerk?`<button class="fl-perkbtn" data-fl="perk">⬆ LEVEL UP! Choose a perk</button>`:''}`;
+ if(h._h!==html){h._h=html;h.innerHTML=html}}
+function dayBanner(d){const el=document.createElement('div');el.className='fl-day';el.innerHTML=`<small>DAY ${d.d} DONE</small><b class="${d.lp>=0?'up':'down'}">${d.lp>=0?'+':'−'}${fmt(Math.abs(d.lp))}</b>${d.bonus?`<span>🔥 ${d.streak}-day streak · +${fmt(d.bonus)} bonus</span>`:d.lp<0?'<span>Streak lost. Check your bottleneck.</span>':''}${d.xp?`<em>+${d.xp} XP</em>`:''}`;document.body.appendChild(el);setTimeout(()=>el.remove(),3000)}
+function celebrate(m){const el=document.createElement('div');el.className='fl-done';el.innerHTML=`<small>OBJECTIVE COMPLETE</small><b>${esc(m.t)}</b><span>${m.r?'+'+fmt(m.r)+'  ':''}+${m.x} XP</span>`;document.body.appendChild(el);
+ for(let i=0;i<26;i++){const c=document.createElement('i');c.className='fl-conf';c.style.left=(50+(R()-.5)*30)+'%';c.style.background=['#ffde00','#7be08f','#fff','#ff8a3a'][i%4];c.style.setProperty('--dx',((R()-.5)*500)+'px');c.style.setProperty('--dy',(-120-R()*260)+'px');c.style.animationDelay=(R()*.15)+'s';document.body.appendChild(c);setTimeout(()=>c.remove(),1700)}
+ setTimeout(()=>el.remove(),2600)}
+function mPerk(){const f=F();if(!f.choice)f.choice=rollPerks();return`<div class="fl-perkm"><p class="eyebrow">Level ${f.lvl} reached</p><h2 class="h">Pick a perk</h2><p class="muted">Perks stack and last forever. Choose what fits your empire.</p><div class="fl-cards">${f.choice.map(id=>{const p=PERKS.find(x=>x.id===id),l=perkLvl(id);const d=id==='grant'?`+${fmt(Math.max(3000,netWorth()*.08))} cash now`:p.d;return`<button class="fl-card" data-fl="pick" data-id="${id}"><span class="ic">${p.ic}</span><b>${esc(p.n)}</b><small>${esc(d)}</small>${l?`<em>Owned ×${l} → ×${l+1}</em>`:'<em>New</em>'}</button>`}).join('')}</div></div>`}
+const _rm=renderModal;renderModal=function(){const m=ui.modal;if(m&&m.kind==='perk'){$('#modal').hidden=false;$('#modal .modal').innerHTML=mPerk();return}return _rm()};
+const _rt=renderTop;renderTop=function(){_rt.apply(this,arguments);try{hud();checkMission()}catch(e){}};
+setInterval(()=>{try{if(G&&ui.started){hud();checkMission()}}catch(e){}},1000);
+document.addEventListener('click',e=>{const t=e.target.closest('[data-fl]');if(!t||!G)return;const a=t.dataset.fl,f=F();
+ if(a==='perk'){ui.modal={kind:'perk'};renderModal()}
+ else if(a==='pick'){const id=t.dataset.id;if(id==='grant')G.cash+=Math.max(3000,netWorth()*.08);f.perks[id]=(f.perks[id]||0)+1;f.pendingPerk=Math.max(0,f.pendingPerk-1);f.choice=null;toast(`Perk gained: ${PERKS.find(p=>p.id===id).n}`,'good');if(f.pendingPerk){renderModal()}else{closeModal()}renderTop();save()}
+ else if(a==='go'){const m=cur();if(m.emp){const b=document.querySelector('[data-cx=open]');if(b)b.click();return}if(m.go&&G.sites[0]){ui.site=G.sites[0].id;ui.tab=m.go;renderSite()}}});
+// the old goal chip is replaced by the objective tracker; weekly challenges stay in Goals
+const st=document.createElement('style');st.textContent=`
+#goalchip{display:none!important}
+#flhud{position:fixed;z-index:21;left:14px;top:calc(var(--bar-h,62px) + 12px);width:290px;display:flex;flex-direction:column;gap:8px;pointer-events:none;transition:opacity .2s}#flhud.dim{opacity:0;pointer-events:none}#flhud>*{pointer-events:auto}
+.fl-lvl{display:flex;align-items:center;gap:8px;background:rgba(12,12,12,.92);border:2px solid #000;border-radius:999px;padding:4px 10px 4px 4px;box-shadow:0 4px 0 rgba(0,0,0,.35)}
+.fl-badge{width:28px;height:28px;border-radius:50%;background:var(--sodium);color:#000;font-weight:900;display:grid;place-items:center;font-size:14px;box-shadow:inset 0 -3px 0 rgba(0,0,0,.2)}
+.fl-xp{flex:1;height:8px;border-radius:5px;background:#2a2a2a;overflow:hidden}.fl-xp i{display:block;height:100%;background:linear-gradient(90deg,#7be08f,#ffde00);transition:width .5s}
+.fl-streak{font-weight:800;font-size:13px;color:#aaa}.fl-streak.hot{color:#ff8a3a;animation:flh 1.2s infinite}@keyframes flh{50%{transform:scale(1.15)}}
+.fl-obj{background:rgba(12,12,12,.94);border:2px solid #000;border-left:5px solid var(--sodium);border-radius:12px;padding:10px 12px;cursor:pointer;box-shadow:0 6px 0 rgba(0,0,0,.35);display:flex;flex-direction:column;gap:3px}
+.fl-obj:hover{border-left-color:#fff}.fl-obj small{color:var(--sodium);font-weight:800;letter-spacing:.1em;font-size:10.5px}.fl-obj b{font-size:15px;line-height:1.2}.fl-obj span{color:var(--muted);font-size:12px;line-height:1.35}
+.fl-bar{height:6px;border-radius:4px;background:#2a2a2a;overflow:hidden;margin-top:4px}.fl-bar i{display:block;height:100%;background:var(--sodium);transition:width .5s}.fl-obj em{font-style:normal;font-size:11.5px;font-weight:800;color:var(--good)}
+.fl-perkbtn{background:var(--sodium);color:#000;border:2px solid #000;border-radius:12px;padding:10px;font-weight:900;letter-spacing:.04em;cursor:pointer;animation:flp 1s infinite;box-shadow:0 5px 0 rgba(0,0,0,.4)}@keyframes flp{50%{transform:translateY(-3px)}}
+.fl-day{position:fixed;z-index:46;left:50%;top:calc(var(--bar-h,62px) + 16px);transform:translateX(-50%);background:#0f0f0f;border:3px solid var(--sodium);border-radius:14px;padding:8px 20px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:1px;animation:fld 3s ease forwards;pointer-events:none;box-shadow:0 8px 0 rgba(0,0,0,.45)}
+.fl-day small{font-weight:800;letter-spacing:.14em;font-size:10.5px;color:var(--muted)}.fl-day b{font-family:var(--f-display);font-size:34px;line-height:1}.fl-day b.up{color:var(--good)}.fl-day b.down{color:var(--bad)}.fl-day span{font-size:12.5px;font-weight:700;color:#ff8a3a}.fl-day em{font-style:normal;font-size:11px;font-weight:800;color:var(--sodium)}
+@keyframes fld{0%{opacity:0;transform:translate(-50%,-14px) scale(.9)}10%{opacity:1;transform:translate(-50%,0) scale(1.04)}18%{transform:translate(-50%,0) scale(1)}85%{opacity:1}100%{opacity:0;transform:translate(-50%,-10px)}}
+.fl-done{position:fixed;z-index:47;left:50%;top:38%;transform:translate(-50%,-50%);background:var(--sodium);color:#000;border:4px solid #000;border-radius:16px;padding:16px 30px;text-align:center;display:flex;flex-direction:column;gap:2px;animation:flc 2.6s cubic-bezier(.2,1.4,.4,1) forwards;pointer-events:none;box-shadow:0 12px 0 rgba(0,0,0,.45)}
+.fl-done small{font-weight:900;letter-spacing:.16em;font-size:11px}.fl-done b{font-family:var(--f-display);font-size:34px;line-height:1.05}.fl-done span{font-weight:900;font-size:16px}
+@keyframes flc{0%{transform:translate(-50%,-50%) scale(.3);opacity:0}14%{transform:translate(-50%,-50%) scale(1.06);opacity:1}22%{transform:translate(-50%,-50%) scale(1)}82%{opacity:1}100%{opacity:0;transform:translate(-50%,-70%) scale(.95)}}
+.fl-conf{position:fixed;z-index:48;top:40%;width:9px;height:14px;border-radius:2px;pointer-events:none;animation:flcf 1.6s ease-out forwards}@keyframes flcf{0%{transform:translate(0,0) rotate(0)}100%{transform:translate(var(--dx),calc(var(--dy) + 520px)) rotate(720deg);opacity:0}}
+.fl-perkm{padding:26px 24px;text-align:center}.fl-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+.fl-card{background:#1b1b1b;border:3px solid #2a2a2a;border-radius:16px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--paper);cursor:pointer;transition:transform .12s,border-color .12s}.fl-card:hover{transform:translateY(-5px);border-color:var(--sodium)}
+.fl-card .ic{font-size:38px}.fl-card b{font-size:16px}.fl-card small{color:var(--muted);font-size:12.5px;line-height:1.35}.fl-card em{font-style:normal;font-size:11px;font-weight:800;color:var(--sodium);text-transform:uppercase}
+@media (max-width:700px){#flhud{width:calc(100% - 28px);top:auto;bottom:60px}.fl-obj span{display:none}.fl-cards{grid-template-columns:1fr}}`;document.head.appendChild(st);
+})();
+
+</script>
 
 </body></html>
