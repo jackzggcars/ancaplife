@@ -857,7 +857,8 @@ function genChunk(cx,cy){
  const NC=new Map(),cellKind=(i,j)=>{const k=i+','+j;if(NC.has(k))return NC.get(k);
   const a=fabNode(F,i,j),b=fabNode(F,i+1,j+1),[la,lo]=unmerc((a[0]+b[0])/2,(a[1]+b[1])/2);
   let kind='none';
-  if(inRealCoverage(la,lo))kind='real';
+  const c10=fabNode(F,i+1,j),c01=fabNode(F,i,j+1),touchReal=()=>{for(const[x,y]of[a,b,c10,c01,[(a[0]+c10[0])/2,(a[1]+c10[1])/2],[(a[0]+c01[0])/2,(a[1]+c01[1])/2],[(b[0]+c10[0])/2,(b[1]+c10[1])/2],[(b[0]+c01[0])/2,(b[1]+c01[1])/2]]){const[pa,po]=unmerc(x,y);if(inRealCoverage(pa,po))return true}return false};
+  if(inRealCoverage(la,lo)||touchReal())kind='real';
   else if(inParkZ(la,lo))kind='bigpark';
   else{const u=urbanL(la,lo),st=settleL(la,lo);
    if(u||(st.s>0&&hash2(i,j,11)<st.s*1.3&&landAt(la,lo))){kind=hash2(i,j,5)<.045?'park':'b';
@@ -865,6 +866,7 @@ function genChunk(cx,cy){
    else if(farmBase>0||st.near<2500){const fp=(st.near<6000?.95:st.near<14000?.6:.18)*(farmBase||.8);if(hash2(i>>1,j>>1,13)<fp&&landAt(la,lo))kind='farm'}}
   NC.set(k,kind);return kind};
  const NCR=new Map();
+ const byId={},fin=(L,sid)=>{L.sid=sid;L.key=L.zone+'#'+sid;L.i=hashStr(sid)%100003;byId[sid]=L;return L};
  const roads=[],blocks=[],parks=[],lots=[],trees=[],fields=[],yards=[],animals=[],cars=[],bases=[];
  const RR=RURAL[E.style]||'euro',FM=FIELDMIX[RR],FA=FARMMIX[RR],props=[],AMER=['USA','CAN','MEX','AUS'].includes(E.iso);
  // road class from what it runs between: avenues downtown, streets in town, narrow residential roads in the suburbs
@@ -909,7 +911,7 @@ function genChunk(cx,cy){
    if(RR==='euro'||RR==='nordic'){for(let t=0;t<3;t++)if(hash2(i*5+t,j,41)<.4){const e=bil(q,hash2(i,j*5+t,42),t%2?0:1);trees.push([e[0],e[1],.9+hash2(i,j,t+50)*.6])}}
    if(((i%3)+3)%3===1&&((j%3)+3)%3===1&&hash2(i,j,43)<.8){const c=bil(q,.5,.5),ux=q[1][0]-q[0][0],uy=q[1][1]-q[0][1],ul=Math.hypot(ux,uy)||1,u=[ux/ul,uy/ul],v=[-u[1],u[0]],A=12,B=6.5;
     const P=(a,b)=>[c[0]+u[0]*a+v[0]*b,c[1]+u[1]*a+v[1]*b],poly=[P(-A,-B),P(A,-B),P(A,B),P(-A,B)];const[la,lo]=unmerc(mx+c[0]/kc,my+c[1]/kc);
-    const R=mulberry32(hashStr(key+'#f'+i+','+j)),fl=mkSpecial('farm','c'+key,lots.length,poly,7,la,lo,streetName(lang,1,i,true),.45,R,E);fl.ftype=pickW(FA,hash2(i,j,44));fl.region=RR;lots.push(fl)}
+    const R=mulberry32(hashStr(key+'#f'+i+','+j)),fl=mkSpecial('farm','c'+key,lots.length,poly,7,la,lo,streetName(lang,1,i,true),.45,R,E);fl.ftype=pickW(FA,hash2(i,j,44));fl.region=RR;fin(fl,'f'+i+'_'+j);lots.push(fl)}
    continue}
   if(!usable(k))continue;
   const q=[n00,fabNode(F,i+1,j),fabNode(F,i+1,j+1),fabNode(F,i,j+1)].map(p=>toL(...p));
@@ -917,7 +919,7 @@ function genChunk(cx,cy){
   const swW=crC>.35?4.2:crC>.1||k==='ind'?2.8:2,walk=shrinkQ(q,hwMax);bases.push({q,walk:k==='bigpark'?q:walk,lv:crC>.35?2:crC>.1||k==='ind'?1:0,park:k==='park'||k==='bigpark'});
   if(k==='ind'){blocks.push(walk);const lq=shrinkQ(q,hwMax+swW),R=mulberry32(hashStr(key+'#i'+i+','+j)),D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]),long=D(lq[0],lq[1])>=D(lq[1],lq[2]),n=R()<.5?1:2;
    for(let a=0;a<n;a++){const t0=a/n,t1=(a+1)/n;let p=long?[bil(lq,t0,0),bil(lq,t1,0),bil(lq,t1,1),bil(lq,t0,1)]:[bil(lq,0,t0),bil(lq,1,t0),bil(lq,1,t1),bil(lq,0,t1)];p=shrinkQ(p,n>1?2:0.5);
-    const pc=bil(p,.5,.5),[la,lo]=unmerc(mx+pc[0]/kc,my+pc[1]/kc);lots.push(mkSpecial('ind','c'+key,lots.length,p,7+R()*6,la,lo,streetName(lang,0,j,false),.5,R,E))}continue}
+    const pc=bil(p,.5,.5),[la,lo]=unmerc(mx+pc[0]/kc,my+pc[1]/kc);lots.push(fin(mkSpecial('ind','c'+key,lots.length,p,7+R()*6,la,lo,streetName(lang,0,j,false),.5,R,E),'n'+i+'_'+j+'_'+a))}continue}
   if(k==='park'||k==='bigpark'){parks.push(walk);for(let t=0;t<(k==='bigpark'?22:9);t++){const p=bil(walk,.1+hash2(i*7+t,j,3)*.8,.1+hash2(i,j*7+t,4)*.8);trees.push([p[0],p[1],.8+hash2(i,j,t)*.5])}continue}
   blocks.push(walk);
   const lq=shrinkQ(q,hwMax+swW);
@@ -925,7 +927,7 @@ function genChunk(cx,cy){
    if(hc<(cr0<.5?.045:.02)&&ar>1200){const R=mulberry32(hashStr(key+'#c'+i+','+j)),w=WORSHIP[E.style]||'church',r=hash2(i,j,62);
     let t=r<.3?w:r<.5?'school':r<.66?'market':r<.78?'fuel':r<.88?'parking':(RR==='amer'?'water':'sports');
     const pc=bil(lq,.5,.5),[la,lo]=unmerc(mx+pc[0]/kc,my+pc[1]/kc),L=mkLot('c'+key,lots.length,lq,12,la,lo,streetName(lang,0,j,artJ(j)),artJ(j),.8,R,E,0,0,false);
-    L.civic=t;L.init={st:'occ',name:{church:'Parish church',onion:'Orthodox church',mosque:'Mosque',temple:'Temple',school:'School',market:'Supermarket',fuel:'Fuel station',parking:'Car park',water:'Water tower',sports:'Sports ground'}[t]};lots.push(L);continue}}
+    fin(L,'k'+i+'_'+j);L.civic=t;L.init={st:'occ',name:{church:'Parish church',onion:'Orthodox church',mosque:'Mosque',temple:'Temple',school:'School',market:'Supermarket',fuel:'Fuel station',parking:'Car park',water:'Water tower',sports:'Sports ground'}[t]};lots.push(L);continue}}
   const sides=[{art:artJ(j),n:streetName(lang,0,j,artJ(j))},{art:artI(i+1),n:streetName(lang,1,i+1,artI(i+1))},{art:artJ(j+1),n:streetName(lang,0,j+1,artJ(j+1))},{art:artI(i),n:streetName(lang,1,i,artI(i))}];
   const R=mulberry32(hashStr(key+'#'+i+','+j));
   const D=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
@@ -954,10 +956,10 @@ function genChunk(cx,cy){
    if(floors<=2&&!art&&cr<.16&&R()<(DETACH[E.style]??.5)&&area>120){const f=side,uv=[[.16+R()*.1,.84-R()*.1,.3+R()*.12,.88-R()*.06],[.12+R()*.08,.7-R()*.1,.14+R()*.1,.86-R()*.1],[.16+R()*.1,.84-R()*.1,.12+R()*.06,.7-R()*.12],[.3+R()*.12,.88-R()*.06,.14+R()*.1,.86-R()*.1]][f];
     const fp=[bil(p,uv[0],uv[2]),bil(p,uv[1],uv[2]),bil(p,uv[1],uv[3]),bil(p,uv[0],uv[3])];if(Math.abs(polyArea(fp))>45){L.fp=fp;L.house=1;yards.push({p:shrinkQ(p,.4),c:Math.floor(R()*3)});if(R()<.7){const e=bil(p,.15+R()*.7,f===0?.9:f===2?.1:.5);trees.push([e[0],e[1],.8+R()*.5])}
      if(R()<.55){const e=bil(p,uv[0]-.08,(uv[2]+uv[3])/2);cars.push([e[0],e[1],Math.atan2(p[1][1]-p[0][1],p[1][0]-p[0][0])+(f%2?0:1.57),Math.floor(R()*6)])}}}
-   lots.push(L);
+   fin(L,i+'_'+j+'_'+a+'_'+b);lots.push(L);
   }
  }
- const ch={key,cx,cy,lat:clat,lon:clon,kc,roads,blocks,parks,lots,trees,fields,yards,animals,cars,bases,props,lht:LHT,amer:AMER,econ:E,style:E.style,zone:'c'+key};
+ const ch={key,cx,cy,lat:clat,lon:clon,kc,roads,blocks,parks,lots,byId,trees,fields,yards,animals,cars,bases,props,lht:LHT,amer:AMER,econ:E,style:E.style,zone:'c'+key};
  CHUNKS.set(key,ch);return ch;
 }
 function shrinkQ(q,d){const cx=(q[0][0]+q[1][0]+q[2][0]+q[3][0])/4,cz=(q[0][1]+q[1][1]+q[2][1]+q[3][1])/4;return q.map(p=>{const dx=cx-p[0],dz=cz-p[1],L=Math.hypot(dx,dz)||1,m=Math.min(d*1.41,L*.45);return[p[0]+dx/L*m,p[1]+dz/L*m]})}
@@ -1045,17 +1047,18 @@ async function loadCity(id){
    L.cx=cx;L.cy=cy;L.mh=b[1]/10;L.gen=b[2];return L});
   // spatial buckets for picking & competition
   C.bucket={};for(const L of C.lots){const k=Math.floor(L.cx/300)+','+Math.floor(L.cy/300);(C.bucket[k]||(C.bucket[k]=[])).push(L)}
-  REAL[id]={lat0:d.lat0,lon0:d.lon0,kx,ky,cover:d.cover,covp:d.covp?(()=>{const o=[];let x=0,y=0;for(let i=0;i<d.covp.length;i+=2){x+=d.covp[i];y+=d.covp[i+1];o.push(x,y)}return o})():null};
-  if(REAL[id].covp)REAL[id].cbb=bboxOf(REAL[id].covp);
-  // procedural chunks generated before this data arrived may overlap it
-  for(const [k,ch] of CHUNKS)if(distM(ch.lat,ch.lon,d.lat0,d.lon0)<12000)CHUNKS.delete(k);
-  if(typeof LIVE!=='undefined')for(const[k,L]of LIVE)if(L.ch&&distM(L.ch.lat,L.ch.lon,d.lat0,d.lon0)<12000){disposeLive(L);LIVE.delete(k)}
+  // coverage is static (REAL_COVER_STATIC): loading real data never changes or discards generated chunks
   C.ready=true;return C});
  return C.p;
 }
-// every real-data city's coverage is registered up front (tiny), so procedural fill can avoid it before the city loads
-const REAL_COVER_HINT={london:{lat0:51.5074,lon0:-0.1278,box:[-6050,-1940,3560,3380]},nyc:{lat0:40.758,lon0:-73.9855,box:[-2700,-1250,2240,2570]},paris:{lat0:48.8606,lon0:2.3376,box:[195,-341,1001,463]}};
-for(const id in REAL_COVER_HINT){const h=REAL_COVER_HINT[id];REAL[id]={lat0:h.lat0,lon0:h.lon0,kx:111320*Math.cos(h.lat0*D2R),ky:110540,cover:[h.box],covp:null}}
+// FROZEN WORLD RULE: real-city coverage is fixed here and never changes at runtime (not when a city finishes loading, not between versions).
+// Generated chunks are a pure function of (chunk, static data, this table), so a generated lot always has the same shape, place and key.
+// If a city's real coverage ever has to grow, add a NEW entry instead of editing these; changing them moves generated lots players may own.
+const REAL_COVER_STATIC={
+ london:{lat0:51.5074,lon0:-0.1278,box:[[-1421,-1364,482,-230]],poly:[-4427,-1777,-4775,-1537,-4928,-1570,-4910,-1438,-4886,-1288,-4898,-1228,-4892,-934,-4892,-754,-4910,-688,-5048,-370,-4886,-142,-4934,-46,-5033,149,-4832,458,-5012,770,-4898,950,-4844,1244,-4838,1304,-5075,1583,-5096,1856,-4922,2108,-4802,2324,-4832,2504,-5015,2759,-4709,3005,-4457,3113,-4229,2981,-4109,2969,-4025,2963,-3923,2945,-3617,3011,-3107,3035,-2963,2969,-2849,3029,-2537,2981,-1709,3209,-1319,3155,-1067,3173,-968,3140,-725,2963,-533,3059,-317,3089,85,2975,295,3029,535,3005,667,2939,799,2987,991,2921,1159,2927,1339,2963,1471,2951,1627,3053,2059,2963,2251,3017,2635,3131,2767,3047,2989,2903,3082,2846,3016,2684,3076,2474,3016,2378,3040,2264,2998,2072,3022,1958,2974,1880,2968,1784,2986,1682,3034,1538,3034,1454,2956,1244,3058,1028,2998,944,3040,770,2992,614,3142,362,3121,197,3166,-172,3022,-658,3178,-1042,2962,-1414,3001,-1561,2893,-1567,2749,-1513,2443,-1555,2185,-1429,1903,-1555,1543,-1567,1453,-1531,1297,-1633,1003,-1657,721,-1663,517,-1621,421,-1645,133,-1771,-119,-1561,-191,-1585,-365,-1603,-641,-1567,-797,-1615,-911,-1699,-1331,-1651,-1469,-1597,-1721,-1543,-2009,-1591,-2177,-1579,-2435,-1777,-2681,-1729,-2969,-1777,-3359,-1567,-3527,-1681,-3821,-1555,-4121,-1663,-4397,-1777]},
+ nyc:{lat0:40.758,lon0:-73.9855,box:[[-626,-1188,2154,2492]]},
+ paris:{lat0:48.8606,lon0:2.3376,box:[[182,-344,987,455]]}};
+for(const id in REAL_COVER_STATIC){const h=REAL_COVER_STATIC[id];REAL[id]={lat0:h.lat0,lon0:h.lon0,kx:111320*Math.cos(h.lat0*D2R),ky:110540,cover:h.box,covp:h.poly||null,cbb:h.poly?bboxOf(h.poly):null}}
 
 // ===================== ANCAP LIFE · BUSINESS DATA =====================
 // cat food → priced locally; goods → traded globally
@@ -1270,7 +1273,7 @@ function newGame(company){
 function lotByKey(key){
  const [zone,i]=key.split('#');
  if(zone==='lm')return LMLOTS[+i]||null;
- if(zone[0]==='c'){const[cx,cy]=zone.slice(1).split(':').map(Number);const ch=CHUNKS.get(cx+':'+cy)||genChunk(cx,cy);return ch?ch.lots[+i]:null}
+ if(zone[0]==='c'){const[cx,cy]=zone.slice(1).split(':').map(Number);const ch=CHUNKS.get(cx+':'+cy)||genChunk(cx,cy);return ch?(ch.byId[i]||(/^\d+$/.test(i)?ch.lots[+i]:null)||null):null}
  const C=CITYDATA[zone];return C&&C.ready?C.lots[+i]:null;
 }
 function lotState(lot){if(typeof netOther==='function'){const c=netOther(lot.key);if(c&&!(G&&G.ov[lot.key]&&G.ov[lot.key].st==='player'))return{st:'taken',name:(c.name?c.name+' · ':'')+netCompany(c.owner),net:1}}return G&&G.ov[lot.key]||lot.init}
@@ -1605,6 +1608,21 @@ async function ensureGameData(){
  const ps=[];for(const k of[...G.sites.map(s=>s.key),...G.props.map(p=>p.key)]){const zone=k.split('#')[0];if(zone==='lm')continue;
   if(zone[0]==='c'){const[cx,cy]=zone.slice(1).split(':').map(Number);const[la,lo]=chunkCenter(cx,cy);ps.push(ensureTilesAround(la,lo,0))}else ps.push(loadCity(zone))}
  await Promise.all(ps);
+ migrateLotKeys();
+}
+// Saves made before lot ids became stable use 'cX:Y#<index>'. Re-point them at the generated lot standing at the saved position.
+function migrateLotKeys(){
+ if(!G)return;const map=new Map();
+ const fix=(k,lat,lon)=>{if(typeof k!=='string')return k;if(map.has(k))return map.get(k);
+  const[zone,id]=k.split('#');let out=k;
+  if(zone&&zone[0]==='c'&&/^\d+$/.test(id)&&lat!=null&&lon!=null){const[cx,cy]=zone.slice(1).split(':').map(Number),ch=genChunk(cx,cy);
+   if(ch){let best=null,bd=60;for(const a of[0,-1,1])for(const b of[0,-1,1]){const c2=(a||b)?genChunk(cx+a,cy+b):ch;if(!c2)continue;for(const L of c2.lots){if(L.hidden)continue;const d=distM(L.lat,L.lon,lat,lon);if(d<bd){bd=d;best=L}}}
+    if(best)out=best.key}}
+  map.set(k,out);return out};
+ for(const s of G.sites)s.key=fix(s.key,s.lat,s.lon);
+ for(const p of G.props)p.key=fix(p.key,p.lat,p.lon);
+ if(G.ov){const o={};for(const k in G.ov){const nk=map.get(k)||k;o[nk]=G.ov[k]}G.ov=o}
+ if(map.size&&[...map].some(([a,b])=>a!==b))save();
 }
 // ===================== ANCAP LIFE · ENGINE (three.js) =====================
 const canvas=document.getElementById('gl');
@@ -4274,6 +4292,7 @@ async function netStart(){
   const db=AUTH.db;NET.on=true;NET.uid=AUTH.user.id;
   const[c,p]=await Promise.all([db.from('claims').select('*').limit(10000),db.from('players').select('*').order('net_worth',{ascending:false}).limit(100)]);
   for(const r of c.data||[])NET.claims.set(r.lot_key,r);for(const r of p.data||[])NET.players.set(r.id,r);
+  {const old=(c.data||[]).filter(r=>r.owner===NET.uid&&/^c[^#]*#\d+$/.test(r.lot_key)).map(r=>r.lot_key);if(old.length){await db.from('claims').delete().in('lot_key',old);for(const k of old)NET.claims.delete(k)}} // pre-stable-id claims; migrated saves re-claim under the new ids
   db.channel('db').on('postgres_changes',{event:'*',schema:'public',table:'claims'},e=>{if(e.eventType==='DELETE')NET.claims.delete(e.old.lot_key);else NET.claims.set(e.new.lot_key,e.new);netDirty()})
    .on('postgres_changes',{event:'*',schema:'public',table:'players'},e=>{if(e.new&&e.new.id)NET.players.set(e.new.id,e.new);renderFront()}).subscribe();
   const ch=db.channel('world',{config:{presence:{key:NET.uid}}});NET.ch=ch;
