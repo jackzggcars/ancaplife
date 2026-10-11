@@ -32,6 +32,9 @@
 .au-msg{min-height:18px;font-size:13px;line-height:1.4;margin:0}.au-msg.err{color:var(--bad)}.au-msg.ok{color:var(--good)}
 .au-row{display:flex;justify-content:space-between;gap:10px;margin-top:2px}.au-row .fr-link{margin:0;font-size:12.5px}
 .fr-play[disabled]{opacity:.6;cursor:wait}.fr-ghost{width:100%;margin-top:10px;background:none;border:2px solid #34373e;border-radius:6px;color:#d9d5c4;padding:11px;font:700 12px ui-monospace,monospace;letter-spacing:.1em;cursor:pointer;text-transform:uppercase}.fr-ghost:hover{border-color:var(--sodium);color:var(--sodium)}
+.au-hint{margin:6px 0 0;font-size:12px;line-height:1.4;color:#8a8d94}.au-hint a,.au-chk a{color:var(--sodium)}
+.au-chk{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.45;color:#c9c5b5;cursor:pointer}.au-chk input{width:18px;height:18px;margin:1px 0 0;flex:none;accent-color:var(--sodium)}
+.au-f input[type=date]{color-scheme:dark;min-height:46px}
 .au-or{display:flex;align-items:center;gap:10px;margin:14px 0 4px;color:#6c6f76;font:11px ui-monospace,monospace;letter-spacing:.12em}.au-or::before,.au-or::after{content:"";flex:1;height:1px;background:#26282d}
 @media (max-width:520px){#front .fr-logo{font-size:44px}#front .fr-logo .flag.big{width:50px;height:34px}}
 .fr-glow{position:fixed;inset:0;background:radial-gradient(60% 70% at 0% 30%,rgba(255,222,0,.16),transparent 70%),radial-gradient(50% 60% at 100% 70%,rgba(255,222,0,.07),transparent 70%),repeating-linear-gradient(135deg,rgba(255,255,255,.015) 0 2px,transparent 2px 22px);filter:blur(1px);pointer-events:none}
@@ -414,7 +417,7 @@ body{font-family:var(--f-body)}
  <div id="ticker"></div>
  <div id="toasts" aria-live="polite"></div>
  <div id="modal" class="modal-back" hidden><div class="modal" role="dialog" aria-modal="true"></div></div>
- <div id="front" hidden><video class="fr-video" muted loop playsinline preload="auto" poster="media/nyc-poster.jpg" aria-hidden="true"><source src="media/nyc-bg.mp4" type="video/mp4"></video><div class="fr-shade"></div><div class="fr-glow"></div><div class="fr-wrap"><div class="fr-logo"><i class="flag big"></i>ANCAP LIFE</div><p class="fr-hero">Lease a shop in <b>New York</b>, hire a crew and build an empire, one block at a time.</p><div class="fr-card"></div><p class="fr-foot">A business sim on the real planet</p></div></div>
+ <div id="front" hidden><video class="fr-video" muted loop playsinline preload="auto" poster="media/nyc-poster.jpg" aria-hidden="true"><source src="media/nyc-bg.mp4" type="video/mp4"></video><div class="fr-shade"></div><div class="fr-glow"></div><div class="fr-wrap"><div class="fr-logo"><i class="flag big"></i>ANCAP LIFE</div><p class="fr-hero">The whole planet is the map: a real <b>Earth</b>, not just one city. Lease a shop anywhere, hire a crew and build an empire, one block at a time.</p><div class="fr-card"></div><p class="fr-foot">A business sim on the real planet · background: New York City, filmed in-game</p></div></div>
  <div id="loading"><i class="flag big" aria-hidden="true"></i><b>ANCAP LIFE</b><div class="bar2"><i></i></div><p>Loading the planet…</p></div>
 </div>
 <script>window.__PACKED=true</script>
@@ -3617,7 +3620,7 @@ function mMenu(){return`<div class="mhead"><p class="eyebrow">${esc(G.company||'
  <dl class="kv"><dt>Cash</dt><dd class="mono">${money(G.cash)}</dd><dt>Net worth</dt><dd class="mono">${big(netWorth())}</dd><dt>Loans</dt><dd class="mono">${money(G.loans.reduce((a,l)=>a+l.bal,0))}</dd></dl>
  <div class="btnrow"><button class="btn ghost" data-act="goals">Goals</button><button class="btn ghost" data-act="market">Supplier market</button><button class="btn ghost" data-act="bank">Bank &amp; loans</button></div>
  <h3 class="eyebrow">Company</h3><div class="renrow"><input id="corename" type="text" maxlength="40" value="${esc(G.company||'')}" aria-label="Company name"><button class="btn sm" data-act="renameco">Rename</button></div><button class="btn ghost wide" data-act="nextmodal">What should I do next?</button><button class="btn ghost wide" data-act="board">Leaderboard</button>
- <h3 class="eyebrow">Account</h3><div class="renrow"><span class="fine" style="flex:1;margin:0;align-self:center">${authed()?`Signed in as <b>${esc(AUTH.user.email||'')}</b>${AUTH.cloud==='off'?' · saving on this device only':' · saved to your account'}`:'Playing as a guest · progress is saved in this browser only'}</span><button class="btn sm ghost" data-act="signout">${authed()?'Sign out':'Sign in'}</button></div>
+ <h3 class="eyebrow">Account</h3><div class="renrow"><span class="fine" style="flex:1;margin:0;align-self:center">${authed()?`Signed in as <b>${esc(dispName())}</b>${AUTH.cloud==='off'?' · saving on this device only':' · saved to your account'}`:'Playing as a guest · progress is saved in this browser only'}</span><button class="btn sm ghost" data-act="signout">${authed()?'Sign out':'Sign in'}</button></div>
  <h3 class="eyebrow">Settings</h3><label class="tog"><input type="checkbox" data-change="shadows" ${QUAL.shadows?'checked':''}> Sun shadows (turn off if the game feels slow)</label><label class="tog"><input type="checkbox" data-change="cycle" ${VIS.cycle?'checked':''}> Day and night (a full day lasts 10 minutes)</label><label class="tog"><input type="checkbox" data-change="traffic" ${TRAFFIC_ON?'checked':''}> Traffic</label>
  <h3 class="eyebrow">Controls</h3><p class="fine">Drag to move · right-drag (or Shift-drag) to turn and tilt · scroll to zoom · Space pauses. Inside a shop, drag to look around and click kit to move it.</p>
  <p class="fine">Saves automatically after every day. Map data: Natural Earth (public domain); London, New York and Paris streets and buildings © OpenStreetMap contributors.</p>
@@ -3776,7 +3779,7 @@ async function boot(){
  ld.querySelector('p').textContent='Finding your businesses…';
  try{await ensureGameData()}catch(e){}
  ld.classList.add('done');setTimeout(()=>ld.remove(),600);
- ui.started=false;renderAll();showFront();if(authed())netStart();else netBoard();
+ ui.started=false;renderAll();showFront();if(AUTH.urlErr){authMsg(AUTH.urlErr,'err');try{history.replaceState(null,'',location.pathname)}catch(e){}}if(authed())netStart();else netBoard();
  updateCamera();requestAnimationFrame(t=>{last=t;loop(t)});
 }
 boot();
@@ -3993,6 +3996,7 @@ const NET={on:false,db:null,uid:null,claims:new Map(),players:new Map(),online:1
 const AUTH={db:null,user:null,mode:'in',busy:false,cloud:'unknown',timer:0,warned:false};
 const authed=()=>!!(AUTH.user&&!AUTH.user.is_anonymous);
 async function authInit(){
+ try{const hp=new URLSearchParams((location.hash||'').replace(/^#/,'')+'&'+(location.search||'').replace(/^\?/,'')),ed=hp.get('error_description');if(ed)AUTH.urlErr=/expired|invalid/i.test(ed)?'That email link has expired or was already used. Request a new one.':ed.replace(/\+/g,' ')}catch(e){}
  if(!window.supabase||!window.supabase.createClient)return;
  try{
   const db=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
@@ -4033,22 +4037,40 @@ async function authSignOut(){
 }
 function authMsg(t,k){const m=$('#au-msg');if(m){m.textContent=t||'';m.className='au-msg '+(k||'')}}
 function authBusy(b){AUTH.busy=b;const g=$('#au-go');if(g){g.disabled=b;if(b)g.dataset.t=g.textContent,g.textContent='…';else if(g.dataset.t)g.textContent=g.dataset.t}}
-const authUrl=()=>location.origin+location.pathname;
+const SITE_URL='https://ancaplife.vercel.app/';           // every email link (confirm, magic link, reset) must land on the live site, never localhost
+const authUrl=()=>SITE_URL;
+const MIN_AGE=13,TOS_VERSION='2026-10-11',AGE_KEY='ancaplife.agegate';
+const AGE_MSG='Sorry, we can\'t create an account for you.';
+const dispName=()=>{const u=AUTH.user;return u?((u.user_metadata&&u.user_metadata.username)||u.email||''):''};
+function ageFrom(v){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v||'');if(!m)return null;const y=+m[1],mo=+m[2],d=+m[3],n=new Date();if(y<1900)return null;const dt=new Date(y,mo-1,d);if(dt.getMonth()!==mo-1||dt>n)return null;let a=n.getFullYear()-y;if(n.getMonth()<mo-1||(n.getMonth()===mo-1&&n.getDate()<d))a--;return a}
+const todayISO=()=>{const n=new Date(),z=x=>String(x).padStart(2,'0');return n.getFullYear()+'-'+z(n.getMonth()+1)+'-'+z(n.getDate())};
 async function authGo(){
  if(AUTH.busy||!AUTH.db)return;
  const email=($('#au-email')?$('#au-email').value:'').trim(),pw=$('#au-pw')?$('#au-pw').value:'',m=AUTH.mode;
+ const user=($('#au-user')?$('#au-user').value:'').trim(),dob=$('#au-dob')?$('#au-dob').value:'',tos=!!($('#au-tos')&&$('#au-tos').checked);
  if(m!=='newpass'&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))return authMsg('Enter a valid email address.','err');
  if(m!=='magic'&&pw.length<6)return authMsg('Password must be at least 6 characters.','err');
+ if(m==='up'){
+  let blocked=false;try{blocked=!!localStorage.getItem(AGE_KEY)}catch(e){}
+  if(blocked)return authMsg(AGE_MSG,'err');
+  if(!/^[A-Za-z0-9_]{3,20}$/.test(user))return authMsg('Username must be 3 to 20 characters: letters, numbers or underscore.','err');
+  if(!dob)return authMsg('Enter your date of birth.','err');
+  const age=ageFrom(dob);if(age==null)return authMsg('Enter a valid date of birth.','err');
+  if(age<MIN_AGE){try{localStorage.setItem(AGE_KEY,'1')}catch(e){}return authMsg(AGE_MSG,'err')}
+  if(!tos)return authMsg('Please accept the Terms of Service and Privacy Policy to continue.','err');
+ }
  authBusy(true);authMsg('');
  try{
   if(m==='in'){const r=await AUTH.db.auth.signInWithPassword({email,password:pw});if(r.error)throw r.error;location.reload();return}
-  if(m==='up'){const r=await AUTH.db.auth.signUp({email,password:pw,options:{emailRedirectTo:authUrl()}});if(r.error)throw r.error;
+  if(m==='up'){
+   const q=await AUTH.db.rpc('username_available',{u:user});if(!q.error&&q.data===false)throw new Error('That username is taken. Try another.');
+   const r=await AUTH.db.auth.signUp({email,password:pw,options:{emailRedirectTo:authUrl(),data:{username:user,dob:dob,tos_version:TOS_VERSION,tos_accepted_at:new Date().toISOString()}}});if(r.error)throw r.error;
    if(r.data.session){location.reload();return}
    if(r.data.user&&r.data.user.identities&&!r.data.user.identities.length)throw new Error('That email already has an account. Sign in instead.');
    authMsg('Almost there. We sent a confirmation link to '+email+'. Open it, then sign in.','ok')}
-  if(m==='magic'){const r=await AUTH.db.auth.signInWithOtp({email,options:{emailRedirectTo:authUrl()}});if(r.error)throw r.error;authMsg('Sign-in link sent to '+email+'. Open it on this device.','ok')}
+  if(m==='magic'){const r=await AUTH.db.auth.signInWithOtp({email,options:{emailRedirectTo:authUrl(),shouldCreateUser:false}});if(r.error)throw r.error;authMsg('Sign-in link sent to '+email+'. Open it on this device.','ok')}
   if(m==='newpass'){const r=await AUTH.db.auth.updateUser({password:pw});if(r.error)throw r.error;AUTH.mode='in';location.hash='';location.reload();return}
- }catch(e){authMsg(/invalid login/i.test(e.message)?'Wrong email or password.':e.message||'Something went wrong.','err')}
+ }catch(e){authMsg(/invalid login/i.test(e.message)?'Wrong email or password.':/database error saving new user/i.test(e.message)?'We could not create that account. The username may be taken or not allowed. Try another.':/signups? not allowed|otp_disabled/i.test(e.message)?'No account with that email yet. Use Create account first.':e.message||'Something went wrong.','err')}
  authBusy(false);
 }
 async function authForgot(){
@@ -4109,19 +4131,21 @@ function authCard(){
  ${np?'':`<div class="au-tabs"><button data-act="auth_tab" data-id="in" class="${m==='in'||mg?'on':''}">Sign in</button><button data-act="auth_tab" data-id="up" class="${up?'on':''}">Create account</button></div>`}
  <div class="fr-body"><form id="authform" class="au-f" novalidate>
   ${np?'':`<div><label class="fr-lbl" for="au-email">Email</label><input id="au-email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="you@example.com" maxlength="120"></div>`}
+  ${up?`<div><label class="fr-lbl" for="au-user">Username</label><input id="au-user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="3 to 20 letters, numbers or _" maxlength="20"></div>`:''}
   ${mg?'':`<div><label class="fr-lbl" for="au-pw">${np?'New password':'Password'}</label><input id="au-pw" type="password" autocomplete="${m==='in'?'current-password':'new-password'}" placeholder="${up||np?'At least 6 characters':'Your password'}" maxlength="72"></div>`}
+  ${up?`<div><label class="fr-lbl" for="au-dob">Date of birth</label><input id="au-dob" type="date" autocomplete="bday" min="1900-01-01" max="${todayISO()}"><p class="au-hint">Only used to check your age. It is never shown to other players.</p></div><label class="au-chk"><input id="au-tos" type="checkbox"><span>I agree to the <a href="terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>`:''}
   <p id="au-msg" class="au-msg" role="status" aria-live="polite"></p>
   <button id="au-go" class="fr-play" type="submit">${np?'SAVE PASSWORD':up?'CREATE ACCOUNT':mg?'EMAIL ME A LINK':'SIGN IN'}</button>
   ${np?'':`<div class="au-row">${m==='in'?`<button type="button" class="fr-link" data-act="auth_forgot">Forgot password?</button>`:'<span></span>'}<button type="button" class="fr-link" data-act="auth_tab" data-id="${mg?'in':'magic'}">${mg?'Use a password instead':'Email me a sign-in link'}</button></div>`}
  </form>
- ${np?'':`<div class="au-or">OR</div><button class="fr-ghost" data-act="auth_guest">Play as guest</button><p class="fr-meta" style="margin-top:8px">Guest progress stays in this browser only.</p>`}
+ ${np?'':`<div class="au-or">OR</div><button class="fr-ghost" data-act="auth_guest">Play as guest</button><p class="fr-meta" style="margin-top:8px">Guest progress stays in this browser only.</p><p class="au-hint" style="text-align:center">By playing you agree to the <a href="terms.html" target="_blank" rel="noopener">Terms</a> and <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>. You must be ${MIN_AGE} or older.</p>`}
  <div class="fr-live">${liveHTML()}</div></div>`}
 function renderFront(force){const el=$('#front');if(!el||el.hidden)return;
  const card=el.querySelector('.fr-card');
  if(!authed()||AUTH.mode==='newpass'){
   if(!force&&card.querySelector('#authform')){const lv=card.querySelector('.fr-live');if(lv)lv.innerHTML=liveHTML();return}
   card.innerHTML=authCard();return}
- const has=!!(G&&G.company&&(G.sites.length||G.day>0)),em=AUTH.user.email||'your account';
+ const has=!!(G&&G.company&&(G.sites.length||G.day>0)),em=dispName()||'your account';
  card.innerHTML=`<div class="fr-top"><span class="fr-tag">SEASON 1 · OPEN WORLD</span><span class="fr-who">${NET.on?'ONLINE':'OFFLINE'}</span></div>
  <h1>${has?'Welcome back':'Build your empire'}</h1><p class="fr-sub">${has?`${esc(G.company)} · day ${G.day+1} · ${big(G.cash)} in the bank`:'Start with $30,000 on a real map of Earth. Lease a shop, hire a team and grow into towers, landmarks and data centres.'}</p>
  <div class="fr-body"><div class="fr-acct"><span class="av">${esc(em[0])}</span><div><small>${AUTH.cloud==='off'?'SAVING ON THIS DEVICE':'SAVED TO YOUR ACCOUNT'}</small><b>${esc(em)}</b></div><button data-act="signout">Sign out</button></div>
