@@ -4760,6 +4760,9 @@ const SFX={
  pop(){const k=pv();tone(300*k,720*k,.09,'sine',.1)},
  whoosh(d){const dur=d||.5;noise(dur,.1,0,{type:'bandpass',f0:250,f1:3200,q:.9,atk:dur*.45});noise(dur*.7,.06,dur*.35,{type:'bandpass',f0:3000,f1:300,q:.9,atk:.05})},
  swish(up){noise(.14,.05,0,{type:'bandpass',f0:up?500:2400,f1:up?2600:500,q:1})},
+ fill(){tone(620,980,.08,'triangle',.06);tone(1240,1960,.1,'sine',.025,.03)},
+ tab(i){const f=440*Math.pow(2,PENT[(i||0)%PENT.length]/12);tone(f,f*1.5,.07,'triangle',.08);tone(f*2,f*2,.09,'sine',.03,.03);noise(.03,.03,0,{type:'highpass',f0:4000})},
+ chime(){tone(1047,1047,.4,'sine',.04);tone(1568,1568,.5,'sine',.025,.06)},
  on(){tone(600,900,.06,'triangle',.07)},
  off(){tone(700,450,.06,'triangle',.07)}};
 const cool={};function sfx(n,gap,arg){if(muted)return;const t=performance.now();if(gap&&t-(cool[n]||0)<gap)return;cool[n]=t;try{SFX[n]&&SFX[n](arg)}catch(e){}}
@@ -4993,8 +4996,41 @@ new MutationObserver(ms=>{for(const m of ms)for(const n of m.addedNodes){if(n.no
  else if(n.classList.contains('toast')){if(n.classList.contains('warn'))sfx('err',800);else sfx('pop',600)}
  else if((n.classList.contains('fl-perkbtn')||(n.querySelector&&n.querySelector('.fl-perkbtn')))&&once('perk',45000))sfx('fanfare');
  else if((n.classList.contains('fl-event')||(n.querySelector&&n.querySelector('.fl-event')))&&once('event',45000))sfx('err')}}).observe(document.body,{childList:true,subtree:true});
-new MutationObserver(ms=>{for(const m of ms){const n=m.target;if(!n||m.attributeName!=='hidden'||!n.matches)continue;
- if(n.matches('.panel,#modal,.dropdown,#ibar')){const shown=!n.hidden;if(typeof ui!=='undefined'&&ui.started)sfx('swish',90,shown)}}}).observe(document.body,{attributes:true,subtree:true,attributeFilter:['hidden']});
+// BUGFIX (constant sound): swish only when a panel REALLY opens/closes. Re-setting hidden to the same value used to count as a change and looped the sound every render.
+const hidState=new WeakMap();
+new MutationObserver(ms=>{for(const m of ms){const n=m.target;if(!n||m.attributeName!=='hidden'||!n.matches||!n.matches('.panel,#modal,.dropdown,#ibar'))continue;
+ const now=n.hasAttribute('hidden'),prev=hidState.has(n)?hidState.get(n):m.oldValue!==null;hidState.set(n,now);if(prev===now)continue;
+ if(typeof ui!=='undefined'&&ui.started){sfx('swish',90,!now);if(!now)setTimeout(()=>stagger(n),0)}}}).observe(document.body,{attributes:true,subtree:true,attributeFilter:['hidden'],attributeOldValue:true});
+
+// ---------- SATISFACTION PACK for the rest of the UI (panels, tabs, bars, numbers, menus, toasts) ----------
+// rows slam in one after another whenever a panel / menu / modal opens or a tab changes
+function stagger(root){if(!root||!root.animate||prefersReduced)return;let i=0;
+ for(const e of root.querySelectorAll('.crow,.prow,.bcard,.evbtn,.item,.stats>*,.chips>*,.dropdown button,.fl-card')){if(i>16)break;
+  e.animate([{opacity:0,transform:'translateX(-22px) scale(.96)'},{opacity:1,transform:'translateX(5px) scale(1.01)',offset:.7},{opacity:1,transform:'none'}],{duration:340,delay:i*34,easing:'cubic-bezier(.2,1.2,.4,1)',fill:'backwards'});i++}}
+const parseN=t=>{const m=String(t).replace(/[−–]/g,'-').match(/(-?)\$?\s*([\d,]*\.?\d+)\s*([KMBT]?)/i);return m?(m[1]?-1:1)*parseFloat(m[2].replace(/,/g,''))*({K:1e3,M:1e6,B:1e9,T:1e12}[m[3].toUpperCase()]||1):null};
+// meters slide from their old value, changed numbers flash green (up) or red (down) and pop
+const PS=new WeakMap();
+function diffUI(root){
+ const bars=[...root.querySelectorAll('.meter i')],nums=[...root.querySelectorAll('.mono')].slice(0,80),old=PS.get(root)||{b:[],n:[]},nb=bars.map(x=>parseFloat(x.style.width)||0),nn=nums.map(x=>x.textContent);let rose=false,moved=0;
+ if(old.b.length===nb.length)bars.forEach((x,i)=>{if(Math.abs(nb[i]-old.b[i])>.4&&x.animate){x.animate([{width:old.b[i]+'%'},{width:nb[i]+'%'}],{duration:650,easing:'cubic-bezier(.2,1,.3,1)'});if(nb[i]>old.b[i])rose=true}});
+ if(old.n.length===nn.length)nums.forEach((x,i)=>{if(nn[i]===old.n[i])return;const a=parseN(old.n[i]),c=parseN(nn[i]);if(a==null||c==null||!x.animate)return;moved++;
+  x.animate([{color:c>a?'#6fd48a':'#ff6a5e',textShadow:'0 0 12px '+(c>a?'#6fd48a':'#ff6a5e'),transform:'scale(1.25)'},{color:'',textShadow:'none',transform:'none'}],{duration:560,easing:'cubic-bezier(.2,1.6,.4,1)'})});
+ if(rose)sfx('fill',120);else if(moved>1)sfx('tick',200);
+ PS.set(root,{b:nb,n:nn})}
+for(const sel of['#left','#right','#modal'])(function(){const r=document.querySelector(sel);if(r)new MutationObserver(()=>{try{diffUI(r)}catch(e){}}).observe(r,{childList:true,subtree:true})})();
+// tabs / segmented buttons: each tab has its own pitch, content slams in, active one pops
+document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('.tabs button,.seg button');if(!t||typeof ui==='undefined'||!ui.started)return;
+ const i=[...t.parentElement.children].indexOf(t);sfx('tab',0,i);if(t.animate)t.animate([{transform:'scale(.9)'},{transform:'scale(1.12)',offset:.5},{transform:'none'}],{duration:300,easing:'cubic-bezier(.2,1.8,.4,1)'});
+ const pn=t.closest('.panel,#modal');setTimeout(()=>stagger(pn),0)},true);
+// day rolls over: the date ticks over with a soft chime (never during fast-forward, so it can't turn into a drone)
+(function(){const d=document.getElementById('date');if(!d)return;let last=d.textContent;new MutationObserver(()=>{const t=d.textContent;if(t===last)return;last=t;
+ if(typeof ui==='undefined'||!ui.started||ui.skip||ui.speed>2)return;bump(d,1.25);sfx('chime',1500)}).observe(d,{childList:true,characterData:true,subtree:true})})();
+// cash counter: green/red flash and pop on any change
+(function(){const ce=document.getElementById('cash');if(!ce)return;let last=null;new MutationObserver(()=>{const v=parseN(ce.textContent);if(v==null||!isFinite(v))return;
+ if(last!=null&&v!==last&&ce.animate){const up=v>last,big=Math.abs(v-last)>Math.max(500,Math.abs(last)*.03);ce.animate([{color:up?'#6fd48a':'#ff6a5e',transform:'scale('+(big?1.2:1.07)+')'},{color:'',transform:'none'}],{duration:big?650:380,easing:'cubic-bezier(.2,1.4,.4,1)'})}last=v}).observe(ce,{childList:true,characterData:true,subtree:true})})();
+// map buttons, legend toggles and menu items answer when touched
+document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('#mapctl button,#legend button,.dropdown button,#shopsbtn,#skipbtn,#goalchip');if(!t||t.dataset.juice==='mute'||!t.animate)return;
+ t.animate([{transform:'scale(.92)'},{transform:'scale(1.08)',offset:.55},{transform:'none'}],{duration:280,easing:'cubic-bezier(.2,1.8,.4,1)'})},true);
 // ---------- sound toggle ----------
 const mc=$q('#mapctl');if(mc){const b=document.createElement('button');b.dataset.juice='mute';b.type='button';b.textContent=muted?'×':'♪';b.title=muted?'Sound off':'Sound on';b.setAttribute('aria-label','Toggle sound');mc.appendChild(b)}
 // ---------- CSS: one language for the whole UI, borrowed from the objective tracker (square slab, hard edge, yellow spine) ----------
@@ -5050,6 +5086,28 @@ const st=document.createElement('style');st.textContent=`
 .fl-week:hover{border-top-color:#fff}
 @keyframes jxDrop{0%{opacity:0;transform:translate(-50%,-22px) scale(.92)}100%{opacity:1;transform:translate(-50%,0)}}
 @keyframes jxOut{to{opacity:0;transform:translate(-50%,-12px)}}
+
+/* satisfaction pack: same slab language as the level + day UI */
+.btn:hover:not(:disabled){background-image:linear-gradient(100deg,transparent 35%,rgba(255,255,255,.5) 50%,transparent 65%)!important;background-size:260% 100%;animation:jxBtnShine .55s ease-out}
+@keyframes jxBtnShine{from{background-position:130% 0}to{background-position:-30% 0}}
+.tabs button{transition:color .1s,border-color .1s,background .1s,transform .1s}.tabs button:hover{color:#fff;background:rgba(255,216,0,.1)}
+.tabs button.on,.tabs button.active,.seg button.on,.speed button.on,#legend button.on{animation:jxSel .32s cubic-bezier(.2,1.8,.4,1)}
+@keyframes jxSel{0%{transform:scale(.88)}55%{transform:scale(1.1)}100%{transform:none}}
+.seg button:hover,.speed button:hover,#mapctl button:hover,#legend button:hover{transform:translateY(-2px);box-shadow:0 3px 0 rgba(0,0,0,.6)}
+#mapctl button,#legend button,.speed button,.seg button{transition:transform .12s cubic-bezier(.2,1.6,.4,1),box-shadow .12s,background .1s}
+.dropdown button{transition:transform .1s,box-shadow .1s,background .1s}.dropdown button:hover{box-shadow:inset 5px 0 0 var(--sodium);transform:translateX(3px)}
+.toast{border-left:6px solid var(--sodium);overflow:hidden;position:relative}.toast.good{border-left-color:var(--good)}.toast.warn,.toast.bad{border-left-color:var(--bad);animation:jxToast .32s cubic-bezier(.2,1.4,.4,1),jxNudge 3s .4s 1}
+.toast::after{content:'';position:absolute;top:0;bottom:0;width:30%;left:-40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.3),transparent);animation:jxSheen 1s .25s ease-out 1}
+@keyframes jxSheen{from{left:-40%}to{left:130%}}
+.meter{overflow:hidden;position:relative}.meter::after{content:'';position:absolute;top:0;bottom:0;width:30%;left:-40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.5),transparent);animation:jxSheen2 3.4s ease-in-out infinite}
+@keyframes jxSheen2{0%,60%{left:-40%}100%{left:130%}}
+#goalchip:not([hidden]){animation:jxNudge 4s ease-in-out infinite,jxIn .3s cubic-bezier(.2,1.25,.4,1)}#goalchip:hover{transform:translateY(-2px);box-shadow:0 4px 0 rgba(0,0,0,.6)}
+#modal:not([hidden]){animation:jxFade .25s ease-out}@keyframes jxFade{from{backdrop-filter:blur(0);opacity:0}to{opacity:1}}
+.modal h2,.modal .h{background:linear-gradient(var(--sodium),var(--sodium)) 0 100%/0 3px no-repeat;animation:jxUnder .5s .15s cubic-bezier(.2,1,.3,1) forwards;padding-bottom:4px}
+@keyframes jxUnder{to{background-size:100% 3px}}
+.tk{animation:jxTk .5s cubic-bezier(.2,1.3,.4,1)}@keyframes jxTk{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#shopsbtn:not([hidden]),#skipbtn{transition:transform .12s cubic-bezier(.2,1.6,.4,1),box-shadow .12s}#shopsbtn:hover,#skipbtn:hover{transform:translateY(-2px);box-shadow:0 4px 0 rgba(0,0,0,.6)}
+@media (prefers-reduced-motion:reduce){.btn:hover,.tabs button.on,.seg button.on,.toast::after,.meter::after,#goalchip,.modal h2,.tk{animation:none!important}}
 @media (prefers-reduced-motion:reduce){.panel,.toast,#modal .modal,.fl-event,.fl-bar i,.meter i,.fl-xp i{animation:none!important}}
 `;document.head.appendChild(st);
 })();
