@@ -3743,11 +3743,11 @@ function lotPanel(lot){
   else{const inc=propIncome(prop);act=`<div class="box mine"><p><b>Your building</b> · value ${big(propValue(prop))}<br>Tenant income ${money(inc.inc*30)}/mo · upkeep and tax ${money(inc.cost*30)}/mo</p>
    ${prop.ground==='tenant'?`<p class="muted">The ground floor is let to a tenant for ${money(rent*.9)}/mo.</p><button class="btn ghost" data-act="evict">End tenancy (fee ${money(rent*2)})</button>`:`<div class="btnrow"><button class="btn" data-act="wizard" data-mode="own">Open a business here</button><button class="btn ghost" data-act="letground">Let ground floor (${money(rent*.9)}/mo)</button></div>`}</div>`}
  }
- else if(st.st==='lease')act=`<div class="box"><div class="price"><span class="mono">${money(rent)}</span><small>per month</small></div><p class="muted">Two months' deposit (${money(rent*2)}) now, refunded when you leave.</p><button class="btn wide" data-act="wizard" data-mode="lease" ${G.cash<rent*2?'disabled':''}>Lease this ${lot.kind==='farm'?'farm':lot.kind==='ind'?'unit':'shop'}</button>${G.cash<rent*2?`<p class="warn">You need ${money(rent*2-G.cash)} more for the deposit.</p>`:''}</div>`;
+ else if(st.st==='lease')act=`<div class="box"><div class="price"><span class="mono">${money(rent)}</span><small>per month</small></div><p class="muted">Two months' deposit (${money(rent*2)}) now, refunded when you leave.</p><button class="btn wide" data-act="wizard" data-mode="lease" ${G.cash<rent*2?'disabled':''}>Lease this ${lot.kind==='farm'?'farm':lot.kind==='ind'?'unit':'shop'}</button>${G.cash<rent*2?`<p class="warn">You need ${money(rent*2-G.cash)} more for the deposit.</p>`:''}</div>${offerBox(lot,st)}`;
  else if(st.st==='sale'){const v=bldgValue(E,lot,lot.floors),inc=upperRent(E,lot,lot.floors)*.92;act=buyBox(v,lot.landmark?`One of the most famous buildings on Earth. Tenants, tickets and licensing bring in about ${money(inc)}/mo. The ground floor (${lot.sqm} m²) can host a flagship business of your own.`:`Upper floors earn about ${money(inc)}/mo from tenants. The ground floor (${lot.sqm} m²) is free for your own business or another tenant.`,.3,'buy')}
  else if(st.st==='plot')act=buyBox(plotValue(E,lot),`Bare land. Build up to ${maxFloors(lot)} storeys here and let the floors you don't use.`,.4,'buyplot');
- else if(st.st==='rival'){const b=BIZ[st.t];act=`<div class="box rival"><p><b>${st.name?esc(st.name):'Competitor'}</b><br>${esc(b.n)} · prices ${st.pi>=1?'+':''}${Math.round((st.pi-1)*100)}% vs market · ${stars(st.rep)}</p><p class="muted">Draws customers from same-type businesses within 300 m and reacts to your pricing.</p></div>`}
- else act=`<div class="box"><p class="muted">${st.name?'Occupied by <b>'+esc(st.name)+'</b>.':'Occupied. The current tenants aren\'t moving out.'}</p></div>`;
+ else if(st.st==='rival'){const b=BIZ[st.t];act=`<div class="box rival"><p><b>${st.name?esc(st.name):'Competitor'}</b><br>${esc(b.n)} · prices ${st.pi>=1?'+':''}${Math.round((st.pi-1)*100)}% vs market · ${stars(st.rep)}</p><p class="muted">Draws customers from same-type businesses within 300 m and reacts to your pricing.</p></div>${offerBox(lot,st)}`}
+ else act=`<div class="box"><p class="muted">${st.name?'Occupied by <b>'+esc(st.name)+'</b>.':'Occupied. The current tenants aren\'t moving out.'}</p></div>${offerBox(lot,st)}`;
  return`<div class="pad"><button class="ghost sm close" data-act="desel" aria-label="Close">✕</button><p class="eyebrow">${esc(E.place)}, ${esc(E.country)}</p><h2 class="h">${lot.num} ${esc(lot.street)}</h2>${realTag}${facts}${act}</div>`;
 }
 function buyBox(v,text,down,act){const dp=Math.round(v*down);return`<div class="box"><div class="price"><span class="mono">${big(v)}</span><small>asking price</small></div><p class="muted">${text}</p><div class="btnrow"><button class="btn" data-act="${act}" data-mort="0" ${G.cash<v?'disabled':''}>Buy outright</button><button class="btn ghost" data-act="${act}" data-mort="1" ${G.cash<dp?'disabled':''}>Mortgage · ${big(dp)} down</button></div>${G.cash<dp?`<p class="warn">The ${Math.round(down*100)}% deposit is ${big(dp)}. Keep growing.</p>`:''}<p class="fine">Mortgage: ${Math.round(down*100)}% down, 6.5% APR over 20 years.</p></div>`}
@@ -4026,8 +4026,8 @@ function doSign(){
  ui.tab='overview';closeModal();news(`${G.company||'You'} took on ${(lot.num+' '+lot.street).trim()} in ${E.place}`,'');rebuildLotsAround(lot);selectLot(null);renderAll();save();
  const site=G.sites.find(x=>x.id===ui.site);if(site)setTimeout(()=>{enterInterior(site);if(!G.tutDone&&G.sites.length===1)tutStart(site);else toast('Your new shop is empty. Buy the required kit in the Kit tab and place it.','')},60);
 }
-function buyLot(lot,mort,plot){
- const E=econAt(lot.lat,lot.lon),v=plot?plotValue(E,lot):bldgValue(E,lot,lot.floors),down=mort?Math.round(v*(plot?.4:.3)):v;if(G.cash<down)return;
+function buyLot(lot,mort,plot,price){
+ const E=econAt(lot.lat,lot.lon),v=price||(plot?plotValue(E,lot):bldgValue(E,lot,lot.floors)),down=mort?Math.round(v*(plot?.4:.3)):v;if(G.cash<down)return;
  G.cash-=down;if(mort)addLoan('mortgage',v-down,.065,7300,`Mortgage · ${lot.num} ${lot.street}`);
  G.props.push({id:'p'+(G.seq++),key:lot.key,lat:lot.lat,lon:lot.lon,place:E.place,day:G.day,floors:plot?0:lot.floors,ground:'vacant',build:null,built:false,price:v});
  setLotState(lot,{st:'player'});toast(plot?'Plot purchased':'Building purchased','good');news(`${G.company||'You'} bought ${lot.num} ${lot.street}, ${E.place} for ${big(v)}`,'');
@@ -4976,7 +4976,7 @@ drawSel=function(){_ds.apply(this,arguments);
   if(fresh){
    if(!prefersReduced){const S=SEL;S.scale.y=.02;add({t:0,run(t){const k=Math.min(1,t/.38);S.scale.y=Math.max(.02,easeOutBack(k));return k>=1}})}
    sfx('select',40);vib(6);
-   if(info)ringFX(info,0,info.rad*1.9,0xffde00,.55);
+   if(info)ringFX(info,0,info.rad*1.9,selStyle(lot).col,.55);
    const P=PINS.get(lot.key);if(P&&P.sprite)popScale(P.sprite,.45)}
  }catch(e){}};
 // new pins pop in
@@ -5002,7 +5002,7 @@ function lotHover(x,y){
  hovCost=hovCost*.7+(performance.now()-t0)*.3;if(hovCost>16&&++hovSlow>6){hovOff=true;clearHover();return}   // too heavy on this device: switch hover picking off
  if(lot&&lot.key===hovKey)return;
  clearHover();if(!lot)return;hovKey=lot.key;canvas.style.cursor='pointer';
- if(!(ui.selLot&&ui.selLot.key===lot.key)){HOV=outlineOf(lot,0xffffff,.55);sfx('hover',50)}}
+ if(!(ui.selLot&&ui.selLot.key===lot.key)){HOV=outlineOf(lot,selStyle(lot).col,.75);sfx('hover',50)}}
 function itemHover(x,y){
  if(!IN||IN.placing||ui.modal){if(IH){clearItemHover();canvas.style.cursor=''}return}
  raycaster.setFromCamera({x:x/innerWidth*2-1,y:-(y/innerHeight)*2+1},camera);
@@ -5461,11 +5461,139 @@ const st=document.createElement('style');st.textContent=`
 :root details.more>:not(summary){margin-left:12px;margin-right:12px}
 :root details.more>table,:root details.more>.caps,:root details.more>div{margin-top:10px;margin-bottom:12px}
 :root details.more[open]>:not(summary){animation:jxTk .3s var(--soft)}
+
+/* ---- offers on owned buildings ---- */
+:root .offerbox{border-left:3px solid #ffb347;padding-left:12px}
+:root .offerbox .price span{color:#ffb347}
+:root .offrow{display:flex;gap:6px;align-items:center;margin:10px 0 8px}
+:root .offrow input{flex:1;min-width:0;width:auto;background:#0a0a0a;border:2px solid #2c2c2c;color:var(--paper);border-radius:6px;padding:8px 10px;text-align:right;font:700 15px ui-monospace,monospace}
+:root .offrow input:focus{border-color:var(--sodium);outline:none}
+:root .offmsg{margin:8px 0;padding:8px 10px;border-radius:6px;font-size:13px;line-height:1.35;background:rgba(255,255,255,.05);animation:offpop .35s cubic-bezier(.2,1.6,.4,1)}
+:root .offmsg.counter{border:1px solid var(--sodium);color:var(--sodium)}
+:root .offmsg.no{border:1px solid #ff5d4d;color:#ff8f84}
+@keyframes offpop{from{transform:scale(.92);opacity:0}to{transform:none;opacity:1}}
 </style>
 <script>
 // keep the panels exactly one slab-gap below the top bar, whatever height the bar ends up at
 (function(){const b=document.getElementById('bar');if(!b||!window.ResizeObserver)return;const set=()=>document.documentElement.style.setProperty('--bar-h',(b.offsetHeight+10)+'px');new ResizeObserver(set).observe(b);set()})();
 // tapping a locked (disabled) button gives a little shake and a soft error tick, so it never feels dead
 document.addEventListener('pointerdown',e=>{const t=e.target.closest&&e.target.closest('button:disabled');if(!t||!t.animate||typeof ui==='undefined'||!ui.started)return;t.animate([{transform:'none'},{transform:'translateX(-5px)'},{transform:'translateX(5px)'},{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'none'}],{duration:320,easing:'ease-out'});try{if(typeof sfx==='function')sfx('err',250)}catch(_){}},true);
+
+// ===================== OFFERS ON BUILDINGS YOU DON'T OWN =====================
+// Every private building has a value you can read. Owners aren't selling, but each one has a hidden price (97%–114% of value).
+function hshKey(str){let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)}return((h>>>0)%10000)/10000}
+function marketValue(lot){return bldgValue(econAt(lot.lat,lot.lon),lot,lot.floors)}
+function reservePrice(lot){return Math.round(marketValue(lot)*(.97+hshKey(lot.key+'~r')*.17)/1000)*1000}
+function offerBox(lot,st){
+ if(!G||!lot||lot.landmark||!(lot.floors>0)||lotH(lot)<=0)return'';
+ const v=marketValue(lot);
+ if(st.st==='taken')return`<div class="box offerbox"><div class="price"><span class="mono">${big(v)}</span><small>estimated value</small></div><p class="muted">Owned by another player. It can't be bought.</p></div>`;
+ const key=lot.key,amt=(ui.offer&&ui.offer[key])||Math.round(v/1000)*1000,cd=(G.offerCD||{})[key],locked=cd!=null&&G.day<cd,dp=Math.round(amt*.3),m=ui.offerMsg&&ui.offerMsg.key===key?ui.offerMsg:null;
+ const msg=m?(m.kind==='counter'?`<div class="offmsg counter"><b>The owner counters at <span class="mono">${big(m.price)}</span>.</b><div class="btnrow" style="margin-top:8px"><button class="btn" data-act="acceptcounter" data-mort="0" ${G.cash<m.price?'disabled':''}>Accept · pay ${big(m.price)}</button><button class="btn ghost" data-act="acceptcounter" data-mort="1" ${G.cash<Math.round(m.price*.3)?'disabled':''}>Accept · mortgage</button></div></div>`:`<div class="offmsg no">${esc(m.t)}</div>`):'';
+ return`<div class="box offerbox"><div class="price"><span class="mono">${big(v)}</span><small>estimated value · not for sale</small></div>
+ <p class="muted">The owner hasn't listed it, but most owners have a price. Offer at or near its value and they may sell.</p>
+ <div class="offrow"><button class="ghost sm" data-act="offerstep" data-d="-5" aria-label="Lower offer 5%">−5%</button><input id="offer-in" type="number" step="1000" min="0" value="${amt}" data-change="offer" aria-label="Your offer"><button class="ghost sm" data-act="offerstep" data-d="5" aria-label="Raise offer 5%">+5%</button></div>
+ ${msg}
+ <div class="btnrow"><button class="btn" data-act="makeoffer" data-mort="0" ${locked||G.cash<amt?'disabled':''}>Make offer</button><button class="btn ghost" data-act="makeoffer" data-mort="1" ${locked||G.cash<dp?'disabled':''}>Offer · ${big(dp)} down</button></div>
+ ${locked?`<p class="warn">They won't talk again until tomorrow${cd-G.day>1?' or later':''}.</p>`:''}<p class="fine">Mortgage: 30% down, 6.5% APR over 20 years.</p></div>`;
+}
+function offerAmount(){const i=document.getElementById('offer-in');return i?Math.max(0,Math.round(parseFloat(i.value)||0)):0}
+function offerSay(lot,kind,t,price){ui.offerMsg={key:lot.key,kind,t,price};renderLeft()}
+function submitOffer(lot,amt,mort){
+ const st=lotState(lot);if(st.st==='taken'||st.st==='player'||st.st==='build'||st.st==='plot')return;
+ G.offerCD=G.offerCD||{};ui.offer=ui.offer||{};ui.offer[lot.key]=amt;
+ const cd=G.offerCD[lot.key];if(cd!=null&&G.day<cd){offerSay(lot,'no','The owner is not taking calls right now.');return}
+ if(amt<1000){offerSay(lot,'no','Name a real number.');return}
+ const down=mort?Math.round(amt*.3):amt;if(G.cash<down){offerSay(lot,'no',`You need ${big(down-G.cash)} more cash for that offer.`);sfx('err');return}
+ const v=marketValue(lot),res=reservePrice(lot);
+ if(amt>=res){completeOffer(lot,amt,mort);return}
+ if(amt>=res*.93){sfx('select');offerSay(lot,'counter','',res);return}
+ let pt=null;try{pt=lotScreen(lot)}catch(e){}
+ if(amt>=v*.8){G.offerCD[lot.key]=G.day+1;offerSay(lot,'no','Turned down. "Not enough." Come back tomorrow with a better number.')}
+ else{G.offerCD[lot.key]=G.day+3;offerSay(lot,'no','They laughed. That wasn\'t close. Don\'t expect a call back for three days.')}
+ sfx('err');try{shake(.2);if(pt)floatText('DECLINED',pt[0],pt[1]-10,'spend')}catch(e){}
+ save();
+}
+function completeOffer(lot,price,mort){
+ const st=lotState(lot),down=mort?Math.round(price*.3):price;if(G.cash<down){toast('Not enough cash for that deal','warn');return}
+ const was=st.st==='rival'&&st.name?st.name:null;
+ ui.offerMsg=null;if(ui.offer)delete ui.offer[lot.key];if(G.offerCD)delete G.offerCD[lot.key];
+ buyLot(lot,mort,false,price);
+ if(was)news(`${was} closed after the building was sold from under it`,'city');
+}
+document.addEventListener('input',e=>{const t=e.target;if(t&&t.dataset&&t.dataset.change==='offer'&&typeof ui!=='undefined'&&ui.selLot){ui.offer=ui.offer||{};ui.offer[ui.selLot.key]=Math.round(parseFloat(t.value)||0);if(ui.offerMsg&&ui.offerMsg.kind==='counter')ui.offerMsg=null}});
+document.addEventListener('click',e=>{
+ const t=e.target.closest&&e.target.closest('[data-act]');if(!t||typeof G==='undefined'||!G||!ui.selLot)return;
+ const a=t.dataset.act,lot=ui.selLot;
+ if(a==='offerstep'){const base=offerAmount()||Math.round(marketValue(lot)/1000)*1000;ui.offer=ui.offer||{};ui.offer[lot.key]=Math.max(1000,Math.round(base*(1+ +t.dataset.d/100)/1000)*1000);ui.offerMsg=null;renderLeft()}
+ else if(a==='makeoffer')submitOffer(lot,offerAmount(),t.dataset.mort==='1');
+ else if(a==='acceptcounter'){const m=ui.offerMsg;if(m&&m.key===lot.key&&m.kind==='counter')completeOffer(lot,m.price,t.dataset.mort==='1')}
+});
+
+// ===================== SELECTION FX v2 =====================
+// state colour, a light band that sweeps up the walls, corner posts, rising sparks, a pop on select, repeating ground ripples
+const SELCOL={player:0x6fd48a,sale:0x2fd3e6,lease:0xffde00,rival:0xff4b3e,occ:0xffb347,plot:0xffde00,build:0xffffff,taken:0xb98cff};
+function selStyle(lot){let k='occ';try{const st=lotState(lot).st;k=(siteAtKey(lot.key)||propAtKey(lot.key))?'player':st}catch(e){}
+ return{k,col:SELCOL[k]||0xffde00,tag:{player:'YOURS',sale:'FOR SALE',lease:'FOR LEASE',rival:'COMPETITOR',occ:'PRIVATELY OWNED',plot:'BARE LAND',build:'UNDER CONSTRUCTION',taken:'OTHER PLAYER'}[k]||''}}
+let SELFX=null,SPARKTEX=null,selFxKey=null;
+function sparkTex(){if(SPARKTEX)return SPARKTEX;const c=document.createElement('canvas');c.width=c.height=32;const x=c.getContext('2d'),g=x.createRadialGradient(16,16,0,16,16,16);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.35,'rgba(255,255,255,.55)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,32,32);return SPARKTEX=new THREE.CanvasTexture(c)}
+function clearSelFX(){if(!SELFX)return;const f=SELFX;SELFX=null;f.grp.parent&&f.grp.parent.remove(f.grp);f.grp.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()})}
+function buildSelFX(lot,info,col,fresh){
+ const r=info.r,n=r.length,h=Math.max(.6,lotH(lot)+1),grp=new THREE.Group(),C=new THREE.Color(col),pos=[];
+ for(let k=0;k<n;k++){const a=r[k],b=r[(k+1)%n];pos.push(a[0],.3,-a[1],b[0],.3,-b[1],b[0],h,-b[1],a[0],.3,-a[1],b[0],h,-b[1],a[0],h,-a[1])}
+ const wg=new THREE.BufferGeometry();wg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+ const U={uT:{value:0},uK:{value:prefersReduced||!fresh?2:0},uH:{value:h},uC:{value:C}};
+ const wm=new THREE.ShaderMaterial({uniforms:U,transparent:true,depthTest:false,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+  vertexShader:'uniform float uH;varying float vy;void main(){vy=clamp((position.y-.3)/max(.1,uH-.3),0.,1.);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:'varying float vy;uniform float uT,uK;uniform vec3 uC;void main(){if(vy>uK)discard;float t=fract(uT*.42);float b1=exp(-pow((vy-t)*7.,2.));float b2=exp(-pow((vy-fract(t+.5))*9.,2.))*.5;float top=smoothstep(.9,1.,vy);float base=(1.-vy)*.16+.05;float a=base+b1*.5+b2*.3+top*.55;gl_FragColor=vec4(uC*1.15,clamp(a,0.,1.)*.8);}'});
+ const wall=new THREE.Mesh(wg,wm);wall.renderOrder=17;wall.frustumCulled=false;grp.add(wall);
+ // corner posts
+ const cp=[],step=Math.max(1,Math.ceil(n/16));for(let k=0;k<n;k+=step){const a=r[k];cp.push(a[0],h,-a[1],a[0],h+4,-a[1])}
+ const pg=new THREE.BufferGeometry();pg.setAttribute('position',new THREE.Float32BufferAttribute(cp,3));
+ const posts=new THREE.LineSegments(pg,new THREE.LineBasicMaterial({color:col,depthTest:false,transparent:true,opacity:.9,blending:THREE.AdditiveBlending}));posts.renderOrder=21;grp.add(posts);
+ // perimeter sampling for sparks
+ const seg=[];let per=0;for(let k=0;k<n;k++){const a=r[k],b=r[(k+1)%n],l=Math.hypot(b[0]-a[0],b[1]-a[1]);seg.push([a,b,l,per]);per+=l}
+ const N=Math.min(70,22+n*3),sp=[],sx=new Float32Array(N),sz=new Float32Array(N);
+ for(let i=0;i<N;i++){const u=Math.random()*per;let q=seg[seg.length-1];for(const g of seg)if(u<=g[3]+g[2]){q=g;break}const f=q[2]>0?(u-q[3])/q[2]:0;sx[i]=q[0][0]+(q[1][0]-q[0][0])*f;sz[i]=-(q[0][1]+(q[1][1]-q[0][1])*f);sp.push({sp:.18+Math.random()*.32,ph:Math.random()})}
+ const spg=new THREE.BufferGeometry();spg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*3),3));spg.setAttribute('color',new THREE.BufferAttribute(new Float32Array(N*3),3));
+ const pts=new THREE.Points(spg,new THREE.PointsMaterial({size:7,map:sparkTex(),vertexColors:true,transparent:true,depthTest:false,depthWrite:false,sizeAttenuation:false,blending:THREE.AdditiveBlending}));pts.renderOrder=24;pts.frustumCulled=false;grp.add(pts);
+ // burst of sparks on first select
+ let burst=null;
+ if(fresh&&!prefersReduced){const M=30,bg=new THREE.BufferGeometry();bg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(M*3),3));bg.setAttribute('color',new THREE.BufferAttribute(new Float32Array(M*3),3));
+  const vel=[];for(let i=0;i<M;i++){const an=Math.random()*6.283,s=(.5+Math.random())*info.rad*1.3;vel.push([Math.cos(an)*s,8+Math.random()*16,Math.sin(an)*s])}
+  const bp=new THREE.Points(bg,new THREE.PointsMaterial({size:9,map:sparkTex(),vertexColors:true,transparent:true,depthTest:false,depthWrite:false,sizeAttenuation:false,blending:THREE.AdditiveBlending}));bp.renderOrder=25;bp.frustumCulled=false;grp.add(bp);burst={pts:bp,vel,M}}
+ info.L.grp.add(grp);
+ SELFX={grp,U,posts,info,col,C,h,N,sp,sx,sz,spg,burst,t0:performance.now(),lastRing:performance.now()}
+}
+function updSelFX(now){
+ const f=SELFX;if(!f||!f.grp.parent)return;const t=(now-f.t0)/1000;f.U.uT.value=t;
+ if(f.U.uK.value<2&&!prefersReduced){const k=Math.min(1,t/.5);f.U.uK.value=(1-Math.pow(1-k,3))*1.1+(k>=1?1:0)}
+ f.posts.material.opacity=.55+.4*Math.sin(now*.008);
+ const P=f.spg.attributes.position.array,Cc=f.spg.attributes.color.array,c=f.C;
+ for(let i=0;i<f.N;i++){const s=f.sp[i],life=(t*s.sp+s.ph)%1,y=.3+life*(f.h+5),fd=Math.sin(Math.PI*life)*(.5+.5*Math.min(1,t*2));
+  P[i*3]=f.sx[i]+Math.sin(t*2+i)*.25;P[i*3+1]=y;P[i*3+2]=f.sz[i];Cc[i*3]=c.r*fd;Cc[i*3+1]=c.g*fd;Cc[i*3+2]=c.b*fd}
+ f.spg.attributes.position.needsUpdate=true;f.spg.attributes.color.needsUpdate=true;
+ if(f.burst){const b=f.burst,bt=t;if(bt>1.1){f.grp.remove(b.pts);b.pts.geometry.dispose();b.pts.material.dispose();f.burst=null}else{
+  const bp=b.pts.geometry.attributes.position.array,bc=b.pts.geometry.attributes.color.array,fd=Math.pow(1-bt/1.1,1.5);
+  for(let i=0;i<b.M;i++){bp[i*3]=f.info.c[0]+b.vel[i][0]*bt;bp[i*3+1]=f.h+b.vel[i][1]*bt-14*bt*bt;bp[i*3+2]=-f.info.c[1]+b.vel[i][2]*bt;bc[i*3]=Math.min(1,c.r+.35)*fd;bc[i*3+1]=Math.min(1,c.g+.35)*fd;bc[i*3+2]=Math.min(1,c.b+.35)*fd}
+  b.pts.geometry.attributes.position.needsUpdate=true;b.pts.geometry.attributes.color.needsUpdate=true}}
+ if(!prefersReduced&&now-f.lastRing>1800){f.lastRing=now;ringFX(f.info,0,f.info.rad*1.5,f.col,1.1)}
+}
+(function(){const prev=drawSel;
+ drawSel=function(){
+  clearSelFX();prev.apply(this,arguments);
+  try{const lot=ui.selLot;if(!lot){selFxKey=null;return}if(!SEL)return;
+   const info=lotInfo(lot);if(!info)return;const sty=selStyle(lot),fresh=lot.key!==selFxKey;selFxKey=lot.key;
+   try{SEL.material.color.setHex(sty.col);if(FILL)FILL.material.color.setHex(sty.col)}catch(e){}
+   buildSelFX(lot,info,sty.col,fresh);
+   if(fresh){
+    try{shake(.14);punch(.5)}catch(e){}
+    let sp=null;try{sp=lotScreen(lot)}catch(e){}
+    if(sp&&sty.tag)floatText(sty.tag,sp[0],sp[1]-32,'info');
+    if(sp&&(sty.k==='occ'||sty.k==='rival'||sty.k==='lease')&&lot.floors>0&&!lot.landmark){const v=marketValue(lot);setTimeout(()=>{if(ui.selLot&&ui.selLot.key===lot.key)floatText('≈ '+big(v),sp[0],sp[1]-6,'info')},260)}
+    if(sty.k==='sale')sfx('coin',0,1)}
+  }catch(e){}
+ }})();
+(function loop(now){try{updSelFX(now)}catch(e){}requestAnimationFrame(loop)})(performance.now());
 </script>
 </body></html>
