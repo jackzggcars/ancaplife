@@ -3427,25 +3427,48 @@ function buildNav(){
   return{it,i,spots,q:old?old.q:[],face:Math.atan2(-(it.x-q0[0]),-(it.z-q0[1]))}});
 }
 function navCell(x,z){const N=IN.nav;return[Math.floor(x/NAVC),Math.floor(z/NAVC)]}
-function navFree(x,z){const N=IN.nav;if(!N)return true;const[i,j]=navCell(x,z);return i>=0&&j>=0&&i<N.nx&&j<N.nz&&!N.g[j*N.nx+i]}
+function navFree(x,z){const N=IN.nav;if(!N)return true;const[i,j]=navCell(x,z);return i>=0&&j>=0&&i<N.nx&&j<N.nz&&!N.g[j*N.nx+i]&&!(N.dyn&&N.dyn[j*N.nx+i])}
 function navNearest(x,z){const N=IN.nav;let[i0,j0]=navCell(x,z);for(let r=0;r<14;r++)for(let dj=-r;dj<=r;dj++)for(let di=-r;di<=r;di++){if(Math.max(Math.abs(di),Math.abs(dj))!==r)continue;const i=i0+di,j=j0+dj;if(i>=0&&j>=0&&i<N.nx&&j<N.nz&&!N.g[j*N.nx+i])return[(i+.5)*NAVC,(j+.5)*NAVC]}return null}
 function navLine(a,b){const d=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.ceil(d/.08);for(let k=1;k<n;k++){const t=k/n;if(!navFree(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t))return false}return true}
-function navPath(a,b){
- const N=IN.nav;if(!N)return[b];const s=navFree(a[0],a[1])?a:navNearest(a[0],a[1]),e=navFree(b[0],b[1])?b:navNearest(b[0],b[1]);if(!s||!e)return[b];
+function navPath(a,b,strict){
+ const N=IN.nav;if(!N)return[b];const s=navFree(a[0],a[1])?a:navNearest(a[0],a[1]),e=navFree(b[0],b[1])?b:navNearest(b[0],b[1]);if(!s||!e)return strict?null:[b];
  if(navLine(s,e))return[e];
  const[si,sj]=navCell(s[0],s[1]),[ei,ej]=navCell(e[0],e[1]),nx=N.nx,tot=nx*N.nz,G=new Float32Array(tot).fill(1e9),from=new Int32Array(tot).fill(-1),open=[si+sj*nx];G[open[0]]=0;const closed=new Uint8Array(tot);
  const hh=(i,j)=>Math.hypot(i-ei,j-ej);let found=false,it=0;
  while(open.length&&it++<6000){let bi=0,bf=1e9;for(let k=0;k<open.length;k++){const c=open[k],f=G[c]+hh(c%nx,(c/nx)|0);if(f<bf){bf=f;bi=k}}const c=open.splice(bi,1)[0];if(closed[c])continue;closed[c]=1;const ci=c%nx,cj=(c/nx)|0;if(ci===ei&&cj===ej){found=true;break}
-  for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){if(!di&&!dj)continue;const i=ci+di,j=cj+dj;if(i<0||j<0||i>=nx||j>=N.nz)continue;const n=i+j*nx;if(N.g[n]||closed[n])continue;if(di&&dj&&(N.g[ci+di+cj*nx]||N.g[ci+(cj+dj)*nx]))continue;
+  for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){if(!di&&!dj)continue;const i=ci+di,j=cj+dj;if(i<0||j<0||i>=nx||j>=N.nz)continue;const n=i+j*nx;if(N.g[n]||(N.dyn&&N.dyn[n])||closed[n])continue;if(di&&dj&&(N.g[ci+di+cj*nx]||N.g[ci+(cj+dj)*nx]||(N.dyn&&(N.dyn[ci+di+cj*nx]||N.dyn[ci+(cj+dj)*nx]))))continue;
    const ng=G[c]+(di&&dj?1.414:1);if(ng<G[n]){G[n]=ng;from[n]=c;open.push(n)}}}
- if(!found)return[e];const pts=[];let c=ei+ej*nx;while(c!==-1&&c!==si+sj*nx){pts.push([(c%nx+.5)*NAVC,(((c/nx)|0)+.5)*NAVC]);c=from[c]}pts.reverse();pts[pts.length-1]=e;
+ if(!found)return strict?null:[e];const pts=[];let c=ei+ej*nx;while(c!==-1&&c!==si+sj*nx){pts.push([(c%nx+.5)*NAVC,(((c/nx)|0)+.5)*NAVC]);c=from[c]}pts.reverse();pts[pts.length-1]=e;
  // string-pull to straight segments
  const out=[];let cur=s,k=0;while(k<pts.length){let far=k;for(let q=pts.length-1;q>k;q--)if(navLine(cur,pts[q])){far=q;break}out.push(pts[far]);cur=pts[far];k=far+1}return out}
 function doorIn(lane){const d=IN.rm.door;return[(d[0]+d[2])/2+(lane||0)*.32,.45]}
 function doorOut(lane){const d=IN.rm.door;return[(d[0]+d[2])/2+(lane||0)*.32,-1.0]}
-function goTo(p,x,z,face,via){const P=p.m.position,pts=navPath([P.x,P.z],[x,z]);p.route=(via||[]).concat(pts.map(q=>({x:q[0],z:q[1]})));p.face=face;p.arrived=false}
+// people standing still (workers at their stations, queueing/browsing customers) count as obstacles when planning a route,
+// so walkers go around them instead of through. If that leaves no way through, fall back to the plain route and let local steering handle it.
+function navDyn(p,tx,tz){const N=IN.nav;if(!N)return null;const P=p.m.position,d=new Uint8Array(N.nx*N.nz),dx=(IN.rm.door[0]+IN.rm.door[2])/2;let any=false;
+ for(const o of IN.people){if(o===p||o.dead||o.exit||o.leaving)continue;const Q=(o.route&&o.route.length)?o.route[o.route.length-1]:o.m.position;if(Q.z<1.3&&Math.abs(Q.x-dx)<1.4)continue;
+  if(Math.hypot(Q.x-tx,Q.z-tz)<.55||Math.hypot(Q.x-P.x,Q.z-P.z)<.5)continue;
+  const r=.34,i0=Math.max(0,Math.floor((Q.x-r)/NAVC)),i1=Math.min(N.nx-1,Math.floor((Q.x+r)/NAVC)),j0=Math.max(0,Math.floor((Q.z-r)/NAVC)),j1=Math.min(N.nz-1,Math.floor((Q.z+r)/NAVC));
+  for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++)if(Math.hypot((i+.5)*NAVC-Q.x,(j+.5)*NAVC-Q.z)<=r){d[j*N.nx+i]=1;any=true}}
+ return any?d:null}
+function goTo(p,x,z,face,via,strictOnly){const P=p.m.position;let pts=null;const dyn=IN.nav&&navDyn(p,x,z);
+ if(dyn){IN.nav.dyn=dyn;try{pts=navPath([P.x,P.z],[x,z],true)}finally{IN.nav.dyn=null}if(!pts&&strictOnly)return false}
+ if(!pts)pts=navPath([P.x,P.z],[x,z]);
+ p.route=(via||[]).concat(pts.map(q=>({x:q[0],z:q[1]})));p.face=face;p.arrived=false;return true}
+function reachable(p,x,z){const dyn=IN.nav&&navDyn(p,x,z);if(!dyn)return true;IN.nav.dyn=dyn;try{return!!navPath([p.m.position.x,p.m.position.z],[x,z],true)}finally{IN.nav.dyn=null}}
 function goToRaw(p,list,face){p.route=list.map(q=>({x:q[0],z:q[1]}));p.face=face;p.arrived=false}
 const faceTo=(x,z,tx,tz)=>Math.atan2(-(tx-x),-(tz-z));
+
+// ---------- station claims: one person per work station, and nobody picks a spot someone else is standing on / heading to ----------
+function claimOk(it,p){const c=IN.claims&&IN.claims.get(it);return!c||c===p||c.dead||c.claim!==it||!IN.people.includes(c)}
+function releaseClaim(p){if(p.claim&&IN.claims&&IN.claims.get(p.claim)===p)IN.claims.delete(p.claim);p.claim=null}
+function takeClaim(p,it){releaseClaim(p);if(!IN.claims)IN.claims=new Map();IN.claims.set(it,p);p.claim=it}
+function spotTaken(x,z,p,r){r=r||.7;for(const o of IN.people){if(o===p||o.dead||o.leaving||o.exit)continue;const q=o.route&&o.route.length?o.route[o.route.length-1]:null,ox=q?q.x:o.m.position.x,oz=q?q.z:o.m.position.z;if(Math.hypot(ox-x,oz-z)<r)return true}return false}
+function pickItem(p,list,sideFn,latFn,prefer){const free=[];for(const it of list){if(!claimOk(it,p))continue;const sp=itemSpot(it,sideFn(it),latFn?latFn(it):0);if(spotTaken(sp[0],sp[1],p))continue;free.push({it,sp})}
+ if(!free.length)return null;for(let i=free.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[free[i],free[j]]=[free[j],free[i]]}
+ const pi=prefer?free.findIndex(c=>c.it===prefer):-1;if(pi>0)free.unshift(free.splice(pi,1)[0]);
+ for(let i=0;i<free.length&&i<6;i++)if(reachable(p,free[i].sp[0],free[i].sp[1]))return free[i];return null}
+function freeSpot(p){const rm=IN.rm;let best=null;for(let k=0;k<24;k++){const q=navNearest(rm.W*(.15+.7*Math.random()),rm.D*(.15+.7*Math.random()));if(!q)continue;if(!spotTaken(q[0],q[1],p,.85))return q;best=best||q}return best||[rm.W/2,rm.D/2]}
 
 // ---------- staff ----------
 function hashId(t){let h=7;for(const ch of String(t))h=(h*31+ch.charCodeAt(0))>>>0;return h}
@@ -3459,24 +3482,27 @@ function workerRoles(s){const b=BIZ[s.type],o=s.staff.map(x=>{const r=b.roles.fi
  if(s.ownerRole==='front'||s.ownerRole==='back')o.push({key:'owner',name:'You',w:s.ownerRole,owner:true});return o}
 function syncStaff(arrive){
  const s=IN.site,want=workerRoles(s),have=IN.people.filter(p=>p.kind==='staff'&&!p.leaving);
- for(const p of have)if(!want.some(w=>w.key===p.key&&w.w===p.w)){p.leaving=true;p.task=null;goTo(p,doorIn(1)[0],doorIn(1)[1]+.4,0);p.route.push({x:doorIn(1)[0],z:doorIn(1)[1]},{x:doorOut(1)[0],z:doorOut(1)[1]})}
- let fi=0;for(const w of want){let p=have.find(q=>q.key===w.key&&q.w===w.w);
+ for(const p of have)if(!want.some(w=>w.key===p.key&&w.w===p.w)){p.leaving=true;p.task=null;releaseClaim(p);goTo(p,doorIn(1)[0],doorIn(1)[1]+.4,0);p.route.push({x:doorIn(1)[0],z:doorIn(1)[1]},{x:doorOut(1)[0],z:doorOut(1)[1]})}
+ let fi=0,ai=0;for(const w of want){let p=have.find(q=>q.key===w.key&&q.w===w.w);
   if(!p){const look=staffLook(s,w.key,w.owner?'owner':w.w),m=makePerson(look);IN.grp.add(m);p={m,kind:'staff',key:w.key,w:w.w,owner:!!w.owner,ph:Math.random()*6,route:[],t:0,task:null};IN.people.push(p);
-   if(arrive){const o=doorOut(-1);m.position.set(o[0],0,o[1]);popAt(o[0],-.2,w.owner?'You clocked in':'New hire: '+w.name.split(' ')[0],'#ffde00');p.route=[{x:doorIn(-1)[0],z:doorIn(-1)[1]},{x:doorIn(-1)[0],z:doorIn(-1)[1]+.6}];p.arrived=false}
+   if(arrive){const o=doorOut(-1);m.position.set(o[0],0,o[1]-(ai++)*.6);popAt(o[0],-.2,w.owner?'You clocked in':'New hire: '+w.name.split(' ')[0],'#ffde00');p.route=[{x:doorIn(-1)[0],z:doorIn(-1)[1]},{x:doorIn(-1)[0],z:doorIn(-1)[1]+.6}];p.arrived=false}
    else{const sp=staffHome(p,fi);m.position.set(sp[0],0,sp[1])}}
   if(p.w==='front')p.till=IN.tills.length?IN.tills[fi%IN.tills.length]:null,p.floater=IN.tills.length>0&&fi>=IN.tills.length,fi++;
  }}
-function staffHome(p,k){const rm=IN.rm,s=IN.site;if(p.w==='front'&&IN.tills.length){const t=IN.tills[k%IN.tills.length];const sp=itemSpot(t.it,1,0);return navFree(sp[0],sp[1])?sp:navNearest(sp[0],sp[1])||sp}
- const backs=s.layout.filter(x=>!x.l).filter(it=>{const z=imodelOf(it.id).zone;return z==='back'});if(backs.length){const it=backs[k%backs.length],sp=itemSpot(it,-1,0);return navNearest(sp[0],sp[1])||sp}
- return navNearest(rm.W/2,rm.D*.7)||[rm.W/2,rm.D/2]}
+function staffHome(p,k){const rm=IN.rm,s=IN.site;if(p.w==='front'&&IN.tills.length&&k<IN.tills.length){const t=IN.tills[k];const sp=itemSpot(t.it,1,0);return navFree(sp[0],sp[1])?sp:navNearest(sp[0],sp[1])||sp}
+ const backs=s.layout.filter(x=>!x.l).filter(it=>imodelOf(it.id).zone==='back');if(backs.length){const c=pickItem(p,backs,()=>-1);if(c){takeClaim(p,c.it);return navNearest(c.sp[0],c.sp[1])||c.sp}}
+ return freeSpot(p)}
 function staffNext(p){
- const s=IN.site,rm=IN.rm,R=Math.random;p.task=null;
- if(p.w==='front'&&p.till&&!p.floater){const t=p.till;if(!t.q.length&&R()<.35){const br=s.layout.filter(x=>!x.l).filter(it=>it.id==='seats'||BROWSE_IDS[it.id]);if(br.length){const it=br[Math.floor(R()*br.length)],sp=itemSpot(it,it.id==='seats'?-1:-1,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:'tidy',t:2.5+R()*2};return}}
+ const s=IN.site,rm=IN.rm,R=Math.random,prev=p.claim;p.task=null;releaseClaim(p);
+ const lay=s.layout.filter(x=>!x.l),owned=it=>IN.tills.some(t=>t.it===it&&IN.people.some(w=>w.kind==='staff'&&!w.leaving&&w.till===t));
+ const go=(c,kind,tt)=>{takeClaim(p,c.it);goTo(p,c.sp[0],c.sp[1],faceTo(c.sp[0],c.sp[1],c.it.x,c.it.z));p.task={k:kind,t:tt}};
+ const standby=()=>{const q=freeSpot(p);goTo(p,q[0],q[1],R()*6);p.task={k:'idle',t:2+R()*2}};
+ if(p.w==='front'&&p.till&&!p.floater){const t=p.till;if(!t.q.length&&R()<.35){const c=pickItem(p,lay.filter(it=>it.id==='seats'||BROWSE_IDS[it.id]),()=>-1);if(c){go(c,'tidy',2.5+R()*2);return}}
   const sp=itemSpot(t.it,1,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],t.it.x,t.it.z));p.task={k:'till',t:6+R()*6};return}
- if(p.w==='back'||(p.w==='front'&&(!IN.tills.length))){const backs=s.layout.filter(x=>!x.l).filter(it=>imodelOf(it.id).zone==='back');
-  if(backs.length){const it=backs[Math.floor(R()*backs.length)],sp=itemSpot(it,-1,(R()-.5)*Math.max(0,imodelOf(it.id).w-.8));goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:'work',t:4+R()*5};return}}
- if(p.w==='mgr'||p.floater){const br=s.layout.filter(x=>!x.l).filter(it=>it.id!=='sign'&&imodelOf(it.id).zone!=='over');if(br.length&&R()<.75){const it=br[Math.floor(R()*br.length)],side=imodelOf(it.id).zone==='back'?-1:(it.id==='pos'?1:-1),sp=itemSpot(it,side,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:p.w==='mgr'?'check':'tidy',t:2.5+R()*3};return}}
- const q=navNearest(rm.W*(.15+.7*R()),rm.D*(.15+.7*R()))||[rm.W/2,rm.D/2];goTo(p,q[0],q[1],R()*6);p.task={k:'idle',t:2+R()*2}}
+ if(p.w==='back'||(p.w==='front'&&(!IN.tills.length))){const backs=lay.filter(it=>imodelOf(it.id).zone==='back');
+  if(backs.length){const c=pickItem(p,backs,()=>-1,it=>(R()-.5)*Math.max(0,imodelOf(it.id).w-.8),prev&&R()<.5?prev:null);if(c){go(c,'work',4+R()*5);return}standby();return}}
+ if(p.w==='mgr'||p.floater){if(R()<.75){const c=pickItem(p,lay.filter(it=>it.id!=='sign'&&imodelOf(it.id).zone!=='over'&&!owned(it)),it=>imodelOf(it.id).zone==='back'?-1:(it.id==='pos'?1:-1));if(c){go(c,p.w==='mgr'?'check':'tidy',2.5+R()*3);return}}}
+ standby()}
 
 // ---------- customers ----------
 const BROWSE_IDS={shelves:1,aisle:1,freezer:1,racks:1,window:1,demo:1,display:1,counter:1,lights:1,fitting:1};
@@ -3523,10 +3549,24 @@ function rebuildCrowd(){
 function interiorStaffChanged(s){if(IN&&IN.site===s){syncStaff(true);renderInteriorBar()}}
 
 // ---------- per-frame ----------
+// local avoidance: step around anyone in the way. Head-on walkers each sidestep to their own right, so they pass instead of freezing or merging.
+function steerDir(p,ux,uz){const P=p.m.position,last=p.route[p.route.length-1];
+ if(last&&Math.hypot(last.x-P.x,last.z-P.z)<.5)return[ux,uz]; // settling into the final spot
+ const dc=doorIn();if(P.z<1.3&&Math.abs(P.x-dc[0])<1.4)return[ux,uz]; // doorway keeps its own lanes
+ let sx=0,sz=0;
+ for(const o of IN.people){if(o===p||o.dead)continue;const Q=o.m.position,rx=Q.x-P.x,rz=Q.z-P.z,d=Math.hypot(rx,rz),R=(o.route&&o.route.length)?.85:.75;if(d>=R||d<1e-3)continue;
+  const ahead=(rx*ux+rz*uz)/d;if(ahead<-.1)continue;
+  const side=-uz*rx+ux*rz,sg=Math.abs(side)<.12*d?-1:(side>0?-1:1),w=(1-d/R)*(.6+.8*ahead);
+  sx+=(-uz*sg)*w*1.7-rx/d*w*.4;sz+=(ux*sg)*w*1.7-rz/d*w*.4}
+ const m=Math.hypot(sx,sz);if(m<1e-4)return[ux,uz];if(m>1.4){sx*=1.4/m;sz*=1.4/m}
+ let nx=ux+sx,nz=uz+sz;const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;return[nx,nz]}
 function stepMove(p,dt,spd){const P=p.m.position;const tg=p.route[0];if(!tg){return true}
  const dx=tg.x-P.x,dz=tg.z-P.z,dd=Math.hypot(dx,dz),st=spd*dt;
  if(dd<=st+1e-4){P.x=tg.x;P.z=tg.z;p.route.shift();return!p.route.length}
- P.x+=dx/dd*st;P.z+=dz/dd*st;const want=Math.atan2(-dx,-dz);let da=want-p.m.rotation.y;da=Math.atan2(Math.sin(da),Math.cos(da));p.m.rotation.y+=da*Math.min(1,dt*12);return false}
+ let ux=dx/dd,uz=dz/dd;const sd=steerDir(p,ux,uz);
+ if(sd[0]!==ux||sd[1]!==uz){const tx=P.x+sd[0]*st,tz=P.z+sd[1]*st;if(navFree(tx,tz)||!navFree(P.x,P.z)){ux=sd[0];uz=sd[1]}}
+ {const nxp=P.x+ux*st,nzp=P.z+uz*st,dc=doorIn();if(!(P.z<1.3&&Math.abs(P.x-dc[0])<1.4))for(const o of IN.people){if(o===p||o.dead||(o.route&&o.route.length))continue;const Q=o.m.position,dn=Math.hypot(Q.x-nxp,Q.z-nzp);if(dn<.32&&dn<Math.hypot(Q.x-P.x,Q.z-P.z))return false}} // wait rather than walk through
+ P.x+=ux*st;P.z+=uz*st;const want=Math.atan2(-ux,-uz);let da=want-p.m.rotation.y;da=Math.atan2(Math.sin(da),Math.cos(da));p.m.rotation.y+=da*Math.min(1,dt*12);return false}
 function turnTo(p,a,dt){if(a==null)return;let da=a-p.m.rotation.y;da=Math.atan2(Math.sin(da),Math.cos(da));p.m.rotation.y+=da*Math.min(1,dt*8)}
 function interiorTick(dt,now){
  if(!IN)return;{const v0=IN.lv===0;for(const p of IN.people)p.m.visible=v0;for(const c of IN.crates)c.visible=v0;for(const p of IN.pops||[])p.m.visible=v0}const pin=PINS.get(IN.key);if(pin)pin.sprite.visible=false;
@@ -3564,12 +3604,16 @@ function interiorTick(dt,now){
   if(p.st==='eat'){posePerson(p.m,'sit',T+p.ph);p.m.position.y=-.28;p.t-=gdt;if(p.t<=0){p.m.position.y=0;leave(p)}continue}
   posePerson(p.m,'idle',T+p.ph)}
  IN.people=IN.people.filter(p=>!p.dead);popsTick(dt);
- // light separation so walkers don't merge
- {const dc=doorIn(),inDoor=P=>P.z<1.3&&Math.abs(P.x-dc[0])<1.4;const ws=IN.people.filter(p=>p.route&&p.route.length&&!inDoor(p.m.position));const mx=dt*.8;
-  for(let a=0;a<ws.length;a++)for(let b=a+1;b<ws.length;b++){const A=ws[a].m.position,B=ws[b].m.position,dx=B.x-A.x,dz=B.z-A.z,d=Math.hypot(dx,dz);if(d<.4&&d>1e-4){const push=Math.min(mx,(.4-d)*.5);A.x-=dx/d*push;A.z-=dz/d*push;B.x+=dx/d*push;B.z+=dz/d*push}}}
+ // separation: nobody overlaps. Walkers get nudged off anyone they brush past; people standing still are never shoved off their spot.
+ {const dc=doorIn(),inDoor=P=>P.z<1.3&&Math.abs(P.x-dc[0])<1.4;const ws=IN.people.filter(p=>!p.dead&&!inDoor(p.m.position));const mx=dt*1.1,MIN=.44,mv=(P,x,z)=>{if(navFree(P.x+x,P.z+z)){P.x+=x;P.z+=z}else if(navFree(P.x+x,P.z)){P.x+=x}else if(navFree(P.x,P.z+z)){P.z+=z}};
+  for(let a=0;a<ws.length;a++)for(let b=a+1;b<ws.length;b++){const pa=ws[a],pb=ws[b],wa=pa.route&&pa.route.length,wb=pb.route&&pb.route.length;if(!wa&&!wb)continue;
+   const A=pa.m.position,B=pb.m.position,dx=B.x-A.x,dz=B.z-A.z,d=Math.hypot(dx,dz);if(d>=MIN)continue;
+   const nx=d>1e-4?dx/d:1,nz=d>1e-4?dz/d:0,push=Math.min(mx,(MIN-d)*.6);
+   if(wa&&wb){mv(A,-nx*push*.5,-nz*push*.5);mv(B,nx*push*.5,nz*push*.5)}else if(wa)mv(A,-nx*push,-nz*push);else mv(B,nx*push,nz*push)}}
  // watchdog: anyone who hasn't made progress for a while skips ahead (or simply leaves if they were on their way out)
- for(const p of IN.people){if(!p.route||!p.route.length){p.stk=0;continue}const P=p.m.position;if(p.lp&&Math.hypot(P.x-p.lp[0],P.z-p.lp[1])<.03)p.stk=(p.stk||0)+dt;else{p.stk=0;p.lp=[P.x,P.z]}
-  if(p.stk>1.6){p.stk=0;p.lp=null;if(p.exit||p.leaving){IN.grp.remove(p.m);p.dead=true;if(p.kind==='cust')release(p);continue}const tg=p.route.shift();if(tg){P.x=tg.x;P.z=tg.z}if(!p.route.length)p.arrived=true}}
+ for(const p of IN.people){if(!p.route||!p.route.length){p.stk=0;p.rep=false;continue}const P=p.m.position;if(p.lp&&Math.hypot(P.x-p.lp[0],P.z-p.lp[1])<.03)p.stk=(p.stk||0)+dt;else{p.stk=0;p.lp=[P.x,P.z]}
+  if(p.stk>.8&&!p.rep&&!p.exit&&!p.leaving){const L=p.route[p.route.length-1];if(L&&L.z>.7&&navFree(L.x,L.z)){p.rep=true;if(goTo(p,L.x,L.z,p.face,null,true))continue}}
+  if(p.stk>(p.exit||p.leaving?1.6:5)){p.stk=0;p.lp=null;if(p.exit||p.leaving){IN.grp.remove(p.m);p.dead=true;if(p.kind==='cust')release(p);continue}const tg=p.route.shift();if(tg){P.x=tg.x;P.z=tg.z}if(!p.route.length)p.arrived=true}}
  IN.people=IN.people.filter(p=>!p.dead);
  if(open&&BIZ[s.type].wholesale){IN.ord=(IN.ord||0)+dt*f;if(IN.ord>3.2){IN.ord=0;const src=s.layout.filter(x=>!x.l).filter(it=>['forklift','dock','stall','store','racking','tank','cold','press','rack','netcore','noc'].includes(it.id)),L=s.last;if(src.length&&L&&L.cust){const it=src[Math.floor(Math.random()*src.length)];cashPop(it.x,it.z,L.rev/Math.max(1,L.cust)*(3+Math.random()*4),true)}}}
  if(open&&IN.tills.length){const perH=s.last?s.last.cust/Math.max(1,s.hours):6;IN.spawn+=dt*clamp(perH/18,.15,1.4)*f/2.2;
