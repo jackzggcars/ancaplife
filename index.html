@@ -4105,6 +4105,7 @@ document.addEventListener('click',e=>{
   case 'invclose':invClose();break;
   case 'invmove':invMove();break;
   case 'invbuy':invBuy(id,+t.dataset.d);break;
+  case 'invsel':INV.sel=(INV.sel===t.dataset.key?null:t.dataset.key);renderInvPanel();break;
   case 'invmenu':{const si=invSite();if(si){ui.site=si.id;ui.tab='menu';renderSite()}break}
   case 'isell':sellPicked();break;
   case 'flylm':{const L=LANDMARKS.find(x=>x.id===t.dataset.id);if(L)flyTo(L.lat,L.lon,Math.max(700,L.h*3.2));break}
@@ -5925,7 +5926,7 @@ function updSelFX(now){
 // The single source of truth is still s.inv[supply].q (what the Menu tab shows and what sales draw down).
 // On top of that each supply is split into specific items (blue tee, green pants, house-blend beans...) in s.inv[supply].v.
 // The split is reconciled against q every time it is read, so the two can never disagree.
-const INV={open:false,mode:'item',idx:null,eq:null,site:null,title:'',prev:{},dl:{}};
+const INV={sel:null,open:false,mode:'item',idx:null,eq:null,site:null,title:'',prev:{},dl:{}};
 
 // ---------- item pictures (inline SVG, no network) ----------
 const IV_S='#0c0c0c';
@@ -6149,7 +6150,7 @@ function renderInvPanel(){
  const sids=all?bizSupplies(b):invSuppliesAt(s,INV.eq);
  const eqDef=!all&&b.equip.find(e=>e.id===INV.eq),copies=all?0:(s.layout||[]).filter(x=>x.id===INV.eq).length;
  const title=all?INV.title:(eqDef?eqDef.n:INV.eq),sub=all?`${esc(s.name)} · every supply the business holds`:`${esc(s.name)} · ${copies>1?copies+' units share this stock':'stored here'}`;
- let body='',units=0,lines=0;
+ let body='',units=0,lines=0,detail='';
  for(const k of sids){
   const S=SUP[k],inv=s.inv[k],q=inv?Math.max(0,inv.q):0,per=need[k]||0,days=per>0?q/per:Infinity,step=q<10?.1:1;
   const D=inv?ivEnsure(s,k):ivDefs(k),W=D.reduce((a,d)=>a+d.w,0);
@@ -6163,21 +6164,22 @@ function renderInvPanel(){
    const key=s.id+':'+d.id,pv=INV.prev[key],now=performance.now();
    if(pv!=null&&Math.abs(c-pv)>1e-9)INV.dl[key]={d:c-pv,t:now,fresh:true};INV.prev[key]=c;
    const ch=INV.dl[key],age=ch?(now-ch.t)/1000:99,dl=ch&&age<4.5?ch.d:0,fresh=dl&&ch.fresh;if(ch)ch.fresh=false;
-   return`<div class="ivc${out?' out':low?' low':''}${fresh?' flash':''}" title="${esc(d.n)}">
+   const selOn=INV.sel===key;
+   if(selOn)detail=`<div class="ivdet"><img alt="" src="${ivImg(d)}"><div><b>${esc(d.n)}</b><span>${ivFmt(c,step)} ${esc(S.u==='each'?'in stock':S.u)}${out?' · <em class="bad">SOLD OUT</em>':low?' · <em class="warn">LOW</em>':''}${sv>0.04?' · '+(sv<10?sv.toFixed(1):Math.round(sv))+' sold yesterday':''}</span><span class="ivbar"><u style="width:${pct.toFixed(0)}%"></u></span></div></div>`;
+   return`<button type="button" class="ivc${out?' out':low?' low':''}${fresh?' flash':''}${selOn?' sel':''}" data-act="invsel" data-key="${key}" title="${esc(d.n)}" aria-label="${esc(d.n)}: ${ivFmt(c,step)}">
     <img class="ivimg" alt="" src="${ivImg(d)}">
-    <div class="ivt"><span class="ivn">${esc(d.n)}</span><span class="ivq"><b>${ivFmt(c,step)}</b> <i>${esc(S.u==='each'?'in stock':S.u)}</i></span>
-    <span class="ivbar"><u style="width:${pct.toFixed(0)}%"></u></span>
-    <span class="ivs">${out?'<em class="bad">SOLD OUT</em>':low?'<em class="warn">LOW</em>':sv>0.04?`<em>${sv<10?sv.toFixed(1):Math.round(sv)} sold yesterday</em>`:''}</span></div>
-    ${dl?`<span class="ivd ${dl<0?'dn':'up'}" style="animation-delay:-${age.toFixed(2)}s">${dl<0?'−':'+'}${ivFmt(Math.abs(dl),step)}</span>`:''}</div>`}).join('');
+    <span class="ivq">${out?'0':ivFmt(c,step)}</span>
+    ${dl?`<span class="ivd ${dl<0?'dn':'up'}" style="animation-delay:-${age.toFixed(2)}s">${dl<0?'−':'+'}${ivFmt(Math.abs(dl),step)}</span>`:''}</button>`}).join('');
   const lasts=days===Infinity?'—':days<1?'<1d':days.toFixed(days<10?1:0)+'d';
-  body+=`<section class="ivg"><div class="ivh"><div class="ivht"><span class="ivgn">${esc(S.n)}</span><span class="ivgs"><b>${ivFmt(tot*step,step)}</b> ${esc(S.u)} in stock · lasts <b class="${days<1?'bad':''}">${lasts}</b> · ${pm(supPrice(k,s.p))} each</span></div>
-   <div class="ivbt"><button class="ghost sm" data-act="invbuy" data-id="${k}" data-d="1">+1 day</button><button class="ghost sm" data-act="invbuy" data-id="${k}" data-d="7">+1 wk</button></div></div>
+  body+=`<section class="ivg"><div class="ivh"><span class="ivgn">${esc(S.n)}</span><span class="ivgs">lasts <b class="${days<1?'bad':''}">${lasts}</b></span>
+   <span class="ivbt"><button class="ghost sm" data-act="invbuy" data-id="${k}" data-d="1" title="Order 1 day of ${esc(S.n)} at ${pm(supPrice(k,s.p))} each">+1d</button><button class="ghost sm" data-act="invbuy" data-id="${k}" data-d="7" title="Order 1 week of ${esc(S.n)}">+1w</button></span></div>
    <div class="ivgrid">${cards}</div></section>`;
  }
  const canMove=!all&&INV.idx!=null&&IN&&IN.site===s;
- const h=`<div class="ivhead"><div><span class="iveye">Inventory</span><h3>${esc(title)}</h3><p>${sub}</p></div><button class="ghost sm" data-act="invclose" aria-label="Close">✕</button></div>
+ const h=`<h3>${esc(title)}</h3>
   <div class="ivbody">${body||'<p class="muted">Nothing is stored here.</p>'}</div>
-  <div class="ivfoot"><span>Same stock as the Menu tab. Every sale draws from it.</span><div>${canMove?'<button class="ghost sm" data-act="invmove">Move or sell this</button>':''}<button class="ghost sm" data-act="invmenu">Menu tab</button><button class="btn sm" data-act="invclose">Done</button></div></div>`;
+  <div class="ivdetw">${detail||'<div class="ivhint">Tap an item for details</div>'}</div>
+  <div class="ivfoot"><button class="btn" data-act="invclose">Done</button><div class="ivlinks">${canMove?'<button class="ghost sm" data-act="invmove">Move or sell</button>':''}<button class="ghost sm" data-act="invmenu">Menu tab</button></div></div>`;
  const sc=el.querySelector('.ivbody'),top=sc?sc.scrollTop:0;
  el.innerHTML=h;el.hidden=false;const nb=el.querySelector('.ivbody');if(nb&&top)nb.scrollTop=top;
 }
@@ -6190,37 +6192,41 @@ function renderInvPanel(){
 })();
 
 (function(){const st=document.createElement('style');st.id='inv-css';st.textContent=`
-#invp{position:fixed;z-index:41;left:50%;top:50%;transform:translate(-50%,-50%);width:min(780px,calc(100vw - 24px));max-height:min(82vh,700px);display:flex;flex-direction:column;background:#0b0b0b;border:2px solid #000;border-top:6px solid var(--sodium);box-shadow:0 8px 0 rgba(0,0,0,.65),0 0 0 1px #3d3d3d;color:var(--paper);font-family:var(--f-mono)}
+#invp{position:fixed;z-index:41;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,calc(100vw - 24px));max-height:min(80vh,620px);display:flex;flex-direction:column;align-items:stretch;background:rgba(11,11,11,.96);border:2px solid #000;border-top:6px solid var(--sodium);box-shadow:0 8px 0 rgba(0,0,0,.65),0 0 0 1px #3d3d3d;color:var(--paper);font-family:var(--f-mono);padding:14px 16px 14px}
 #invp[hidden]{display:none}
-#invp .ivhead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:12px 16px 8px;border-bottom:2px solid #1f1f1f}
-#invp .iveye{font:700 10px var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--sodium)}
-#invp h3{margin:2px 0 0;font:900 24px/1 var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:#fff}
-#invp .ivhead p{margin:4px 0 0;font:500 11.5px var(--f-mono);color:var(--muted)}
-#invp .ivbody{overflow:auto;padding:4px 16px 10px;min-height:0}
-#invp .ivg{padding:10px 0 4px}
-#invp .ivh{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-#invp .ivht{display:flex;flex-direction:column;gap:2px}
-#invp .ivgn{font:900 16px/1 var(--f-display);letter-spacing:.05em;text-transform:uppercase;color:var(--sodium)}
-#invp .ivgs{font:500 11px var(--f-mono);color:var(--muted)}#invp .ivgs b{color:var(--paper);font-weight:700}
-#invp .ivbt{display:flex;gap:6px}
-#invp .ivgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
-#invp .ivc{position:relative;display:flex;gap:10px;align-items:center;background:#141414;border:2px solid #000;box-shadow:0 3px 0 rgba(0,0,0,.7);padding:8px}
-#invp .ivimg{width:52px;height:52px;flex:none;background:#1f1f1f;border:2px solid #000;padding:2px;image-rendering:auto}
-#invp .ivt{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
-#invp .ivn{font:700 12px var(--f-mono);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#invp .ivq b{font:900 22px/1 var(--f-display);letter-spacing:.02em;color:var(--sodium)}#invp .ivq i{font:500 10.5px var(--f-mono);color:var(--muted);font-style:normal}
-#invp .ivbar{display:block;height:5px;background:#000;border:1px solid #2c2c2c}#invp .ivbar u{display:block;height:100%;background:var(--good);text-decoration:none}
-#invp .ivs{min-height:13px;font:500 10px var(--f-mono);color:var(--muted)}#invp .ivs em{font-style:normal}
-#invp .ivs .bad,#invp .bad{color:var(--bad);font-weight:700}#invp .ivs .warn{color:var(--sodium);font-weight:700}
-#invp .ivc.low .ivbar u{background:var(--sodium)}#invp .ivc.out{opacity:.8}#invp .ivc.out .ivimg{filter:grayscale(1) brightness(.7)}#invp .ivc.out .ivq b{color:var(--bad)}#invp .ivc.out .ivbar u{width:0!important}
-#invp .ivd{position:absolute;right:8px;top:5px;font:700 12px var(--f-mono);animation:ivfade 4.5s forwards}#invp .ivd.dn{color:var(--bad)}#invp .ivd.up{color:var(--good)}
+#invp h3{margin:0 0 8px;text-align:center;font:900 20px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:#fff}
+#invp .ivbody{overflow:auto;min-height:0;padding:0 2px}
+#invp .ivg{padding:0 0 10px}
+#invp .ivh{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+#invp .ivgn{font:700 10px var(--f-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--sodium)}
+#invp .ivgs{font:500 10px var(--f-mono);color:var(--muted);flex:1}#invp .ivgs b{color:var(--paper)}
+#invp .ivbt{display:flex;gap:4px;opacity:.55;transition:opacity .15s}#invp .ivg:hover .ivbt,#invp .ivbt:focus-within{opacity:1}
+#invp .ivbt .sm{padding:2px 7px;font-size:10px}
+#invp .ivgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+#invp .ivc{position:relative;aspect-ratio:1;padding:0;cursor:pointer;background:#161616;border:2px solid #000;box-shadow:inset 0 0 0 1px #2a2a2a,0 3px 0 rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;font:inherit;color:inherit}
+#invp .ivc:hover{background:#1e1e1e;box-shadow:inset 0 0 0 1px #4a4a4a,0 3px 0 rgba(0,0,0,.7)}
+#invp .ivc.sel{box-shadow:inset 0 0 0 2px var(--sodium),0 3px 0 rgba(0,0,0,.7)}
+#invp .ivimg{width:68%;height:68%;object-fit:contain;pointer-events:none}
+#invp .ivq{position:absolute;right:4px;bottom:2px;font:900 13px/1 var(--f-display);letter-spacing:.03em;color:#fff;text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000;pointer-events:none}
+#invp .ivc.low .ivq{color:var(--sodium)}
+#invp .ivc.out{opacity:.7}#invp .ivc.out .ivimg{filter:grayscale(1) brightness(.6)}#invp .ivc.out .ivq{color:var(--bad)}
+#invp .ivd{position:absolute;left:4px;top:2px;font:700 11px var(--f-mono);animation:ivfade 4.5s forwards;pointer-events:none;text-shadow:0 0 3px #000}#invp .ivd.dn{color:var(--bad)}#invp .ivd.up{color:var(--good)}
 #invp .ivc.flash{animation:ivflash .9s}
 @keyframes ivfade{0%,70%{opacity:1}100%{opacity:0}}
-@keyframes ivflash{0%{box-shadow:0 0 0 2px var(--sodium),0 3px 0 rgba(0,0,0,.7)}100%{box-shadow:0 3px 0 rgba(0,0,0,.7)}}
-#invp .ivfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px 12px;border-top:2px solid #1f1f1f;font:500 11px var(--f-mono);color:var(--muted)}
-#invp .ivfoot div{display:flex;gap:8px;flex-wrap:wrap}
+@keyframes ivflash{0%{box-shadow:0 0 0 2px var(--sodium),0 3px 0 rgba(0,0,0,.7)}100%{box-shadow:inset 0 0 0 1px #2a2a2a,0 3px 0 rgba(0,0,0,.7)}}
+#invp .ivdetw{min-height:58px;margin-top:6px;border-top:2px solid #1f1f1f;padding-top:8px;display:flex;align-items:center}
+#invp .ivhint{width:100%;text-align:center;font:500 11px var(--f-mono);color:var(--muted)}
+#invp .ivdet{display:flex;gap:10px;align-items:center;width:100%}
+#invp .ivdet img{width:42px;height:42px;background:#1f1f1f;border:2px solid #000;padding:2px}
+#invp .ivdet>div{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+#invp .ivdet b{font:700 12px var(--f-mono);color:#fff}
+#invp .ivdet span{font:500 10.5px var(--f-mono);color:var(--muted)}#invp .ivdet .bad{color:var(--bad);font-style:normal;font-weight:700}#invp .ivdet .warn{color:var(--sodium);font-style:normal;font-weight:700}
+#invp .ivbar{display:block;height:5px;background:#000;border:1px solid #2c2c2c}#invp .ivbar u{display:block;height:100%;background:var(--good);text-decoration:none}
+#invp .ivfoot{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:10px}
+#invp .ivfoot .btn{min-width:150px}
+#invp .ivlinks{display:flex;gap:8px}
 .ivmini{width:18px;height:18px;vertical-align:-4px;margin-right:6px}
-@media (max-width:700px){#invp{max-height:78vh}#invp .ivgrid{grid-template-columns:1fr 1fr}#invp .ivimg{width:42px;height:42px}}
+@media (max-width:480px){#invp .ivgrid{gap:6px}}
 `;document.head.appendChild(st)})();
 
 </script>
