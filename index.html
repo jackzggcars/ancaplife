@@ -1327,7 +1327,7 @@ function siteCaps(s){
  for(const x of s.staff){const r=b.roles.find(r=>r.id===x.role);if(r.g)st[r.g]+=r.cap*(.7+.12*x.skill)*cover*eff;sk+=x.skill}
  if(s.ownerRole==='back'||s.ownerRole==='front')st[s.ownerRole]+=b.ownerCap[s.ownerRole]*eff;
  const back=Math.min(eq.back,st.back),front=Math.min(eq.front,st.front),perH=Math.min(front,back/b.backLoad);
- const quality=clamp(30+q+(s.staff.length?sk/s.staff.length*5:0)+(mgr?8:0)+(s.ownerRole!=='none'?4:0),0,100);
+ const quality=clamp(30+q+(s.staff.length?sk/s.staff.length*5:0)+(mgr?8:0)+(lvFx(s).office?6:0)+(s.ownerRole!=='none'?4:0),0,100);
  const parts=[{v:eq.back/b.backLoad,t:`${b.groups.back} equipment`},{v:st.back/b.backLoad,t:`${b.groups.back} staff`},{v:eq.front,t:`${b.groups.front} equipment`},{v:st.front,t:`${b.groups.front} staff`}].sort((a,b)=>a.v-b.v);
  return{eq,st,back,front,perH,quality,foot,fridge,mgr,bottleneck:parts[0]};
 }
@@ -1397,7 +1397,7 @@ function simSite(s,dow){
   const target=clamp(caps.quality+clamp((1-priceRatio(s))*45,-35,12)-d.stockout*60-(want>0?d.lost/want:0)*35,0,100);s.rep+=(target-s.rep)*.07;
  }else d.util=sqm*b.util*.25*sq;
  for(const k in s.inv){const S=SUP[k],inv=s.inv[k];if(!S.shelf||inv.q<=0)continue;const per=Math.max(s.use[k]||0,.0001),keep=per*S.shelf*(caps.fridge?1:.6);
-  let lost=Math.max(0,inv.q-keep)*.5+inv.q*(S.shelf<=14?(caps.fridge?.012:.04):.002);if(caps.mgr)lost*=.7;lost=Math.min(lost,inv.q);inv.q-=lost;d.waste+=lost*inv.c}
+  let lost=Math.max(0,inv.q-keep)*.5+inv.q*(S.shelf<=14?(caps.fridge?.012:.04):.002);if(caps.mgr)lost*=.7;if(lvFx(s).store)lost*=.7;lost=Math.min(lost,inv.q);inv.q-=lost;d.waste+=lost*inv.c}
  d.profit=d.rev-d.cogs-d.wages-d.rent-d.util-d.fees-d.mkt-d.waste;
  G.cash+=d.rev-d.wages-d.rent-d.util-d.fees-d.mkt;
  s.hist.push(d);if(s.hist.length>90)s.hist.shift();s.last=d;return d;
@@ -3093,9 +3093,10 @@ function iRect(it){const[w,d]=ifoot(it.id,it.r);return[it.x-w/2,it.z-d/2,it.x+w/
 function iOverlap(a,b){return a[0]<b[2]-.02&&a[2]>b[0]+.02&&a[1]<b[3]-.02&&a[3]>b[1]+.02}
 function iValid(rm,layout,it,skip){const r0=iRect(it),zo=imodelOf(it.id).zone==='over',pad=it.id==='seats'?.25:0,r=[r0[0]-pad,r0[1]-pad,r0[2]+pad,r0[3]+pad];
  if(r0[0]<.12||r0[1]<.12||r0[2]>rm.W-.12||r0[3]>rm.D-.12)return false;
- if(!zo){if(rm.door&&iOverlap(r,rm.door))return false;if(rm.pz&&r[1]<rm.pz+.1&&r[3]>rm.pz-.1&&!(r[0]>=rm.gap[0]&&r[2]<=rm.gap[1]))return false;
+ if(!zo&&rm.stairOn&&iOverlap(r,rm.stair))return false;if(!zo&&rm.dr&&(it.l||0)===rm.drl&&iOverlap(r,rm.dr))return false;
+ if(!zo&&!it.l){if(rm.door&&iOverlap(r,rm.door))return false;if(rm.pz&&r[1]<rm.pz+.1&&r[3]>rm.pz-.1&&!(r[0]>=rm.gap[0]&&r[2]<=rm.gap[1]))return false;
   if(rm.pz&&rm.gapClear&&iOverlap(r,rm.gapClear))return false}
- for(let i=0;i<layout.length;i++){if(i===skip)continue;const o=layout[i];if((imodelOf(o.id).zone==='over')!==zo)continue;if(iOverlap(r,iRect(o)))return false}return true}
+ for(let i=0;i<layout.length;i++){if(i===skip)continue;const o=layout[i];if((o.l||0)!==(it.l||0)||(imodelOf(o.id).zone==='over')!==zo)continue;if(iOverlap(r,iRect(o)))return false}return true}
 function iZone(id,b){const m=imodelOf(id);if(m.zone==='back'||m.zone==='over'){const e=b.equip.find(x=>x.id===id);return'back'}return m.zone}
 function autoPlace(s,rm,id){
  const L=s.layout,m=imodelOf(id),zone=iZone(id,BIZ[s.type]),cands=[];
@@ -3123,38 +3124,112 @@ function syncLayout(s,rm){
 function storageOf(s){const b=BIZ[s.type],o=[];for(const e of b.equip){if(INOPLACE[e.id])continue;const n=(s.equip[e.id]||0)-(s.layout||[]).filter(x=>x.id===e.id).length;if(n>0)o.push({e,n})}return o}
 // ---------- the live interior ----------
 const FLOORS={datacenter:['#c9cdd1','#bdc1c5'],dairy:['#9a8a66','#8f7f5c'],orchard:['#9a8a66','#8f7f5c'],shop:['#e8e4dc','#d6d2c8'],farm:['#9a8a66','#8f7f5c'],factory:['#a9adb0','#b3b7ba'],cafe:['#a0724a','#97693f'],burger:['#e8e2d6','#b9473b'],bakery:['#c27b55','#b06c48'],tech:['#d9dcdf','#cfd3d6'],boutique:['#d8c4a2','#cfb995']};
-function buildShell(rm,s){
- const g=new GB(),fit=s.equip.fitout>0,F=FLOORS[s.type]||FLOORS.tech,wall=fit?IC('#f1ece2'):IC('#dcd8cf'),cap=IC('#fbfaf7'),H=3.2,T=.18;
- const pz=rm.pz;
- // floor tiles (1 m chequer in front of house, concrete behind)
+// ===================== ANCAP LIFE · LEVELS (stairs, basements, upper floors) + DETAILED SHELLS =====================
+const LVN=l=>l<0?'Basement':l===0?'Ground floor':l===1?'1st floor':l===2?'2nd floor':l+'th floor';
+const LVUSE={sales:['Sales floor','Open to customers. Kit placed here works, and the shop can hold more kit.'],store:['Stockroom','Racking and crates for your stock. Stock spoils 30% less.'],office:['Office','Desks, filing and a quiet corner: +6 quality.']};
+function lvList(s){const lot=siteLot(s),f=lot?lotFloors(lot):1;if(f<2)return[0];const a=[-1,0];for(let i=1;i<=Math.min(2,f-1);i++)a.push(i);return a}
+const lvOpen=(s,l)=>l===0||!!(s.lv&&s.lv[l]);
+const lvUse=(s,l)=>l===0?'sales':s.lv&&s.lv[l]?s.lv[l].use:null;
+const hasStairs=s=>!!s.lv&&Object.keys(s.lv).length>0;
+const lvCost=s=>{const lot=siteLot(s);return equipCost({c:2600+(lot?lot.sqm:60)*24},s.p)};
+function siteSqm(s,lot){let n=1;for(const k in s.lv||{})if(s.lv[k].use==='sales')n++;return lot.sqm*n}
+function lvFx(s){const o={store:0,office:0};for(const k in s.lv||{})o[s.lv[k].use]=1;return o}
+function stairRect(rm){const d=rm.pz?Math.max(1.6,Math.min(3,rm.D-rm.pz-.4)):Math.max(1.8,Math.min(3,rm.D*.5));return[.14,rm.D-d-.14,1.34,rm.D-.14]}
+function addStairs(g,rm){const[x0,z0,x1,z1]=rm.stair,n=15,d=(z1-z0)/n,C=IC('#b58a5a');
+ for(let i=0;i<n;i++){const y=3.05*(i+1)/n,z=z0+d*i;icube(g,x0,0,z,x1,y,z+d,tint(C,.8),i%2?tint(C,1.06):C);icube(g,x1-.04,y+.86,z,x1,y+.9,z+d,CHROME);if(i%3===0)icube(g,x1-.04,y,z,x1,y+.9,z+.04,CHROME)}}
+function addRail(g,rm){const[x0,z0,x1,z1]=rm.stair;icube(g,x0,.9,z0-.04,x1+.04,.94,z0,CHROME);icube(g,x1,.9,z0,x1+.04,.94,z1,CHROME);for(const[x,z]of[[x0,z0-.04],[x1,z0-.04],[x1,z1-.04]])icube(g,x,0,z,x+.04,.94,z+.04,CHROME)}
+IMODELS._desk={w:1.6,d:.8,b(g){ibox(g,0,0,.8,.4,.7,.75,WOOD,tint(WOOD,1.1));for(const x of[-.74,.74])ibox(g,x,0,.04,.36,0,.7,DWOOD);screen(g,-.3,.15,.26,.95,1.25);ibox(g,-.3,.15,.03,.03,.75,.95,BLACK);ibox(g,-.3,-.15,.2,.07,.75,.77,BLACK);ibox(g,.4,0,.1,.12,.75,.84,IC('#e8e4d8'));ibox(g,.55,.2,.12,.1,.75,.95,PC(3));cupR(g,.65,-.1,.04,.75,.83,RED);
+ ibox(g,-.3,-.7,.22,.22,.42,.48,BLACK);ibox(g,-.3,-.55,.2,.03,.48,.95,BLACK);cyl(g,-.3,-.7,.03,0,.42,DSTEEL,6)}};
+IMODELS._filing={w:.5,d:.6,b(g){ibox(g,0,0,.25,.3,0,1.35,DSTEEL);for(let i=0;i<4;i++){ibox(g,0,-.302,.22,.004,.1+i*.32,.38+i*.32,STEEL);ibox(g,0,-.31,.08,.006,.28+i*.32,.3+i*.32,BLACK)}}};
+// stockroom racking + crates that fill up with your real stock, or an office with desks
+function rebuildDress(){
+ if(IN.dress){IN.grp.remove(IN.dress);IN.dress=null}IN.rm.dr=null;
+ const s=IN.site,rm=IN.rm,lv=IN.lv,u=lvUse(s,lv);if(!lv||(u!=='store'&&u!=='office'))return;
+ const g=new THREE.Group(),W=rm.W,D=rm.D,add=(id,x,z,r,k,y)=>{const m=new THREE.Mesh(imodelGeo(id,s.type,k),BMAT);m.userData.shared=true;m.position.set(x,y||0,z);m.rotation.y=-(r||0)*Math.PI/2;m.castShadow=m.receiveShadow=true;g.add(m)};let rect=null;
+ if(u==='store'){const n=Math.floor((W-.2)/2.8);if(n>0){const off=(W-.2-n*2.8)/2;for(let k=0;k<n;k++)add('racking',.1+off+1.4+k*2.8,D-.65,0);rect=[.1,D-1.3,W-.1,D-.1]}
+  if(D>=6.5){let full=0,tot=0;for(const k in s.inv){tot++;if(s.inv[k].q>0)full++}const cols=Math.max(1,Math.floor((W-.4)/.68)),nC=Math.round(Math.min(1,full/Math.max(1,tot))*cols*2),z0=D-(n>0?1.65:.5);
+   for(let i=0;i<nC;i++){const r=Math.floor(i/cols),c=i%cols;add('_crate',.45+c*.68,z0-r*.68,0,(i+r)%2);if(i%3===0)add('_crate',.45+c*.68,z0-r*.68,0,1,.58)}
+   if(nC>0)rect=[.1,Math.min(rect?rect[1]:D,z0-Math.ceil(nC/cols)*.68-.1),W-.1,D-.1]}}
+ else{const n=Math.max(1,Math.min(3,Math.floor(W/2.3)));for(let k=0;k<n;k++)add('_desk',W/n*(k+.5),D-1,0);if(W>n*1.9+.9)add('_filing',W-.45,D-.4,0);
+  rect=[.1,D-2.1,W-.1,D-.1]}
+ IN.dress=g;IN.grp.add(g);if(!rect)return;IN.rm.dr=rect;IN.rm.drl=lv;
+ if(!IN.placing){let ev=0;s.layout=s.layout.filter(it=>{if((it.l||0)!==lv)return true;const h=iOverlap(iRect(it),rect);if(h)ev++;return!h});if(ev)toast(`${ev} item${ev>1?'s':''} moved to storage to make room`,'')}}
+function rebuildLevel(){
+ IN.grp.remove(IN.shell);IN.shell.geometry.dispose();IN.grp.add(IN.shell=buildShell(IN.rm,IN.site,IN.lv));
+ rebuildDress();rebuildItems();renderInteriorBar();renderSite()}
+function setLevel(l){if(!IN||!lvOpen(IN.site,l)||l===IN.lv)return;const P=IN.placing;IN.lv=l;if(P){P.it.l=l;P.ok=false}rebuildLevel();toast(LVN(l),'')}
+function unlockLevel(l){if(!IN)return;const s=IN.site,k=lvCost(s);if(G.cash<k){toast('Not enough cash to fit out this level','warn');return}
+ cancelPlacing();G.cash-=k;(s.lv||(s.lv={}))[l]={use:l<0?'store':'sales'};IN.rm.stairOn=true;
+ let ev=0;s.layout=s.layout.filter(it=>{const h=iOverlap(iRect(it),IN.rm.stair);if(h)ev++;return!h});if(ev)toast(`The new staircase took the space of ${ev} item${ev>1?'s':''}. Place them again.`,'warn');
+ rebuildLevel();rebuildCrowd();renderTop();save();toast(`${LVN(l)} is open. Staircase fitted.`,'good')}
+function setUse(u){if(!IN||!IN.lv||IN.placing||!LVUSE[u])return;IN.site.lv[IN.lv].use=u;rebuildLevel();save()}
+function lvBarHtml(P){const s=IN.site,L=lvList(s);if(L.length<2)return'';
+ const chips=L.slice().reverse().map(l=>lvOpen(s,l)?`<button class="${l===IN.lv?'btn':'ghost'} sm" data-act="ilv" data-id="${l}">${LVN(l)}</button>`:P?'':`<button class="ghost sm" data-act="iunlock" data-id="${l}" ${G.cash<lvCost(s)?'disabled':''}>Open ${LVN(l).toLowerCase()} · ${money(lvCost(s))}</button>`).join('');
+ const u=lvUse(s,IN.lv),uses=IN.lv&&!P?Object.entries(LVUSE).map(([k,v])=>`<button class="${u===k?'btn':'ghost'} sm" data-act="iuse" data-id="${k}" title="${esc(v[1])}">${v[0]}</button>`).join(''):'';
+ return`<div class="ib-row" style="margin-bottom:8px;align-items:center"><span class="ib-k">Levels</span>${chips}</div>`+(uses?`<div class="ib-row" style="margin-bottom:6px;align-items:center"><span class="ib-k">Used as</span>${uses}</div><p class="ib-k" style="margin:0 0 8px">${esc(LVUSE[u][1])}</p>`:'')}
+
+// ---------- shells: floors, walls, trims, art, windows and per-business decor ----------
+function shellDetail(g,rm,s,lv,fit){
+ const W=rm.W,D=rm.D,t=s.type,tc=IC({cafe:'#6e4a2c',bakery:'#7b4a30',burger:'#b9473b',boutique:'#8b6f5a',tech:'#2a3340',shop:'#4f7a62',farm:'#6e5a3a',dairy:'#6e5a3a',orchard:'#6e5a3a',factory:'#566069',datacenter:'#232a33'}[t]||'#6e5a4a'),bs=IC(fit||lv?'#fbfaf7':'#a7a197'),seed=hashId(s.id);
+ icube(g,0,0,D-.05,W,.13,D,bs);icube(g,0,0,0,.05,.13,D,bs);icube(g,W-.05,0,0,W,.13,D,bs);
+ if(fit||lv){icube(g,0,.13,D-.07,W,1.05,D,tc);icube(g,0,.13,0,.07,1.05,D,tc);icube(g,W-.07,.13,0,W,1.05,D,tc);
+  icube(g,0,1.05,D-.09,W,1.09,D,CREAM);icube(g,0,1.05,0,.09,1.09,D,CREAM);icube(g,W-.09,1.05,0,W,1.09,D,CREAM)}
+ const nA=Math.max(0,Math.floor((W-1)/1.9));for(let k=0;k<nA;k++){const x=W/(nA+1)*(k+1),w=.34+hash2(k,seed%97,3)*.2,c=PC(k+seed);icube(g,x-w-.04,2.12,D-.05,x+w+.04,2.86,D,DWOOD);icube(g,x-w,2.16,D-.07,x+w,2.82,D-.04,tint(c,1.1));icube(g,x-w*.6,2.3,D-.075,x+w*.6,2.5,D-.07,tint(c,.7))}
+ if(lv<0)icube(g,.1,2.7,D-.14,W-.1,2.78,D-.06,DSTEEL);
+ else if(lv>0||t==='farm'){const nw=Math.max(1,Math.floor(W/3));for(let k=0;k<nw;k++){const x=W/nw*(k+.5);icube(g,x-.6,1.2,D-.09,x+.6,2.0,D,DWOOD);icube(g,x-.54,1.26,D-.1,x+.54,1.94,D-.085,IC('#cfe8f0'));icube(g,x-.03,1.26,D-.11,x+.03,1.94,D-.1,DWOOD)}}
+ for(const z of[D*.25,D*.55,D*.85]){icube(g,0,2.2,z-.06,.12,2.42,z+.06,IC('#fff3c4'));icube(g,W-.12,2.2,z-.06,W,2.42,z+.06,IC('#fff3c4'))}
+ const cz=D*.4;icube(g,W-.06,2.3,cz-.2,W,2.7,cz+.2,WHITE2);icube(g,W-.075,2.5,cz-.01,W-.06,2.6,cz+.01,BLACK);icube(g,W-.075,2.49,cz,W-.06,2.51,cz+.1,BLACK);
+ if(lv)return;
+ const cx=W/2,d=rm.door,dx=(d[0]+d[2])/2,hw=Math.min(1,W*.18);
+ icube(g,d[0]-.15,0,.02,d[2]+.15,.02,.9,IC('#3a3d44'));for(let k=0;k<5;k++)icube(g,d[0]-.1,.02,.1+k*.15,d[2]+.1,.025,.14+k*.15,IC('#4a4f57'));icube(g,dx-.28,2.6,.02,dx+.28,2.8,.08,IC('#2fbf6a'));
+ if(fit){const z0=rm.pz?rm.pz*.2:D*.15,z1=rm.pz?rm.pz*.8:D*.55;icube(g,W*.18,0,z0,W*.82,.016,z1,tint(tc,.9));icube(g,W*.18+.12,.016,z0+.12,W*.82-.12,.02,z1-.12,tint(tc,1.3))}
+ const board=(x,w,c)=>{icube(g,x-w-.05,1.5,D-.07,x+w+.05,2.4,D,DWOOD);icube(g,x-w,1.55,D-.09,x+w,2.35,D-.07,c)};
+ if(t==='cafe'||t==='bakery'){board(cx,hw,IC('#22292b'));for(let i=0;i<6;i++)icube(g,cx-hw*.8+(i%2)*.1,1.7+i*.1,D-.095,cx+hw*.3+(i%3)*.1,1.72+i*.1,D-.09,IC('#e8e4d8'));
+  if(D>=4){icube(g,0,1.5,1,.3,1.54,3.2,WOOD);for(let i=0;i<5;i++)t==='cafe'?cupR(g,.15,1.2+i*.42,.05,1.54,1.66,i%2?WHITE2:RED):ilathe(g,.15,1.2+i*.42,[[.1,1.54],[.12,1.62],[0,1.68]],IC('#d9a35a'),8)}}
+ else if(t==='burger'){for(let k=0;k<Math.floor(W/.5);k++)icube(g,k*.5,1.2,D-.08,k*.5+.5,1.4,D-.01,k%2?WHITE2:RED);icube(g,W*.15,2.45,D-.06,W*.85,2.55,D,IC('#ff4a6a'));icube(g,W*.15+.03,2.48,D-.07,W*.85-.03,2.52,D-.06,IC('#ffd0d8'))}
+ else if(t==='boutique'){for(const x of[W*.3,W*.7]){icube(g,x-.5,.9,D-.07,x+.5,2.6,D,CHROME);icube(g,x-.44,.96,D-.09,x+.44,2.54,D-.07,IC('#cfe3ea'))}}
+ else if(t==='tech'){icube(g,.3,2.9,D-.06,W-.3,2.95,D,IC('#3fe0ff'));icube(g,cx-1,1.5,D-.05,cx+1,2.4,D,IC('#bfc5ca'));for(let i=0;i<8;i++)for(let j=0;j<4;j++)icube(g,cx-.9+i*.25,1.6+j*.2,D-.065,cx-.86+i*.25,1.64+j*.2,D-.05,BLACK)}
+ else if(t==='shop'){for(let k=0;k<Math.max(1,Math.floor(W/2.4));k++){const x=W/Math.max(1,Math.floor(W/2.4))*(k+.5);icube(g,x-.45,2.3,D-.08,x+.45,2.8,D,IC('#f2c230'));icube(g,x-.35,2.5,D-.09,x+.35,2.58,D-.08,BLACK)}}
+ else if(t==='farm'||t==='dairy'||t==='orchard'){icube(g,W-1.3,0,D-1.1,W-.2,.45,D-.2,IC('#d9b64a'));icube(g,W-1.1,.45,D-1.0,W-.3,.9,D-.3,IC('#c9a43a'));board(cx,hw,IC('#2b2e33'));for(let i=0;i<5;i++)icube(g,cx-hw*.8+i*hw*.4,1.65,D-.1,cx-hw*.8+i*hw*.4+.04,2.25,D-.09,DSTEEL)}
+ else if(t==='factory'){for(let k=0;k<Math.floor(W/.4);k++)icube(g,k*.4,0,D-.5,k*.4+.4,.012,D-.3,k%2?IC('#f2c230'):BLACK);icube(g,.1,2.55,D-.2,W-.1,2.7,D-.06,DSTEEL);icube(g,.1,2.8,D-.2,W-.1,2.9,D-.06,IC('#c8463a'));board(Math.min(W-hw-.2,cx+W*.2),hw,IC('#d9cfb8'))}
+ else if(t==='datacenter'){icube(g,.1,2.8,D-.4,W-.1,2.9,D-.05,DSTEEL);icube(g,0,2.5,.5,.04,2.56,D-.5,GLOWS);icube(g,W-.04,2.5,.5,W,2.56,D-.5,GLOWS)}
+}
+function buildShell(rm,s,lv){
+ if(lv==null)lv=IN?IN.lv:0;
+ const g=new GB(),fit=s.equip.fitout>0,u=lvUse(s,lv)||'sales',F=lv===0?(FLOORS[s.type]||FLOORS.tech):lv<0?['#8e9296','#999da1']:u==='store'?['#a9adb0','#b3b7ba']:u==='office'?['#7e8898','#8791a1']:['#b08a5c','#a67f52'],
+ wall=lv<0?IC('#c9c5bc'):fit||lv>0?IC('#f1ece2'):IC('#dcd8cf'),cap=IC('#fbfaf7'),H=3.2,T=.18,pz=lv===0?rm.pz:0,S=rm.stair,L=lvList(s),
+ hasUp=rm.stairOn&&L.includes(lv+1)&&lvOpen(s,lv+1),hole=rm.stairOn&&L.includes(lv-1)&&lvOpen(s,lv-1);
+ const q=(a,b,c,d,col)=>g.quad([a,0,b],[c,0,b],[c,0,d],[a,0,d],UPN,col,15);
+ const tq=(a,b,c,d,col)=>{if(!hole||c<=S[0]||a>=S[2]||d<=S[1]||b>=S[3]){q(a,b,c,d,col);return}if(a<S[0])q(a,b,S[0],d,col);if(c>S[2])q(S[2],b,c,d,col);const l=Math.max(a,S[0]),r=Math.min(c,S[2]);if(b<S[1])q(l,b,r,S[1],col);if(d>S[3])q(l,S[3],r,d,col)};
  for(let x=0;x<rm.W;x+=1)for(let z=0;z<rm.D;z+=1){const x1=Math.min(rm.W,x+1),z1=Math.min(rm.D,z+1),back=pz&&z>=pz;
-  const c=back?IC(((x+z)&1)?'#a9adb0':'#b3b7ba'):IC(F[(Math.floor(x)+Math.floor(z))&1]);g.quad([x,0,z],[x1,0,z],[x1,0,z1],[x,0,z1],UPN,fit&&!back?tint(c,1.06):c,15)}
+  const c=back?IC(((x+z)&1)?'#a9adb0':'#b3b7ba'):IC(F[(Math.floor(x)+Math.floor(z))&1]);tq(x,z,x1,z1,fit&&!back&&lv===0?tint(c,1.06):c)}
+ if(hole)q(S[0],S[1],S[2],S[3],IC('#17191c'));
  icube(g,-T,-.32,-T,rm.W+T,-.001,rm.D+T,IC('#8d8a84'));
  const wallSeg=(x0,z0,x1,z1,h)=>{icube(g,x0,0,z0,x1,h,z1,wall,cap)};
  wallSeg(-T,rm.D,rm.W+T,rm.D+T,H);wallSeg(-T,-T,0,rm.D+T,H);wallSeg(rm.W,-T,rm.W+T,rm.D+T,H);
- // shopfront: low stall riser, mullions and a door gap
- const d=rm.door;wallSeg(0,-T,d[0],0,.55);wallSeg(d[2],-T,rm.W,0,.55);
- for(let x=0;x<=rm.W+.01;x+=Math.max(1.6,rm.W/Math.round(rm.W/2.2))){if(x>d[0]-.1&&x<d[2]+.1)continue;icube(g,x-.05,.55,-T,x+.05,H,0,IC('#3a3f46'))}
- icube(g,d[0]-.06,0,-T,d[0],H,0,IC('#3a3f46'));icube(g,d[2],0,-T,d[2]+.06,H,0,IC('#3a3f46'));
- icube(g,-T,H-.25,-T,rm.W+T,H,0,IC('#3a3f46'),cap);
- // partition between shop floor and back of house
- if(pz){wallSeg(0,pz-.08,rm.gap[0],pz+.08,H*.82);wallSeg(rm.gap[1],pz-.08,rm.W,pz+.08,H*.82)}
- // fit-out extras: plants and pendant lights
- if(fit){for(const[x,z]of[[.45,.45],[rm.W-.45,.45]]){ilathe(g,x,z,[[.18,0],[.2,.4],[0,.4]],IC('#c9b8a0'),8);ilathe(g,x,z,[[.1,.4],[.32,.7],[.28,1.1],[0,1.25]],IC('#4f8a4a'),8)}}
+ if(lv===0){const d=rm.door;wallSeg(0,-T,d[0],0,.55);wallSeg(d[2],-T,rm.W,0,.55);
+  for(let x=0;x<=rm.W+.01;x+=Math.max(1.6,rm.W/Math.round(rm.W/2.2))){if(x>d[0]-.1&&x<d[2]+.1)continue;icube(g,x-.05,.55,-T,x+.05,H,0,IC('#3a3f46'))}
+  icube(g,d[0]-.06,0,-T,d[0],H,0,IC('#3a3f46'));icube(g,d[2],0,-T,d[2]+.06,H,0,IC('#3a3f46'));icube(g,-T,H-.25,-T,rm.W+T,H,0,IC('#3a3f46'),cap);
+  if(pz){wallSeg(0,pz-.08,rm.gap[0],pz+.08,H*.82);wallSeg(rm.gap[1],pz-.08,rm.W,pz+.08,H*.82)}
+  if(fit){for(const[x,z]of[[.45,.45],[rm.W-.45,.45]]){ilathe(g,x,z,[[.18,0],[.2,.4],[0,.4]],IC('#c9b8a0'),8);ilathe(g,x,z,[[.1,.4],[.32,.7],[.28,1.1],[0,1.25]],IC('#4f8a4a'),8)}}}
+ else{wallSeg(-T,-T,rm.W+T,0,.9);if(lv>0){for(let x=0;x<=rm.W+.01;x+=Math.max(1.6,rm.W/Math.round(rm.W/2.2)))icube(g,x-.05,.9,-T,x+.05,H,0,IC('#3a3f46'));icube(g,-T,H-.25,-T,rm.W+T,H,0,IC('#3a3f46'),cap)}}
+ if(rm.stairOn){if(hasUp)addStairs(g,rm);else if(hole)addRail(g,rm)}
+ shellDetail(g,rm,s,lv,fit);
  const m=new THREE.Mesh(g.geo(),BMAT);m.castShadow=true;m.receiveShadow=true;return m;
 }
+
 let IN=null,PENDING_PLACE=null; // {key,site,lot,L,rm,grp,items:[],people:[],placing}
 function interiorRoomOf(lot,L){const rm=roomFor(lot,L);
  const dw=1.4,dx=clamp(rm.W*.5,dw/2+.3,rm.W-dw/2-.3);rm.door=[dx-dw/2,0,dx+dw/2,1.3];
  if(rm.D>5.5){rm.pz=+(rm.D*.62).toFixed(2);const gx=rm.W>6?rm.W-1.6:rm.W*.5;rm.gap=[gx-.6,gx+.6];rm.gapClear=[gx-.6,rm.pz-.9,gx+.6,rm.pz+.9]}
- return rm}
+ rm.stair=stairRect(rm);return rm}
 function enterInterior(s){
  let lot=siteLot(s);if(!lot)return;let L=liveFor(lot);
  if(!L){flyTo(lot.lat,lot.lon,Math.min(CAM.dist,420),()=>{setTimeout(()=>enterInterior(s),900)});return}
  if(IN)exitInterior(true);
  if(L.kind!=='lm'){const own=lotsOf(L).find(l=>l.key===lot.key);if(own)lot=own}
- const rm=interiorRoomOf(lot,L);syncLayout(s,rm);
- IN={key:lot.key,site:s,lot,L,rm,grp:new THREE.Group(),items:[],people:[],crates:[],placing:null,t:0,spawn:0,hidden:[]};
+ const rm=interiorRoomOf(lot,L);rm.stairOn=hasStairs(s);syncLayout(s,rm);
+ IN={key:lot.key,site:s,lot,L,rm,grp:new THREE.Group(),items:[],people:[],crates:[],placing:null,t:0,spawn:0,hidden:[],lv:0};
  ui.interior=IN;const g=IN.grp;g.position.set(rm.O[0],.3,-rm.O[1]);g.rotation.y=rm.theta;L.grp.add(g);g.updateMatrixWorld(true);
  g.add(IN.shell=buildShell(rm,s));rebuildItems();rebuildCrowd();hideBuilding(true);
  // frame the room from the street side, looking in
@@ -3201,7 +3276,7 @@ function itemMesh(it,ghost){const geo=imodelGeo(it.id,IN.site.type);const m=new 
 const GHOSTMAT=new THREE.MeshLambertMaterial({vertexColors:true,transparent:true,opacity:.62,emissive:new THREE.Color('#2a8a3a'),depthWrite:false});
 function rebuildItems(){
  for(const m of IN.items)IN.grp.remove(m);IN.items=[];
- IN.site.layout.forEach((it,i)=>{if(IN.placing&&IN.placing.from===i)return;const m=itemMesh(it);m.userData.idx=i;IN.items.push(m);IN.grp.add(m)});
+ IN.site.layout.forEach((it,i)=>{if(IN.placing&&IN.placing.from===i)return;if((it.l||0)!==IN.lv)return;const m=itemMesh(it);m.userData.idx=i;IN.items.push(m);IN.grp.add(m)});
 }
 // ---------- navigation: a coarse walkability grid so people walk around kit instead of through it ----------
 const NAVC=.2;
@@ -3211,11 +3286,11 @@ function buildNav(){
  const mark=(x0,z0,x1,z1)=>{const i0=Math.max(0,Math.ceil(x0/NAVC-.5)),i1=Math.min(nx-1,Math.floor(x1/NAVC-.5)),j0=Math.max(0,Math.ceil(z0/NAVC-.5)),j1=Math.min(nz-1,Math.floor(z1/NAVC-.5));for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++)g[j*nx+i]=1};
  const M=.2;mark(0,0,M,rm.D);mark(rm.W-M,0,rm.W,rm.D);mark(0,rm.D-M,rm.W,rm.D);mark(0,0,rm.door[0],M);mark(rm.door[2],0,rm.W,M);
  if(rm.pz){mark(0,rm.pz-.24,rm.gap[0]+.05,rm.pz+.24);mark(rm.gap[1]-.05,rm.pz-.24,rm.W,rm.pz+.24)}
- for(const it of s.layout){if(imodelOf(it.id).zone==='over')continue;const r=iRect(it),p=it.id==='seats'?.02:.14;mark(r[0]-p,r[1]-p,r[2]+p,r[3]+p)}
+ if(rm.stairOn)mark(rm.stair[0]-.1,rm.stair[1]-.1,rm.stair[2]+.1,rm.stair[3]+.1);for(const it of s.layout){if(it.l||imodelOf(it.id).zone==='over')continue;const r=iRect(it),p=it.id==='seats'?.02:.14;mark(r[0]-p,r[1]-p,r[2]+p,r[3]+p)}
  for(const c of IN.crates)mark(c.position.x-.38,c.position.z-.38,c.position.x+.38,c.position.z+.38);
  IN.nav={nx,nz,g};
  // queue lines in front of each till, bending sideways when kit is in the way
- IN.tills=s.layout.map((it,i)=>({it,i})).filter(o=>o.it.id==='pos'||o.it.id==='stall').map(({it,i})=>{const old=IN.tills&&IN.tills.find(t=>t.i===i&&t.it===it);
+ IN.tills=s.layout.map((it,i)=>({it,i})).filter(o=>!o.it.l&&(o.it.id==='pos'||o.it.id==='stall')).map(({it,i})=>{const old=IN.tills&&IN.tills.find(t=>t.i===i&&t.it===it);
   const q0=itemSpot(it,-1,0),dir=[q0[0]-it.x,q0[1]-it.z],dl=Math.hypot(dir[0],dir[1])||1;let d=[dir[0]/dl,dir[1]/dl];const spots=[];let p=q0;
   const nearDoor=q=>{const di=doorIn();return Math.hypot(q[0]-di[0],(q[1]-di[1])*1.3)<1.5};
   for(let k=0;k<7&&spots.length<7;k++){if(spots.length&&nearDoor(p)){const L=[-d[1],d[0]],R=[d[1],-d[0]],a=spots[spots.length-1],tl=[a[0]+L[0]*.62,a[1]+L[1]*.62],tr=[a[0]+R[0]*.62,a[1]+R[1]*.62],di=doorIn();const pickL=Math.abs(tl[0]-di[0])>Math.abs(tr[0]-di[0]);const c=pickL?tl:tr;if(navFree(c[0],c[1])&&!nearDoor(c)){d=pickL?L:R;p=c;spots.push(p);p=[p[0]+d[0]*.62,p[1]+d[1]*.62];continue}break}
@@ -3264,22 +3339,22 @@ function syncStaff(arrive){
   if(p.w==='front')p.till=IN.tills.length?IN.tills[fi%IN.tills.length]:null,p.floater=IN.tills.length>0&&fi>=IN.tills.length,fi++;
  }}
 function staffHome(p,k){const rm=IN.rm,s=IN.site;if(p.w==='front'&&IN.tills.length){const t=IN.tills[k%IN.tills.length];const sp=itemSpot(t.it,1,0);return navFree(sp[0],sp[1])?sp:navNearest(sp[0],sp[1])||sp}
- const backs=s.layout.filter(it=>{const z=imodelOf(it.id).zone;return z==='back'});if(backs.length){const it=backs[k%backs.length],sp=itemSpot(it,-1,0);return navNearest(sp[0],sp[1])||sp}
+ const backs=s.layout.filter(x=>!x.l).filter(it=>{const z=imodelOf(it.id).zone;return z==='back'});if(backs.length){const it=backs[k%backs.length],sp=itemSpot(it,-1,0);return navNearest(sp[0],sp[1])||sp}
  return navNearest(rm.W/2,rm.D*.7)||[rm.W/2,rm.D/2]}
 function staffNext(p){
  const s=IN.site,rm=IN.rm,R=Math.random;p.task=null;
- if(p.w==='front'&&p.till&&!p.floater){const t=p.till;if(!t.q.length&&R()<.35){const br=s.layout.filter(it=>it.id==='seats'||BROWSE_IDS[it.id]);if(br.length){const it=br[Math.floor(R()*br.length)],sp=itemSpot(it,it.id==='seats'?-1:-1,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:'tidy',t:2.5+R()*2};return}}
+ if(p.w==='front'&&p.till&&!p.floater){const t=p.till;if(!t.q.length&&R()<.35){const br=s.layout.filter(x=>!x.l).filter(it=>it.id==='seats'||BROWSE_IDS[it.id]);if(br.length){const it=br[Math.floor(R()*br.length)],sp=itemSpot(it,it.id==='seats'?-1:-1,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:'tidy',t:2.5+R()*2};return}}
   const sp=itemSpot(t.it,1,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],t.it.x,t.it.z));p.task={k:'till',t:6+R()*6};return}
- if(p.w==='back'||(p.w==='front'&&(!IN.tills.length))){const backs=s.layout.filter(it=>imodelOf(it.id).zone==='back');
+ if(p.w==='back'||(p.w==='front'&&(!IN.tills.length))){const backs=s.layout.filter(x=>!x.l).filter(it=>imodelOf(it.id).zone==='back');
   if(backs.length){const it=backs[Math.floor(R()*backs.length)],sp=itemSpot(it,-1,(R()-.5)*Math.max(0,imodelOf(it.id).w-.8));goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:'work',t:4+R()*5};return}}
- if(p.w==='mgr'||p.floater){const br=s.layout.filter(it=>it.id!=='sign'&&imodelOf(it.id).zone!=='over');if(br.length&&R()<.75){const it=br[Math.floor(R()*br.length)],side=imodelOf(it.id).zone==='back'?-1:(it.id==='pos'?1:-1),sp=itemSpot(it,side,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:p.w==='mgr'?'check':'tidy',t:2.5+R()*3};return}}
+ if(p.w==='mgr'||p.floater){const br=s.layout.filter(x=>!x.l).filter(it=>it.id!=='sign'&&imodelOf(it.id).zone!=='over');if(br.length&&R()<.75){const it=br[Math.floor(R()*br.length)],side=imodelOf(it.id).zone==='back'?-1:(it.id==='pos'?1:-1),sp=itemSpot(it,side,0);goTo(p,sp[0],sp[1],faceTo(sp[0],sp[1],it.x,it.z));p.task={k:p.w==='mgr'?'check':'tidy',t:2.5+R()*3};return}}
  const q=navNearest(rm.W*(.15+.7*R()),rm.D*(.15+.7*R()))||[rm.W/2,rm.D/2];goTo(p,q[0],q[1],R()*6);p.task={k:'idle',t:2+R()*2}}
 
 // ---------- customers ----------
 const BROWSE_IDS={shelves:1,aisle:1,freezer:1,racks:1,window:1,demo:1,display:1,counter:1,lights:1,fitting:1};
-function browseSpots(){const s=IN.site,out=[];for(const it of s.layout){const ok=BROWSE_IDS[it.id]||(it.id==='fridge'&&s.type==='shop');if(!ok)continue;const m=imodelOf(it.id),n=Math.max(1,Math.floor(m.w/.75));
+function browseSpots(){const s=IN.site,out=[];for(const it of s.layout.filter(x=>!x.l).filter(x=>!x.l)){const ok=BROWSE_IDS[it.id]||(it.id==='fridge'&&s.type==='shop');if(!ok)continue;const m=imodelOf(it.id),n=Math.max(1,Math.floor(m.w/.75));
   const sides=it.id==='aisle'?[-1,1]:[-1];for(const sd of sides)for(let k=0;k<n;k++){const lat=n>1?-m.w/2+.38+(m.w-.76)*k/(n-1):0;let sp=it.id==='fitting'?[it.x,it.z]:itemSpot(it,sd,lat);if(it.id!=='fitting'&&!navFree(sp[0],sp[1]))continue;out.push({key:'b'+it.x.toFixed(2)+','+it.z.toFixed(2)+':'+sd+':'+k,x:sp[0],z:sp[1],it,face:faceTo(sp[0],sp[1],it.x,it.z),inside:it.id==='fitting'})}}return out}
-function seatSpots(){const s=IN.site,out=[],bur=s.type==='burger';for(const it of s.layout){if(it.id!=='seats')continue;const ch=bur?[[0,-.7],[0,.7],[-.7,0],[.7,0]]:[[0,-.68],[0,.68]];const a=it.r*Math.PI/2;
+function seatSpots(){const s=IN.site,out=[],bur=s.type==='burger';for(const it of s.layout.filter(x=>!x.l).filter(x=>!x.l)){if(it.id!=='seats')continue;const ch=bur?[[0,-.7],[0,.7],[-.7,0],[.7,0]]:[[0,-.68],[0,.68]];const a=it.r*Math.PI/2;
   ch.forEach(([lx,lz],k)=>{const x=it.x+lx*Math.cos(a)-lz*Math.sin(a),z=it.z+lx*Math.sin(a)+lz*Math.cos(a);out.push({key:'s'+it.x.toFixed(2)+','+it.z.toFixed(2)+':'+k,x,z,face:faceTo(x,z,it.x,it.z),it})})}return out}
 const CUST_SHIRTS=['#3a7d5c','#2f4b7c','#7b5ea7','#d9a441','#5b6670','#a64b3c','#e8e4d8','#d86a8a','#4aa3a8','#1f1f24'];
 function spawnCustomer(){
@@ -3326,7 +3401,7 @@ function stepMove(p,dt,spd){const P=p.m.position;const tg=p.route[0];if(!tg){ret
  P.x+=dx/dd*st;P.z+=dz/dd*st;const want=Math.atan2(-dx,-dz);let da=want-p.m.rotation.y;da=Math.atan2(Math.sin(da),Math.cos(da));p.m.rotation.y+=da*Math.min(1,dt*12);return false}
 function turnTo(p,a,dt){if(a==null)return;let da=a-p.m.rotation.y;da=Math.atan2(Math.sin(da),Math.cos(da));p.m.rotation.y+=da*Math.min(1,dt*8)}
 function interiorTick(dt,now){
- if(!IN)return;const pin=PINS.get(IN.key);if(pin)pin.sprite.visible=false;
+ if(!IN)return;{const v0=IN.lv===0;for(const p of IN.people)p.m.visible=v0;for(const c of IN.crates)c.visible=v0;for(const p of IN.pops||[])p.m.visible=v0}const pin=PINS.get(IN.key);if(pin)pin.sprite.visible=false;
  for(const c of IN.grp.children)c.renderOrder=3;
  clearOccluders(now);
  const s=IN.site,rm=IN.rm,running=ui.speed>0,open=s.status==='open'&&running,f=running?Math.min(ui.speed,3):1,T=now/1000;
@@ -3368,7 +3443,7 @@ function interiorTick(dt,now){
  for(const p of IN.people){if(!p.route||!p.route.length){p.stk=0;continue}const P=p.m.position;if(p.lp&&Math.hypot(P.x-p.lp[0],P.z-p.lp[1])<.03)p.stk=(p.stk||0)+dt;else{p.stk=0;p.lp=[P.x,P.z]}
   if(p.stk>1.6){p.stk=0;p.lp=null;if(p.exit||p.leaving){IN.grp.remove(p.m);p.dead=true;if(p.kind==='cust')release(p);continue}const tg=p.route.shift();if(tg){P.x=tg.x;P.z=tg.z}if(!p.route.length)p.arrived=true}}
  IN.people=IN.people.filter(p=>!p.dead);
- if(open&&BIZ[s.type].wholesale){IN.ord=(IN.ord||0)+dt*f;if(IN.ord>3.2){IN.ord=0;const src=s.layout.filter(it=>['forklift','dock','stall','store','racking','tank','cold','press','rack','netcore','noc'].includes(it.id)),L=s.last;if(src.length&&L&&L.cust){const it=src[Math.floor(Math.random()*src.length)];cashPop(it.x,it.z,L.rev/Math.max(1,L.cust)*(3+Math.random()*4),true)}}}
+ if(open&&BIZ[s.type].wholesale){IN.ord=(IN.ord||0)+dt*f;if(IN.ord>3.2){IN.ord=0;const src=s.layout.filter(x=>!x.l).filter(it=>['forklift','dock','stall','store','racking','tank','cold','press','rack','netcore','noc'].includes(it.id)),L=s.last;if(src.length&&L&&L.cust){const it=src[Math.floor(Math.random()*src.length)];cashPop(it.x,it.z,L.rev/Math.max(1,L.cust)*(3+Math.random()*4),true)}}}
  if(open&&IN.tills.length){const perH=s.last?s.last.cust/Math.max(1,s.hours):6;IN.spawn+=dt*clamp(perH/18,.15,1.4)*f/2.2;
   const cs=IN.people.filter(p=>p.kind==='cust'),nc=cs.length,dc=doorIn(),atDoor=cs.filter(p=>p.m.position.z<1.4&&Math.abs(p.m.position.x-dc[0])<1.5).length,qcap=IN.tills.reduce((a,t)=>a+t.spots.length,0),qd=IN.tills.reduce((a,t)=>a+t.q.length,0);
   if(IN.spawn>1&&nc<10&&atDoor<2&&(qd<qcap||Math.random()<.15)){IN.spawn=0;spawnCustomer()}}
@@ -3398,7 +3473,7 @@ function roomHit(x,y){raycaster.setFromCamera({x:x/window.innerWidth*2-1,y:-(y/w
  const inv=new THREE.Matrix4().copy(IN.grp.matrixWorld).invert(),o=raycaster.ray.origin.clone().applyMatrix4(inv),d=raycaster.ray.direction.clone().transformDirection(inv);
  if(Math.abs(d.y)<1e-6)return null;const t=-o.y/d.y;if(t<0)return null;return[o.x+d.x*t,o.z+d.z*t]}
 function startPlacing(id,from){
- if(!IN)return;cancelPlacing();const s=IN.site;const it=from!=null?Object.assign({},s.layout[from]):{id,x:IN.rm.W/2,z:IN.rm.D/2,r:0};
+ if(!IN)return;cancelPlacing();const s=IN.site;const it=from!=null?Object.assign({},s.layout[from]):{id,x:IN.rm.W/2,z:IN.rm.D/2,r:0,l:IN.lv};
  IN.placing={id:it.id,from,it,ok:false};rebuildItems();const gh=itemMesh(it,true);IN.placing.ghost=gh;IN.grp.add(gh);renderInteriorBar();
 }
 function cancelPlacing(){if(!IN||!IN.placing)return;IN.grp.remove(IN.placing.ghost);IN.placing=null;rebuildItems();renderInteriorBar()}
@@ -3410,7 +3485,7 @@ function interiorRotate(){if(!IN||!IN.placing)return;const P=IN.placing;P.it.r=(
 function interiorClick(x,y){
  if(!IN)return false;
  if(IN.placing){const P=IN.placing;if(!P.ok){toast("That spot is blocked — try somewhere clear of walls, the door and other kit",'warn');return true}
-  const s=IN.site;if(P.from!=null)s.layout[P.from]={id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r};else{s.layout.push({id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r});weekCount('kit')}
+  const s=IN.site;if(P.from!=null)s.layout[P.from]={id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r,l:P.it.l||0};else{s.layout.push({id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r,l:P.it.l||0});weekCount('kit')}
   IN.grp.remove(P.ghost);IN.placing=null;rebuildItems();rebuildCrowd();renderInteriorBar();save();return true}
  raycaster.setFromCamera({x:x/window.innerWidth*2-1,y:-(y/window.innerHeight)*2+1},camera);
  const hit=raycaster.intersectObjects(IN.items,false)[0];if(hit){startPlacing(null,hit.object.userData.idx);return true}
@@ -3440,7 +3515,7 @@ function renderInteriorBar(){
   <div class="ib-row">${st.map(x=>`<button class="btn sm" data-act="iplace" data-id="${x.e.id}">Place ${esc(x.e.n)}${x.n>1?' ×'+x.n:''}</button>`).join('')}</div>`}
  else{const L=s.last,stat=s.status!=='open'?'<span class="warnc">Not open yet</span> · finish the checklist in Overview':L&&L.open?`${stars(s.rep)} · yesterday <b class="${L.profit>=0?'up':'down'}">${pm(L.profit)}</b> · ${L.cust} served${L.lost?` · <span class="warnc">${L.lost} gave up waiting</span>`:''}`:'Opening day';
   h=`<div class="ib-main"><span class="ib-t">${esc(s.name)} · ${stat}</span><span class="ib-k">Drag to look around · scroll to zoom · click kit to move or sell it</span></div><div class="ib-row"><button class="ghost sm" data-act="iexit">Step outside</button></div>`}
- if(el._h!==h){el._h=h;el.innerHTML=h}
+ h=lvBarHtml(P)+h;if(el._h!==h){el._h=h;el.innerHTML=h}
 }
 
 // ===================== ANCAP LIFE · INTERFACE =====================
@@ -3733,7 +3808,7 @@ function siteBiz(s,b,E,lot){
  <h3 class="eyebrow">Premises</h3>${siteProp(s,b,E,lot)}`}
 function siteEquip(s,b,E,lot){
  const placed={};for(const x of s.layout||[])placed[x.id]=(placed[x.id]||0)+1;
- return`<p class="muted">Buy kit, then put it down inside your shop. Kit only works once it's placed. To move or sell something, click it inside.</p><div>${b.equip.map(e=>{const n=s.equip[e.id]||0,mx=equipMax(e,lot.sqm),k=equipCost(e,E),np=EQ_NOPLACE[e.id]?n:Math.min(n,placed[e.id]||0),store=n-np;
+ const lvN=1+Object.keys(s.lv||{}).length;return`<p class="muted">Buy kit, then put it down inside your shop.${lvList(s).length>1?` Buildings with several storeys let you open more levels inside (stairs, stockroom, office or a second sales floor).`:''}${lvN>1?` Floor space: ${siteSqm(s,lot)} m² across ${lvN} levels.`:''} Kit only works once it's placed. To move or sell something, click it inside.</p><div>${b.equip.map(e=>{const n=s.equip[e.id]||0,mx=equipMax(e,siteSqm(s,lot)),k=equipCost(e,E),np=EQ_NOPLACE[e.id]?n:Math.min(n,placed[e.id]||0),store=n-np;
  const fx=[e.back?`+${e.back}/h ${b.groups.back.toLowerCase()}`:'',e.front?`+${e.front}/h ${b.groups.front.toLowerCase()}`:'',e.q?`+${e.q} quality`:'',e.foot?`+${Math.round(e.foot*100)}% walk-ins`:'',e.fridge?'less spoilage':'',e.note||''].filter(Boolean).join(' · ');
  const placingNow=ui.interior&&ui.interior.placing&&ui.interior.placing.from==null&&ui.interior.placing.id===e.id;const st=placingNow?`<span class="st warnc">placing now…</span>`:store>0?`<span class="st warnc">${store} not placed</span>`:n?`<span class="st">${EQ_NOPLACE[e.id]?'installed':np+' in use'}</span>`:'';
  return`<div class="sitem"><div><b>${esc(e.n)}</b>${e.req?' <span class="pill req">Required</span>':''}<small>${esc(fx)}</small>${st}</div><div class="ia">${store>0&&!placingNow?`<button class="btn sm" data-act="iplace" data-id="${e.id}">Place</button>`:''}<button class="${store>0?'ghost':'btn'} sm" data-act="buyq" data-id="${e.id}" ${n>=mx||G.cash<k?'disabled':''} title="${n>=mx?'This shop has room for '+mx:''}">Buy ${money(k)}</button></div></div>`}).join('')}</div>`}
@@ -3862,6 +3937,9 @@ document.addEventListener('click',e=>{
   case 'interior':{const st=G.sites.find(x=>x.id===id);if(!st)break;if(ui.interior&&ui.interior.site===st)exitInterior();else{ui.site=st.id;enterInterior(st)}renderSite();break}
   case 'iexit':exitInterior();renderSite();break;
   case 'irot':interiorRotate();break;
+  case 'ilv':setLevel(+id);break;
+  case 'iunlock':unlockLevel(+id);break;
+  case 'iuse':setUse(id);break;
   case 'icancel':cancelPlacing();break;
   case 'iplace':{if(!ui.interior||ui.interior.site!==s){if(s){PENDING_PLACE={s,id};enterInterior(s)}break}placeFromStorage(id);break}
   case 'gosite':{$('#shopsmenu').hidden=true;const x=G.sites.find(y=>y.id===id);if(x){if(ui.interior)exitInterior(true);ui.site=x.id;ui.tab='overview';renderSite();enterInterior(x)}break}
@@ -3884,7 +3962,7 @@ document.addEventListener('click',e=>{
   case 'goals':openModal('goals');break;
   case 'menu':openModal('menu');break;
   case 'start':{G.company=($('#coname').value||'').trim()||'Free Enterprise Co.';closeModal();ui.started=true;save();renderAll();break}
-  case 'buyq':{const e=BIZ[s.type].equip.find(x=>x.id===id),k=equipCost(e,s.p);if(G.cash<k||(s.equip[id]||0)>=equipMax(e,siteLot(s).sqm))break;G.cash-=k;s.paid+=k;s.equip[id]=(s.equip[id]||0)+1;interiorBought(s,id);renderSite();renderTop();save();break}
+  case 'buyq':{const e=BIZ[s.type].equip.find(x=>x.id===id),k=equipCost(e,s.p);if(G.cash<k||(s.equip[id]||0)>=equipMax(e,siteSqm(s,siteLot(s))))break;G.cash-=k;s.paid+=k;s.equip[id]=(s.equip[id]||0)+1;interiorBought(s,id);renderSite();renderTop();save();break}
   case 'sellq':{const e=BIZ[s.type].equip.find(x=>x.id===id),k=equipCost(e,s.p);if(!s.equip[id])break;s.equip[id]--;G.cash+=k*.4;s.paid=Math.max(0,s.paid-k);interiorSold(s,id);renderSite();renderTop();save();break}
   case 'hire':{const arr=s.cands[t.dataset.role],i=arr.findIndex(x=>x.id===id);if(i<0)break;s.staff.push(arr.splice(i,1)[0]);weekCount('hire');toast(`Hired ${s.staff[s.staff.length-1].name}`,'good');interiorStaffChanged(s);renderSite();break}
   case 'fire':{if(ui.confirm!=='fire'+id){ui.confirm='fire'+id;renderSite();break}ui.confirm=null;const i=s.staff.findIndex(x=>x.id===id);if(i>=0){const x=s.staff[i];G.cash-=x.wage*8*5;s.staff.splice(i,1);toast(`${x.name} left with a week's pay`,'')}interiorStaffChanged(s);renderSite();renderTop();break}
@@ -3933,6 +4011,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='s
  if(t.dataset.change==='auto')s.auto=t.checked});
 document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;
  if(e.code==='Space'){e.preventDefault();ui.speed=ui.speed?0:1;renderTop()}
+ if(ui.interior&&!ui.modal&&(e.key==='PageUp'||e.key==='PageDown')){const I=ui.interior,Ls=lvList(I.site).filter(l=>lvOpen(I.site,l)),n=Ls.indexOf(I.lv)+(e.key==='PageUp'?1:-1);if(Ls[n]!=null)setLevel(Ls[n]);e.preventDefault();return}
  if((e.key==='r'||e.key==='R')&&ui.interior&&ui.interior.placing){interiorRotate();return}
  if(e.key==='Escape'&&ui.interior&&!ui.modal){if(ui.interior.placing)cancelPlacing();else{exitInterior();renderSite()}return}
  if(e.key==='Escape'){if(ui.modal&&!['intro','over','event'].includes(ui.modal.kind))closeModal();else if(ui.selLot)selectLot(null)}
