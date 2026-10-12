@@ -1359,7 +1359,7 @@ function dailyNeeds(s){
 function buyStock(s,sid,units){
  units=Math.ceil(units);if(units<=0)return 0;const unit=supPrice(sid,s.p)*1.05;let cost=units*unit;
  if(cost>G.cash){units=Math.floor(Math.max(0,G.cash)/unit);cost=units*unit}if(units<=0)return 0;
- const inv=s.inv[sid]||(s.inv[sid]={q:0,c:unit});inv.c=(inv.q*inv.c+units*unit)/(inv.q+units);inv.q+=units;G.cash-=cost;G.mkt[sid].pressure=(G.mkt[sid].pressure||0)+cost;return cost;
+ const inv=s.inv[sid]||(s.inv[sid]={q:0,c:unit});inv.c=(inv.q*inv.c+units*unit)/(inv.q+units);if(typeof invAdd==='function')invAdd(s,sid,units,inv);inv.q+=units;G.cash-=cost;G.mkt[sid].pressure=(G.mkt[sid].pressure||0)+cost;return cost;
 }
 function restock(s,days){const need=dailyNeeds(s);let spent=0;for(const sid of bizSupplies(BIZ[s.type])){const have=s.inv[sid]?s.inv[sid].q:0,want=(need[sid]||0)*days-have;if(want>.01)spent+=buyStock(s,sid,want)}return spent}
 function openChecks(s){
@@ -1381,6 +1381,7 @@ function simSite(s,dow){
  for(const x of s.staff)d.wages+=x.wage*Math.min(s.hours,8);
  if(s.tenure==='lease')d.rent=s.rent/30;
  const sq=Math.sqrt(E.price),sqm=lot?lot.sqm:60;
+ if(typeof invDayStart==='function')invDayStart(s);
  const shut=s.shutUntil!=null&&G.day<=s.shutUntil;
  if(s.status==='open'&&lot&&!shut){
   s._comp=competition(s);
@@ -1389,7 +1390,7 @@ function simSite(s,dow){
   d.cust=Math.round(served);d.lost=Math.max(0,Math.round(want-served));let wU=0,sU=0;const dem={};
   for(const p of b.products){const pr=s.prices[p.id],u=Math.round(d.cust*takeRate(b,p,E,pr));wU+=u;let mk=u;
    for(const k in p.rec){const h=s.inv[k]?s.inv[k].q:0;mk=Math.min(mk,Math.floor(h/p.rec[k]+1e-9));dem[k]=(dem[k]||0)+u*p.rec[k]}
-   mk=Math.max(0,mk);for(const k in p.rec){if(!mk)break;const inv=s.inv[k],qq=mk*p.rec[k];inv.q=Math.max(0,inv.q-qq);d.cogs+=qq*inv.c}
+   mk=Math.max(0,mk);for(const k in p.rec){if(!mk)break;const inv=s.inv[k],qq=mk*p.rec[k];if(typeof invSell==='function')invSell(s,k,qq,inv);inv.q=Math.max(0,inv.q-qq);d.cogs+=qq*inv.c}
    d.sold[p.id]=mk;sU+=mk;d.rev+=mk*pr}
   d.stockout=wU?1-sU/wU:0;
   for(const k of bizSupplies(b)){const v=dem[k]||0;s.use[k]=s.use[k]==null?v:s.use[k]*.6+v*.4}
@@ -3656,11 +3657,13 @@ function interiorMove(x,y){
 function interiorRotate(){if(!IN||!IN.placing)return;const P=IN.placing;P.it.r=(P.it.r+1)%4;P.ok=iValid(IN.rm,IN.site.layout,P.it,P.from==null?-1:P.from);P.ghost.rotation.y=-P.it.r*Math.PI/2}
 function interiorClick(x,y){
  if(!IN)return false;
+ if(typeof INV!=='undefined'&&INV.open&&!IN.placing)invClose();
  if(IN.placing){const P=IN.placing;if(!P.ok){toast("That spot is blocked — try somewhere clear of walls, the door and other kit",'warn');return true}
   const s=IN.site;if(P.from!=null)s.layout[P.from]={id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r,l:P.it.l||0};else{s.layout.push({id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r,l:P.it.l||0});weekCount('kit')}
   IN.grp.remove(P.ghost);IN.placing=null;rebuildItems();rebuildCrowd();renderInteriorBar();save();return true}
  raycaster.setFromCamera({x:x/window.innerWidth*2-1,y:-(y/window.innerHeight)*2+1},camera);
- const hit=raycaster.intersectObjects(IN.items,false)[0];if(hit){startPlacing(null,hit.object.userData.idx);return true}
+ const hit=raycaster.intersectObjects(IN.items,false)[0];if(hit){if(typeof invOpenFor==='function'&&invOpenFor(hit.object.userData.idx))return true;startPlacing(null,hit.object.userData.idx);return true}
+ const dh=IN.dress&&raycaster.intersectObjects(IN.dress.children,false)[0];if(dh&&typeof invOpenStockroom==='function'&&invOpenStockroom())return true;
  const h=roomHit(x,y);if(h&&h[0]>-.3&&h[0]<IN.rm.W+.3&&h[1]>-.3&&h[1]<IN.rm.D+.3)return true;
  return false;
 }
@@ -3686,7 +3689,7 @@ function renderInteriorBar(){
  else if(st.length){h=`<div class="ib-main"><span class="ib-t warnc">Not set up yet</span><span class="ib-k">Kit in storage doesn't work. Place it in the shop:</span></div>
   <div class="ib-row">${st.map(x=>`<button class="btn sm" data-act="iplace" data-id="${x.e.id}">Place ${esc(x.e.n)}${x.n>1?' ×'+x.n:''}</button>`).join('')}</div>`}
  else{const L=s.last,stat=s.status!=='open'?'<span class="warnc">Not open yet</span> · finish the checklist in Overview':L&&L.open?`${stars(s.rep)} · yesterday <b class="${L.profit>=0?'up':'down'}">${pm(L.profit)}</b> · ${L.cust} served${L.lost?` · <span class="warnc">${L.lost} gave up waiting</span>`:''}`:'Opening day';
-  h=`<div class="ib-main"><span class="ib-t">${esc(s.name)} · ${stat}</span><span class="ib-k">Drag to look around · scroll to zoom · click kit to move or sell it</span></div><div class="ib-row"><button class="ghost sm" data-act="iexit">Step outside</button></div>`}
+  h=`<div class="ib-main"><span class="ib-t">${esc(s.name)} · ${stat}</span><span class="ib-k">Drag to look around · scroll to zoom · click shelves, racks and fridges to check stock · click other kit to move or sell it</span></div><div class="ib-row"><button class="btn sm" data-act="invall">Inventory</button><button class="ghost sm" data-act="iexit">Step outside</button></div>`}
  h=lvBarHtml(P)+h;if(el._h!==h){el._h=h;el.innerHTML=h}
 }
 
@@ -3980,7 +3983,7 @@ function siteBiz(s,b,E,lot){
  <h3 class="eyebrow">Premises</h3>${siteProp(s,b,E,lot)}`}
 function siteEquip(s,b,E,lot){
  const placed={};for(const x of s.layout||[])placed[x.id]=(placed[x.id]||0)+1;
- const lvN=1+Object.keys(s.lv||{}).length;return`<p class="muted">Buy kit, then put it down inside your shop.${lvList(s).length>1?` Buildings with several storeys let you open more levels inside (stairs, stockroom, office or a second sales floor).`:''}${lvN>1?` Floor space: ${siteSqm(s,lot)} m² across ${lvN} levels.`:''} Kit only works once it's placed. To move or sell something, click it inside.</p><div>${b.equip.map(e=>{const n=s.equip[e.id]||0,mx=equipMax(e,siteSqm(s,lot)),k=equipCost(e,E),np=EQ_NOPLACE[e.id]?n:Math.min(n,placed[e.id]||0),store=n-np;
+ const lvN=1+Object.keys(s.lv||{}).length;return`<p class="muted">Buy kit, then put it down inside your shop.${lvList(s).length>1?` Buildings with several storeys let you open more levels inside (stairs, stockroom, office or a second sales floor).`:''}${lvN>1?` Floor space: ${siteSqm(s,lot)} m² across ${lvN} levels.`:''} Kit only works once it's placed. To move or sell something, click it inside. Shelves, racks and fridges open their stock first, with Move or sell inside that panel.</p><div>${b.equip.map(e=>{const n=s.equip[e.id]||0,mx=equipMax(e,siteSqm(s,lot)),k=equipCost(e,E),np=EQ_NOPLACE[e.id]?n:Math.min(n,placed[e.id]||0),store=n-np;
  const fx=[e.back?`+${e.back}/h ${b.groups.back.toLowerCase()}`:'',e.front?`+${e.front}/h ${b.groups.front.toLowerCase()}`:'',e.q?`+${e.q} quality`:'',e.foot?`+${Math.round(e.foot*100)}% walk-ins`:'',e.fridge?'less spoilage':'',e.note||''].filter(Boolean).join(' · ');
  const placingNow=ui.interior&&ui.interior.placing&&ui.interior.placing.from==null&&ui.interior.placing.id===e.id;const st=placingNow?`<span class="st warnc">placing now…</span>`:store>0?`<span class="st warnc">${store} not placed</span>`:n?`<span class="st">${EQ_NOPLACE[e.id]?'installed':np+' in use'}</span>`:'';
  return`<div class="sitem"><div><b>${esc(e.n)}</b>${e.req?' <span class="pill req">Required</span>':''}<small>${esc(fx)}</small>${st}</div><div class="ia">${store>0&&!placingNow?`<button class="btn sm" data-act="iplace" data-id="${e.id}">Place</button>`:''}<button class="${store>0?'ghost':'btn'} sm" data-act="buyq" data-id="${e.id}" ${n>=mx||G.cash<k?'disabled':''} title="${n>=mx?'This shop has room for '+mx:''}">Buy ${money(k)}</button></div></div>`}).join('')}</div>`}
@@ -4006,9 +4009,10 @@ function siteStock(s,b,E){
  const need=dailyNeeds(s);
  return`<div class="box"><label class="tog"><input type="checkbox" id="auto-${s.id}" data-change="auto" ${s.auto?'checked':''}> Auto-restock every morning</label>
  <div class="stepper"><span>Keep</span><button class="ghost sm" data-act="days" data-d="-1" aria-label="Fewer days">−</button><span class="mono">${s.days} days</span><button class="ghost sm" data-act="days" data-d="1" aria-label="More days">+</button><span>of stock on hand</span></div>
- <p class="fine">Deliveries carry a 5% charge. Perishables kept beyond their shelf life spoil, so don't overbuy fresh food.</p></div>
+ <p class="fine">Deliveries carry a 5% charge. Perishables kept beyond their shelf life spoil, so don't overbuy fresh food.</p>
+ <button class="btn sm" data-act="invall" style="margin-top:8px">Open inventory</button></div>
  <div class="tscroll"><table class="stock"><thead><tr><th>Supply</th><th>In stock</th><th>Lasts</th><th>Price</th><th></th></tr></thead><tbody>${bizSupplies(b).map(k=>{const S=SUP[k],inv=s.inv[k],q=inv?inv.q:0,per=need[k]||0,days=per>0?q/per:Infinity,mp=supPrice(k,E),H=G.mkt[k].h,tr=H.length>7?G.mkt[k].m/H[H.length-8]-1:0;
-  return`<tr><td><b>${esc(S.n)}</b><small>${esc(S.u)}${S.shelf?` · keeps ${S.shelf}d`:''}</small></td><td class="mono">${q<10?q.toFixed(1):Math.round(q)}</td><td class="mono ${days<1?'down':''}">${days===Infinity?'—':days<1?'<1d':days.toFixed(days<10?1:0)+'d'}</td><td class="mono">${pm(mp)}<small class="${tr>.03?'down':tr<-.03?'up':''}">${tr>=0?'▲':'▼'}${Math.abs(Math.round(tr*100))}%</small></td><td class="ia"><button class="ghost sm" data-act="stock" data-id="${k}" data-d="1">+1 day</button><button class="ghost sm" data-act="stock" data-id="${k}" data-d="7">+1 wk</button></td></tr>`}).join('')}</tbody></table></div>`;
+  return`<tr><td><b>${typeof invMini==='function'?invMini(k):''}${esc(S.n)}</b><small>${esc(S.u)}${S.shelf?` · keeps ${S.shelf}d`:''}</small></td><td class="mono">${q<10?q.toFixed(1):Math.round(q)}</td><td class="mono ${days<1?'down':''}">${days===Infinity?'—':days<1?'<1d':days.toFixed(days<10?1:0)+'d'}</td><td class="mono">${pm(mp)}<small class="${tr>.03?'down':tr<-.03?'up':''}">${tr>=0?'▲':'▼'}${Math.abs(Math.round(tr*100))}%</small></td><td class="ia"><button class="ghost sm" data-act="stock" data-id="${k}" data-d="1">+1 day</button><button class="ghost sm" data-act="stock" data-id="${k}" data-d="7">+1 wk</button></td></tr>`}).join('')}</tbody></table></div>`;
 }
 function siteProp(s,b,E,lot){
  const prop=propAtKey(s.key);let o='';const LE=econAt(lot.lat,lot.lon);
@@ -4097,6 +4101,11 @@ document.addEventListener('click',e=>{
  if(!['fire','closebiz','newgame','frnew'].includes(a)&&ui.confirm)ui.confirm=null;
  switch(a){
   case 'shops':{const m=$('#shopsmenu');m.hidden=!m.hidden;m._h='';renderShops();break}
+  case 'invall':invOpenAll();break;
+  case 'invclose':invClose();break;
+  case 'invmove':invMove();break;
+  case 'invbuy':invBuy(id,+t.dataset.d);break;
+  case 'invmenu':{const si=invSite();if(si){ui.site=si.id;ui.tab='menu';renderSite()}break}
   case 'isell':sellPicked();break;
   case 'flylm':{const L=LANDMARKS.find(x=>x.id===t.dataset.id);if(L)flyTo(L.lat,L.lon,Math.max(700,L.h*3.2));break}
   case 'flyll':flyTo(+t.dataset.lat,+t.dataset.lon,t.dataset.real==='1'?2600:camAlt()>3e5?60000:9000);break;
@@ -5909,5 +5918,310 @@ function updSelFX(now){
   }catch(e){}
  }})();
 (function loop(now){try{updSelFX(now)}catch(e){}requestAnimationFrame(loop)})(performance.now());
+</script>
+<script>
+// ===================== ANCAP LIFE · INVENTORY =====================
+// Click a rack / shelf / fridge / machine inside a shop to see the exact items stored there.
+// The single source of truth is still s.inv[supply].q (what the Menu tab shows and what sales draw down).
+// On top of that each supply is split into specific items (blue tee, green pants, house-blend beans...) in s.inv[supply].v.
+// The split is reconciled against q every time it is read, so the two can never disagree.
+const INV={open:false,mode:'item',idx:null,eq:null,site:null,title:'',prev:{},dl:{}};
+
+// ---------- item pictures (inline SVG, no network) ----------
+const IV_S='#0c0c0c';
+function ivShade(h,f){if(!/^#[0-9a-f]{6}$/i.test(h))return h;const n=parseInt(h.slice(1),16);let r=n>>16,g=(n>>8)&255,b=n&255;const m=f<1?0:255,t=f<1?1-f:f-1;r=Math.round(r+(m-r)*t);g=Math.round(g+(m-g)*t);b=Math.round(b+(m-b)*t);return'#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}
+const ivO=`stroke="${IV_S}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"`;
+const ivP=(d,f,x)=>`<path d="${d}" fill="${f}" ${ivO} ${x||''}/>`;
+const ivR=(x,y,w,h,f,r)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r||0}" fill="${f}" ${ivO}/>`;
+const ivC=(x,y,r,f)=>`<circle cx="${x}" cy="${y}" r="${r}" fill="${f}" ${ivO}/>`;
+const ivE=(x,y,rx,ry,f)=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${f}" ${ivO}/>`;
+const ivL=(x1,y1,x2,y2,c,w)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w||2}" stroke-linecap="round"/>`;
+const ivT=(d,c,w)=>`<path d="${d}" fill="none" stroke="${c}" stroke-width="${w||2}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const IV_PAPER='#f2efe4';
+const IV_SHAPE={
+ shirt:a=>ivP('M20 10 L28 8 Q32 14 36 8 L44 10 L57 21 L50 29 L45 25 L45 55 L19 55 L19 25 L14 29 L7 21 Z',a)+ivT('M28 8 Q32 14 36 8',ivShade(a,.6),2.5)+ivL(19,25,19,55,ivShade(a,.8),1.5),
+ pants:a=>ivP('M18 8 H46 L49 56 H35 L32 30 L29 56 H15 Z',a)+ivR(18,8,28,6,ivShade(a,.78))+ivL(32,14,32,30,ivShade(a,.65),1.5)+ivT('M21 17 V30 M43 17 V30',ivShade(a,1.5),1.5)+ivC(32,11,1.6,'#e8c54a'),
+ jacket:a=>ivP('M20 10 L27 8 L32 15 L37 8 L44 10 L56 22 L52 50 L46 48 L46 56 L18 56 L18 48 L12 50 L8 22 Z',a)+ivP('M27 8 L32 15 L37 8 L35 20 L32 15 L29 20 Z',ivShade(a,.7))+ivL(32,15,32,56,ivShade(a,.55),2)+ivR(21,40,8,8,ivShade(a,.82),1)+ivR(35,40,8,8,ivShade(a,.82),1),
+ paperbag:a=>ivT('M24 22 V13 Q32 6 40 13 V22','#0c0c0c',2.5)+ivP('M13 20 H51 L53 56 H11 Z',a)+ivP('M13 20 H51 L52 27 H12 Z',ivShade(a,.82))+ivC(32,41,7,IV_PAPER)+ivT('M28 41 H36',IV_S,2),
+ coffeebag:(a,b)=>ivP('M16 12 H48 L51 56 H13 Z',a)+ivP('M16 12 H48 L48.5 20 H15.5 Z',ivShade(a,.78))+ivE(32,38,10,12,b||IV_PAPER)+ivE(32,38,4.5,7,ivShade(a,.7))+ivT('M32 31 Q34 38 32 45',b||IV_PAPER,1.5),
+ carton:a=>ivR(18,22,28,35,IV_PAPER,1)+ivR(18,34,28,12,a)+ivP('M18 22 L24 10 H40 L46 22 Z',a)+ivR(27,6,10,5,ivShade(a,.7),1)+ivC(32,40,3,IV_PAPER),
+ cup:a=>ivP('M17 17 H47 L43 57 H21 Z',IV_PAPER)+ivP('M18.5 28 H45.5 L44 41 H20 Z',a)+ivR(14,10,36,8,'#2a2a2e',3),
+ croissant:a=>[[9,43,6,9,-55],[18,32,7,10,-32],[32,26,8,10.5,0],[46,32,7,10,32],[55,43,6,9,55]].map(([x,y,rx,ry,r])=>`<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${r} ${x} ${y})" fill="${r%2?ivShade(a,1.08):a}" ${ivO}/>`).join('')+ivT('M30 21 Q32 19 34 21',ivShade(a,1.5),2),
+ swirl:a=>ivC(32,34,21,a)+ivT('M32 34 m-3 0 a3 3 0 1 1 6 0 a8 8 0 1 1 -14 0 a13 13 0 1 1 26 0',ivShade(a,.55),2.5)+ivT('M20 22 Q32 14 44 22',IV_PAPER,2.5),
+ loaf:a=>ivP('M9 37 Q7 19 22 17 H42 Q57 19 55 37 V51 H9 Z',a)+ivT('M20 25 L26 33 M30 23 L36 31 M40 25 L46 33',ivShade(a,1.45),2.5),
+ tub:a=>ivP('M14 25 H50 L47 55 H17 Z',a)+ivR(12,18,40,8,IV_PAPER,3)+ivR(20,33,24,13,IV_PAPER,2)+ivT('M24 39 H40',IV_S,2),
+ leaf:a=>ivP('M32 7 Q57 16 53 40 Q46 57 32 57 Q18 57 11 40 Q7 16 32 7 Z',a)+ivT('M32 12 V54 M32 30 L20 22 M32 30 L44 22 M32 42 L21 36 M32 42 L43 36',ivShade(a,1.5),2),
+ tomato:a=>ivC(32,37,19,a)+ivP('M23 23 Q32 13 41 23 Q35 22 32 29 Q29 22 23 23 Z','#3a9a3c')+ivT('M24 36 Q26 44 31 47',ivShade(a,1.55),2.5),
+ cuke:a=>ivR(6,24,52,17,a,8.5)+ivC(18,32,1.2,ivShade(a,1.5))+ivC(30,29,1.2,ivShade(a,1.5))+ivC(40,35,1.2,ivShade(a,1.5))+ivC(50,31,1.2,ivShade(a,1.5)),
+ bun:a=>ivP('M9 33 Q9 11 32 11 Q55 11 55 33 Z',a)+ivE(24,21,2.6,1.4,'#f6e8c0')+ivE(34,17,2.6,1.4,'#f6e8c0')+ivE(42,24,2.6,1.4,'#f6e8c0')+ivR(9,37,46,10,ivShade(a,.9),5),
+ patty:a=>ivE(32,38,23,14,ivShade(a,.7))+ivE(32,33,23,14,a)+ivT('M18 30 L28 38 M28 26 L40 36 M40 24 L48 31',ivShade(a,.5),2.5),
+ cheese:a=>ivP('M7 29 L57 19 V45 H7 Z',a)+ivC(20,36,3,ivShade(a,.78))+ivC(36,30,2.4,ivShade(a,.78))+ivC(46,38,3.2,ivShade(a,.78))+ivC(28,40,1.8,ivShade(a,.78)),
+ slice:a=>ivP('M10 24 L36 20 L40 46 L14 50 Z',ivShade(a,.85))+ivP('M20 16 L48 18 L46 44 L18 42 Z',a)+ivT('M24 22 L42 24',ivShade(a,1.4),2),
+ bottle:(a,b)=>ivP('M26 9 H38 V17 L42 25 V54 Q42 58 38 58 H26 Q22 58 22 54 V25 L26 17 Z',a)+ivR(25,5,14,6,b||'#2a2a2e',2)+ivR(22,33,20,15,IV_PAPER,1)+ivC(32,40,3.4,a),
+ fries:a=>ivR(18,8,5,26,'#f2c94c',1)+ivR(25,4,5,30,'#f2c94c',1)+ivR(32,9,5,25,'#f2c94c',1)+ivR(39,6,5,28,'#f2c94c',1)+ivP('M14 30 L19 57 H45 L50 30 Z',a)+ivT('M32 36 Q27 40 32 46 Q37 40 32 36',IV_PAPER,2),
+ jug:a=>ivT('M44 30 H52 V47 H44','#0c0c0c',5)+ivR(15,23,30,34,a,3)+ivR(20,13,12,10,ivShade(a,.8),1)+ivR(19,9,14,5,'#2a2a2e',1)+ivR(20,33,20,14,IV_PAPER,1)+ivC(30,40,3.4,a),
+ sack:(a,b)=>ivP('M15 15 Q32 8 49 15 L53 57 H11 Z',a)+ivT('M15 15 Q32 22 49 15',ivShade(a,.6),2.5)+ivR(19,31,26,16,b||IV_PAPER,1.5)+ivT('M24 37 H40 M24 42 H36',IV_S,2),
+ yeast:a=>ivP('M16 19 L20 13 L24 19 L28 13 L32 19 L36 13 L40 19 L44 13 L48 19 V56 H16 Z',a)+ivC(32,37,9,IV_PAPER)+ivT('M27 37 H37 M32 32 V42',a,2.5),
+ butter:a=>ivP('M8 30 L19 19 H58 L47 30 Z',ivShade(a,1.25))+ivP('M47 30 L58 19 V35 L47 46 Z',ivShade(a,.82))+ivR(8,30,39,16,a)+ivR(8,36,39,7,IV_PAPER),
+ eggs:a=>ivP('M5 36 H59 L53 55 H11 Z','#c9c3b0')+ivE(15,32,6,8,a)+ivE(26,32,6,8,a)+ivE(37,32,6,8,a)+ivE(48,32,6,8,a)+ivE(20,44,6,8,a)+ivE(32,44,6,8,a)+ivE(44,44,6,8,a),
+ cpu:a=>[8,16,24,32,40,48].map(x=>ivL(x+2,10,x+2,14,'#d9a441',2.5)+ivL(x+2,50,x+2,54,'#d9a441',2.5)+ivL(10,x+2,14,x+2,'#d9a441',2.5)+ivL(50,x+2,54,x+2,'#d9a441',2.5)).join('')+ivR(14,14,36,36,a,3)+ivR(21,21,22,22,ivShade(a,1.5),2)+ivP('M14 14 H21 L14 21 Z','#d9a441'),
+ gpu:a=>ivR(5,17,54,27,a,3)+ivC(21,30,8.5,'#15171b')+ivC(43,30,8.5,'#15171b')+ivC(21,30,2.5,ivShade(a,1.6))+ivC(43,30,2.5,ivShade(a,1.6))+ivT('M21 22 V38 M13 30 H29 M43 22 V38 M35 30 H51',ivShade(a,1.5),1.5)+ivR(9,44,28,5,'#d9a441',1)+ivR(2,14,5,32,'#8f98ad',1),
+ ram:a=>ivR(5,20,54,22,a,2)+[11,21,31,41].map(x=>ivR(x,24,7,9,'#15171b',1)).join('')+ivR(5,42,54,5,'#d9a441',1)+ivP('M30 42 V47 H34 V42','#0c0c0c'),
+ ssd:a=>ivR(9,14,46,36,a,3)+ivR(15,19,15,11,'#15171b',1)+ivR(34,19,15,11,'#15171b',1)+ivR(15,34,34,9,IV_PAPER,1)+ivR(5,26,5,12,'#d9a441',1),
+ tower:a=>ivR(17,5,30,54,a,3)+ivR(22,10,20,30,'#15171b',2)+ivT('M25 18 H39 M25 24 H39 M25 30 H39','#41b6c4',2)+ivC(32,48,3.5,'#f2f2f2')+ivL(24,54,40,54,ivShade(a,1.5),2),
+ monitor:a=>ivR(5,9,54,34,'#15171b',3)+ivR(9,13,46,26,a,1)+ivT('M13 33 L24 22 L32 29 L44 17 L51 24',ivShade(a,1.6),2)+ivR(27,43,10,8,'#8f98ad',1)+ivR(18,51,28,6,'#8f98ad',2),
+ toolbox:a=>ivT('M22 25 V16 H42 V25','#0c0c0c',5)+ivR(7,24,50,31,a,3)+ivR(7,36,50,4,ivShade(a,.65))+ivR(28,32,8,9,'#d9a441',1),
+ ink:a=>ivR(25,17,14,10,'#2a2a2e',2)+ivR(23,12,18,6,ivShade(a,.6),2)+ivP('M17 29 H47 V53 Q47 58 42 58 H22 Q17 58 17 53 Z',a)+ivP('M32 34 Q38 43 32 50 Q26 43 32 34 Z',IV_PAPER),
+ crisps:a=>ivP('M13 14 H51 L49 56 H15 Z',a)+ivT('M13 14 L16 10 L20 14 L24 10 L28 14 L32 10 L36 14 L40 10 L44 14 L48 10 L51 14',IV_S,2.5)+ivE(32,36,11,9,'#f2c94c')+ivT('M26 36 Q32 30 38 36',ivShade('#f2c94c',.7),2),
+ bar:a=>ivP('M10 26 L50 12 L56 30 L16 44 Z',a)+ivT('M23 22 L29 40 M36 17 L42 35',ivShade(a,.65),2)+ivP('M10 26 L16 44 L14 50 L8 32 Z',ivShade(a,.7)),
+ sweets:a=>ivC(32,35,17,a)+ivP('M14 35 L5 27 V43 Z',IV_PAPER)+ivP('M50 35 L59 27 V43 Z',IV_PAPER)+ivT('M24 29 Q32 40 42 31',ivShade(a,1.6),2.5),
+ can:(a,b)=>ivP('M19 12 H45 V52 Q45 58 39 58 H25 Q19 58 19 52 Z',a)+ivE(32,12,13,3.6,'#c9cdd1')+ivR(19,27,26,16,b||IV_PAPER)+ivC(32,35,4,a),
+ crate:(a,b)=>(b?ivC(19,18,7,b)+ivC(32,15,7,b)+ivC(45,18,7,b):'')+ivR(7,22,50,34,a,2)+ivL(7,33,57,33,ivShade(a,.55),2)+ivL(7,44,57,44,ivShade(a,.55),2)+ivL(20,22,20,56,ivShade(a,.55),2)+ivL(44,22,44,56,ivShade(a,.55),2),
+ news:a=>ivR(14,16,42,38,ivShade('#e8e4d8',.85),1)+ivR(8,10,44,40,'#e8e4d8',1)+ivR(13,15,34,9,'#2a2a2e',1)+ivT('M13 31 H46 M13 37 H46 M13 43 H34','#8f98ad',2),
+ mag:a=>ivR(14,6,36,52,a,2)+ivR(18,11,28,9,IV_PAPER,1)+ivC(32,38,9,ivShade(a,1.5))+ivT('M20 52 H44',IV_PAPER,2),
+ seedpack:a=>ivP('M15 12 L19 8 L23 12 L27 8 L31 12 L35 8 L39 12 L43 8 L47 12 V56 H15 Z',a)+ivC(31,34,11,IV_PAPER)+ivT('M31 44 V30 M31 36 Q24 36 24 29 Q31 29 31 36 M31 33 Q38 33 38 26 Q31 26 31 33','#3a9a3c',2.5),
+ jerry:a=>ivP('M12 22 L22 12 H46 V56 H12 Z',a)+ivR(24,6,12,6,'#2a2a2e',1)+ivT('M16 30 L42 30 M16 44 L42 44 M20 24 L38 50',ivShade(a,.65),2)+ivR(38,16,6,10,ivShade(a,.7),1),
+ aid:a=>ivT('M24 20 V14 H40 V20','#0c0c0c',4)+ivR(8,20,48,34,IV_PAPER,4)+ivR(27,26,10,22,a)+ivR(21,32,22,10,a),
+ bale:a=>ivR(7,18,50,34,a,3)+ivL(21,18,21,52,ivShade(a,.55),2.5)+ivL(43,18,43,52,ivShade(a,.55),2.5)+ivT('M11 25 L16 22 M27 34 L34 30 M47 27 L53 31 M12 44 L18 41',ivShade(a,1.4),2),
+ bolt:a=>ivC(32,32,24,a)+ivP('M36 9 L21 36 H31 L27 55 L43 27 H33 Z','#15171b'),
+ drum:a=>ivP('M14 13 Q32 8 50 13 V53 Q32 59 14 53 Z',a)+ivT('M14 25 Q32 30 50 25 M14 42 Q32 47 50 42',ivShade(a,.6),2.5)+ivP('M32 29 Q38 36 32 41 Q26 36 32 29 Z',IV_PAPER),
+ planks:a=>ivR(6,12,52,11,a,1)+ivR(10,26,48,11,ivShade(a,.9),1)+ivR(6,40,52,11,a,1)+ivT('M12 17 H30 M36 17 H48 M16 31 H34 M40 31 H52 M12 45 H28 M34 45 H50',ivShade(a,.65),1.5),
+ sheet:a=>ivP('M7 26 L20 14 H57 L44 26 Z',ivShade(a,1.2))+ivR(7,26,37,8,a)+ivR(7,34,37,8,ivShade(a,.8))+ivR(7,42,37,8,a)+ivP('M44 26 L57 14 V38 L44 50 Z',ivShade(a,.7)),
+ hw:a=>ivR(7,28,50,26,a,2)+ivT('M7 37 H57',ivShade(a,.6),2)+ivR(14,10,5,22,'#c9cdd1',1)+ivR(24,6,5,26,'#c9cdd1',1)+ivR(34,12,5,20,'#c9cdd1',1)+ivC(47,24,5,'#8f98ad')+ivC(47,24,1.5,IV_S),
+ tin:a=>ivT('M16 24 Q32 4 48 24','#0c0c0c',2.5)+ivP('M14 24 H50 V53 Q50 58 45 58 H19 Q14 58 14 53 Z','#c9cdd1')+ivE(32,24,18,4.5,'#e3e6ea')+ivR(14,33,36,15,a),
+ slab:a=>ivP('M7 31 L21 19 H58 L44 31 Z',ivShade(a,1.3))+ivR(7,31,37,13,a)+ivP('M44 31 L58 19 V32 L44 44 Z',ivShade(a,.72))+ivL(14,37,36,37,ivShade(a,1.5),2),
+ tubes:a=>[16,32,48].map(x=>ivC(x,34,9,a)+ivC(x,34,4,'#15171b')).join('')+ivR(7,48,50,5,ivShade(a,.7),2),
+ box:a=>ivR(8,22,48,34,a,3)+ivR(8,22,48,9,ivShade(a,.8))+ivR(26,22,12,6,IV_PAPER)
+};
+
+// ---------- the specific things on each shelf ----------
+// supply -> [name, colour, icon override, popularity]
+const IV_K={beans:'coffeebag',milk:'carton',cups:'cup',pastry:'croissant',bread:'loaf',filling:'tub',veg:'leaf',bun:'bun',beef:'patty',cheese:'cheese',sauce:'bottle',fries:'fries',oil:'jug',syrup:'bottle',flour:'sack',yeast:'yeast',butter:'butter',sugar:'sack',eggs:'eggs',cpu:'cpu',gpu:'gpu',ram:'ram',ssd:'ssd',chassis:'tower',monitor:'monitor',parts:'toolbox',blank:'shirt',ink:'ink',jeans:'pants',jacket:'jacket',bags:'paperbag',snacks:'crisps',drinks:'can',grocery:'crate',papers:'news',seed:'seedpack',fert:'sack',diesel:'jerry',feed:'sack',vet:'aid',power:'bolt',coolant:'drum',crates:'crate',timber:'planks',fittings:'hw',varnish:'tin',steel:'slab'};
+const IV_V={
+ blank:'White tee|#ece6d6||3;Black tee|#24242a||3;Blue tee|#2f6fd0||2.4;Green tee|#3a9a5c||1.8;Red tee|#c8453a||1.4',
+ jeans:'Blue jeans|#2f5fa0||4;Black jeans|#26282e||3;Light-wash jeans|#7fa6d6||2;Green pants|#4f7a3c||1.5',
+ jacket:'Denim jacket|#3a6ab0||3;Black bomber|#232329||3;Olive parka|#5f6b3a||2;Brown leather jacket|#7a4a2a||1.2',
+ ink:'Black ink|#2a2a30||4;White ink|#e6e2d4||3;Red ink|#d33a30||1.5;Blue ink|#2f6fd0||1.5',
+ bags:'Kraft bags|#b88a5a||4;White boutique bags|#ece6d6||2',
+ beans:'House blend|#6b432a||5;Ethiopian single-origin|#a05a3a||2.5;Decaf|#7d7a72||1',
+ milk:'Whole milk|#3a7bd5||5;Semi-skimmed|#3a9a5c||3;Oat milk|#d9b97a||2',
+ cups:'Small cups|#c8453a||2;Medium cups|#2f6fd0||4;Large cups|#3a9a5c||3',
+ pastry:'Croissants|#d9a441||4;Pain au chocolat|#9a6a34||2.5;Cinnamon swirls|#c98a4a|swirl|2',
+ bread:'White loaf|#e8cf94||3;Wholemeal loaf|#a9773c||3;Sourdough|#c29a5c||2',
+ filling:'Ham & cheese|#e87a8a||3;Chicken salad|#e8c46a||2.5;Tuna mayo|#8fb4c9||1.5;Cheddar & pickle|#d98a2a||2',
+ veg:'Lettuce|#6fbf4a||4;Tomatoes|#d9432f|tomato|3;Cucumber|#4a9a3a|cuke|1.5',
+ bun:'Sesame buns|#d99a46||4;Plain buns|#e0b26a||2',
+ beef:'Smash patties|#7a3a26||4;Quarter-pound patties|#6a3220||2.5',
+ cheese:'American slices|#f0b429|slice|4;Mature cheddar|#e8932a||2',
+ sauce:'Ketchup|#c8332a||4;Mustard|#e8c02a||2;Burger sauce|#e88a5a||3;Mayo|#efe6c8||1.5',
+ fries:'Straight-cut fries|#c8332a||3;Crinkle-cut fries|#e08a2a||2',
+ oil:'Fryer oil|#d9a82a||1',
+ syrup:'Cola syrup|#4a2a1a||4;Lemon-lime syrup|#7fc24a||2;Orange syrup|#f08a2a||2',
+ flour:'Strong white flour|#ece6d6||4;Wholemeal flour|#c4a574||2.5;Rye flour|#a8a090||1',
+ yeast:'Fresh yeast|#e8d8a0|butter|2;Dried yeast|#c8453a||3',
+ butter:'Unsalted butter|#f2d36b||3;Salted butter|#e8c04a||2',
+ sugar:'Caster sugar|#ece6d6||3;Icing sugar|#9fc4e8||1.5;Brown sugar|#b98a50||1.5',
+ eggs:'Free-range eggs|#d9b27a||4;Large eggs|#f0e4cc||2',
+ cpu:'6-core CPU|#3a3d44||3;8-core CPU|#2f4b7c||3;12-core CPU|#7a2f3a||1.5',
+ gpu:'Entry GPU 8GB|#3a7a4a||3;Mid GPU 12GB|#2f4b7c||3;High-end GPU 16GB|#7a2f3a||1.5',
+ ram:'16GB RAM kit|#2f8f5c||3;32GB RAM kit|#2f6fd0||3;64GB RAM kit|#8a3fb0||1',
+ ssd:'500GB SSD|#2f6fd0||3;1TB SSD|#2f8f5c||3;2TB SSD|#c8453a||1.5',
+ chassis:'Mini-ITX set|#c9cdd1||2;Mid-tower set|#2a2a30||4;Full-tower set|#3a3d44||1.5',
+ monitor:'24in monitor|#41b6c4||4;27in monitor|#3a7bd5||3;34in ultrawide|#8a5fd0||1.2',
+ parts:'Fans & cables|#2f6fd0||3;Thermal paste kit|#c8453a||2;Screws & tools|#e0a42a||2',
+ snacks:'Crisps|#d9432f||4;Chocolate bars|#6b3a24|bar|4;Sweets|#e868a0|sweets|2.5',
+ drinks:'Cola cans|#c8332a|can|4;Lemonade cans|#e8d84a|can|2.5;Water bottles|#8fc4e8|bottle|3;Orange juice|#f08a2a|carton|2',
+ grocery:'Fruit crates|#b88a5a|crate|3;Vegetable crates|#a87a4a|crate|3',
+ papers:'Daily papers|#e8e4d8|news|4;Magazines|#d86a8a|mag|2',
+ seed:'Wheat seed|#d9b44a||3;Barley seed|#c49a4a||2;Seedling trays|#4a9a3a||2',
+ fert:'General fertiliser|#4a8a4a||3;Nitrogen mix|#b0452a||2',
+ diesel:'Red diesel|#c8332a||1',
+ feed:'Cattle feed|#a9773c||3;Poultry feed|#d9b44a||2',
+ vet:'Straw bedding|#d9b44a|bale|4;Vet supplies|#c8332a|aid|2',
+ power:'Grid power|#f2d36b||1',
+ coolant:'Coolant drums|#3a9ad5||3;Filter packs|#8f98ad|box|1.5',
+ crates:'Wooden crates|#b88a5a||3;Glass bottles|#7fc2a0|bottle|2',
+ timber:'Oak planks|#a9773c||2;Pine planks|#d9b27a||3;Plywood sheets|#c9a46a|sheet|2',
+ fittings:'Hinges & handles|#7a8aa0||2;Screws & bolts|#c8453a||3;Drawer runners|#2f4b7c||1.5',
+ varnish:'Clear varnish|#d9b44a||3;Dark stain|#5a3a24||2;Wood glue|#e8e4d8||2',
+ steel:'Steel sheet|#8f98ad||3;Steel tube|#a0a8b8|tubes|2'
+};
+const IV_CACHE={};
+function ivDefs(sid){
+ if(IV_CACHE[sid])return IV_CACHE[sid];
+ const S=SUP[sid]||{n:sid},kind=IV_K[sid]||'box';
+ const raw=IV_V[sid]?IV_V[sid].split(';').map(x=>x.split('|')):[[S.n,'#c9a35a','','1']];
+ return IV_CACHE[sid]=raw.map((r,i)=>({id:sid+'.'+i,n:r[0],c:r[1]||'#c9a35a',k:r[2]||kind,w:parseFloat(r[3])||1}));
+}
+const IV_IMG={};
+function ivImg(d){
+ if(IV_IMG[d.id])return IV_IMG[d.id];
+ const f=IV_SHAPE[d.k]||IV_SHAPE.box;let g;
+ try{g=f(d.c,d.k==='coffeebag'?'#efe3c8':d.k==='can'?IV_PAPER:d.k==='sack'?IV_PAPER:d.k==='bottle'?'#2a2a2e':d.k==='crate'?(/Fruit/i.test(d.n)?'#d9432f':/Vegetable/i.test(d.n)?'#6fbf4a':null):null)}catch(e){g=IV_SHAPE.box(d.c)}
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${g}</svg>`;
+ return IV_IMG[d.id]='data:image/svg+xml;utf8,'+encodeURIComponent(svg);
+}
+const invIconOf=sid=>ivImg(ivDefs(sid)[0]);
+function invMini(sid){return`<img class="ivmini" alt="" src="${invIconOf(sid)}">`}
+
+// ---------- per-item stock, always reconciled against the real supply total ----------
+function ivEnsure(s,sid){
+ const inv=s.inv&&s.inv[sid];if(!inv)return null;const D=ivDefs(sid);
+ if(!inv.v||typeof inv.v!=='object')inv.v={};
+ let t=0;for(const d of D){const x=inv.v[d.id];inv.v[d.id]=typeof x==='number'&&x>0?x:0;t+=inv.v[d.id]}
+ const q=Math.max(0,inv.q);
+ if(Math.abs(t-q)>1e-6){
+  if(q<=0)for(const d of D)inv.v[d.id]=0;
+  else if(t>1e-9){const f=q/t;for(const d of D)inv.v[d.id]*=f}
+  else{const W=D.reduce((a,d)=>a+d.w,0);for(const d of D)inv.v[d.id]=q*d.w/W}
+ }
+ return D;
+}
+// sales: today's mix of what customers grabbed (popular lines go faster, with some day-to-day whim)
+function invSell(s,sid,qq,inv){
+ try{
+  const D=ivEnsure(s,sid);if(!D||!(qq>0))return;
+  let left=qq;const sold={},wt=D.map(d=>d.w*(.5+Math.random()));
+  for(let pass=0;pass<5&&left>1e-9;pass++){
+   let W=0;D.forEach((d,i)=>{if(inv.v[d.id]>1e-9)W+=wt[i]});if(W<=0)break;
+   let took=0;D.forEach((d,i)=>{const have=inv.v[d.id];if(have<=1e-9)return;const t=Math.min(have,left*wt[i]/W);inv.v[d.id]-=t;took+=t;sold[d.id]=(sold[d.id]||0)+t});
+   left-=took;
+  }
+  inv.sv=inv.sv||{};for(const k in sold)inv.sv[k]=(inv.sv[k]||0)+sold[k];
+ }catch(e){}
+}
+// deliveries top up whichever lines are furthest below their share first
+function invAdd(s,sid,units,inv){
+ try{
+  const D=ivEnsure(s,sid);if(!D||!(units>0))return;
+  const T=Math.max(0,inv.q)+units,W=D.reduce((a,d)=>a+d.w,0),def=D.map(d=>Math.max(0,T*d.w/W-inv.v[d.id])),Sd=def.reduce((a,x)=>a+x,0);
+  if(Sd>=units)D.forEach((d,i)=>inv.v[d.id]+=units*def[i]/Sd);
+  else{D.forEach((d,i)=>inv.v[d.id]+=def[i]);const rest=units-Sd;D.forEach(d=>inv.v[d.id]+=rest*d.w/W)}
+ }catch(e){}
+}
+function invDayStart(s){try{for(const k in s.inv)s.inv[k].sv={}}catch(e){}}
+
+// ---------- which kit holds which supplies ----------
+const IV_HOME={
+ cafe:{beans:['grinder','espresso'],milk:['fridge'],cups:['espresso','pos'],pastry:['display','fridge'],bread:['display','fridge'],filling:['fridge'],veg:['fridge']},
+ burger:{bun:['grill'],beef:['fridge'],cheese:['fridge'],veg:['fridge'],sauce:['grill'],cups:['pos'],fries:['fryer','fridge'],oil:['fryer'],syrup:['pos']},
+ bakery:{flour:['mixer'],yeast:['proofer'],butter:['chiller'],sugar:['mixer'],eggs:['chiller']},
+ tech:{cpu:['shelves'],gpu:['shelves'],ram:['shelves'],ssd:['shelves'],chassis:['shelves'],monitor:['demo','shelves'],parts:['bench']},
+ boutique:{blank:['racks'],jeans:['racks'],jacket:['racks'],ink:['press','press2'],bags:['pos']},
+ shop:{snacks:['shelves'],drinks:['fridge'],grocery:['aisle','shelves'],papers:['aisle','shelves']},
+ farm:{seed:['store'],fert:['store'],diesel:['tractor'],feed:['coop']},
+ dairy:{feed:['feeder'],vet:['parlour'],crates:['tank']},
+ orchard:{fert:['tractor'],crates:['stall','cold','bottler']},
+ factory:{timber:['racking','saw'],fittings:['racking','bench'],varnish:['spray'],steel:['racking','forklift']},
+ datacenter:{power:['ups'],coolant:['crac']}
+};
+function invHome(s,sid){const L=(IV_HOME[s.type]||{})[sid]||[],lay=s.layout||[];for(const e of L)if(lay.some(x=>x.id===e))return e;return null}
+const invSuppliesAt=(s,eq)=>bizSupplies(BIZ[s.type]).filter(k=>invHome(s,k)===eq);
+const invSite=()=>(typeof IN!=='undefined'&&IN&&IN.site)||(G&&G.sites.find(x=>x.id===ui.site))||null;
+
+// ---------- the panel ----------
+function invEl(){let el=document.getElementById('invp');if(!el){el=document.createElement('div');el.id='invp';el.hidden=true;el.setAttribute('role','dialog');el.setAttribute('aria-label','Inventory');document.body.appendChild(el)}return el}
+function invOpenFor(idx){
+ const s=IN&&IN.site,it=s&&s.layout[idx];if(!it)return false;
+ if(!invSuppliesAt(s,it.id).length)return false;
+ Object.assign(INV,{open:true,mode:'item',idx,eq:it.id,site:s.id,title:''});INV.prev={};INV.dl={};renderInvPanel();return true;
+}
+function invOpenStockroom(){const s=invSite();if(!s)return false;Object.assign(INV,{open:true,mode:'all',idx:null,eq:null,site:s.id,title:'Stockroom'});INV.prev={};INV.dl={};renderInvPanel();return true}
+function invOpenAll(){const s=invSite();if(!s)return;Object.assign(INV,{open:true,mode:'all',idx:null,eq:null,site:s.id,title:'All stock'});INV.prev={};INV.dl={};renderInvPanel()}
+function invClose(){INV.open=false;const el=document.getElementById('invp');if(el)el.hidden=true}
+function invMove(){const i=INV.idx;invClose();if(i!=null&&IN)startPlacing(null,i)}
+function invBuy(sid,days){
+ const s=invSite();if(!s)return;const need=dailyNeeds(s)[sid]||1;
+ if(!buyStock(s,sid,Math.max(1,need*days)))toast('Not enough cash for that order','warn');
+ renderSite();renderTop();save();
+}
+function invRefresh(){
+ if(!INV.open)return;const s=G&&G.sites.find(x=>x.id===INV.site);
+ if(!s||(IN&&IN.placing)||(typeof ui!=='undefined'&&ui.modal)){invClose();return}
+ if(INV.mode==='item'&&!invSuppliesAt(s,INV.eq).length){invClose();return}
+ renderInvPanel();
+}
+const ivFmt=(n,step)=>step<1?n.toFixed(1):Math.round(n).toLocaleString('en-US');
+function renderInvPanel(){
+ const el=invEl(),s=INV.open&&G&&G.sites.find(x=>x.id===INV.site);
+ if(!s){el.hidden=true;return}
+ const b=BIZ[s.type],need=dailyNeeds(s),all=INV.mode==='all';
+ const sids=all?bizSupplies(b):invSuppliesAt(s,INV.eq);
+ const eqDef=!all&&b.equip.find(e=>e.id===INV.eq),copies=all?0:(s.layout||[]).filter(x=>x.id===INV.eq).length;
+ const title=all?INV.title:(eqDef?eqDef.n:INV.eq),sub=all?`${esc(s.name)} · every supply the business holds`:`${esc(s.name)} · ${copies>1?copies+' units share this stock':'stored here'}`;
+ let body='',units=0,lines=0;
+ for(const k of sids){
+  const S=SUP[k],inv=s.inv[k],q=inv?Math.max(0,inv.q):0,per=need[k]||0,days=per>0?q/per:Infinity,step=q<10?.1:1;
+  const D=inv?ivEnsure(s,k):ivDefs(k),W=D.reduce((a,d)=>a+d.w,0);
+  const tot=Math.round((q<10?+q.toFixed(1):Math.round(q))/step);   // same rounding the Menu tab uses
+  let al=D.map(d=>{const x=inv&&q>0?inv.v[d.id]/q*tot:0;return{f:Math.floor(x+1e-9),r:x-Math.floor(x+1e-9)}});
+  let rem=tot-al.reduce((a,x)=>a+x.f,0);al.map((x,i)=>[x.r,i]).sort((a,b)=>b[0]-a[0]).forEach(([,i])=>{if(rem>0){al[i].f++;rem--}});
+  units+=q;lines++;
+  const cards=D.map((d,i)=>{
+   const v=inv?inv.v[d.id]:0,c=al[i].f*step,tgt=per>0?per*s.days*d.w/W:Math.max(v,1);
+   const pct=clamp(tgt>0?v/tgt*100:0,0,100),out=c<=0,low=!out&&per>0&&v<tgt*.25,sv=inv&&inv.sv&&inv.sv[d.id]||0;
+   const key=s.id+':'+d.id,pv=INV.prev[key],now=performance.now();
+   if(pv!=null&&Math.abs(c-pv)>1e-9)INV.dl[key]={d:c-pv,t:now,fresh:true};INV.prev[key]=c;
+   const ch=INV.dl[key],age=ch?(now-ch.t)/1000:99,dl=ch&&age<4.5?ch.d:0,fresh=dl&&ch.fresh;if(ch)ch.fresh=false;
+   return`<div class="ivc${out?' out':low?' low':''}${fresh?' flash':''}" title="${esc(d.n)}">
+    <img class="ivimg" alt="" src="${ivImg(d)}">
+    <div class="ivt"><span class="ivn">${esc(d.n)}</span><span class="ivq"><b>${ivFmt(c,step)}</b> <i>${esc(S.u==='each'?'in stock':S.u)}</i></span>
+    <span class="ivbar"><u style="width:${pct.toFixed(0)}%"></u></span>
+    <span class="ivs">${out?'<em class="bad">SOLD OUT</em>':low?'<em class="warn">LOW</em>':sv>0.04?`<em>${sv<10?sv.toFixed(1):Math.round(sv)} sold yesterday</em>`:''}</span></div>
+    ${dl?`<span class="ivd ${dl<0?'dn':'up'}" style="animation-delay:-${age.toFixed(2)}s">${dl<0?'−':'+'}${ivFmt(Math.abs(dl),step)}</span>`:''}</div>`}).join('');
+  const lasts=days===Infinity?'—':days<1?'<1d':days.toFixed(days<10?1:0)+'d';
+  body+=`<section class="ivg"><div class="ivh"><div class="ivht"><span class="ivgn">${esc(S.n)}</span><span class="ivgs"><b>${ivFmt(tot*step,step)}</b> ${esc(S.u)} in stock · lasts <b class="${days<1?'bad':''}">${lasts}</b> · ${pm(supPrice(k,s.p))} each</span></div>
+   <div class="ivbt"><button class="ghost sm" data-act="invbuy" data-id="${k}" data-d="1">+1 day</button><button class="ghost sm" data-act="invbuy" data-id="${k}" data-d="7">+1 wk</button></div></div>
+   <div class="ivgrid">${cards}</div></section>`;
+ }
+ const canMove=!all&&INV.idx!=null&&IN&&IN.site===s;
+ const h=`<div class="ivhead"><div><span class="iveye">Inventory</span><h3>${esc(title)}</h3><p>${sub}</p></div><button class="ghost sm" data-act="invclose" aria-label="Close">✕</button></div>
+  <div class="ivbody">${body||'<p class="muted">Nothing is stored here.</p>'}</div>
+  <div class="ivfoot"><span>Same stock as the Menu tab. Every sale draws from it.</span><div>${canMove?'<button class="ghost sm" data-act="invmove">Move or sell this</button>':''}<button class="ghost sm" data-act="invmenu">Menu tab</button><button class="btn sm" data-act="invclose">Done</button></div></div>`;
+ const sc=el.querySelector('.ivbody'),top=sc?sc.scrollTop:0;
+ el.innerHTML=h;el.hidden=false;const nb=el.querySelector('.ivbody');if(nb&&top)nb.scrollTop=top;
+}
+
+// keep the panel in step with everything that already refreshes the site panel (daily sales, purchases, events)
+(function(){
+ const rs=window.renderSite;if(typeof rs==='function')window.renderSite=function(){const r=rs.apply(this,arguments);try{invRefresh()}catch(e){}return r};
+ let ivDay=null;setInterval(()=>{try{if(!G){return}if(!INV.open){ivDay=G.day;return}if(G.day!==ivDay){ivDay=G.day;invRefresh()}}catch(e){}},400);
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&INV.open){e.stopImmediatePropagation();invClose()}},true);
+})();
+
+(function(){const st=document.createElement('style');st.id='inv-css';st.textContent=`
+#invp{position:fixed;z-index:41;left:50%;top:50%;transform:translate(-50%,-50%);width:min(780px,calc(100vw - 24px));max-height:min(82vh,700px);display:flex;flex-direction:column;background:#0b0b0b;border:2px solid #000;border-top:6px solid var(--sodium);box-shadow:0 8px 0 rgba(0,0,0,.65),0 0 0 1px #3d3d3d;color:var(--paper);font-family:var(--f-mono)}
+#invp[hidden]{display:none}
+#invp .ivhead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:12px 16px 8px;border-bottom:2px solid #1f1f1f}
+#invp .iveye{font:700 10px var(--f-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--sodium)}
+#invp h3{margin:2px 0 0;font:900 24px/1 var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:#fff}
+#invp .ivhead p{margin:4px 0 0;font:500 11.5px var(--f-mono);color:var(--muted)}
+#invp .ivbody{overflow:auto;padding:4px 16px 10px;min-height:0}
+#invp .ivg{padding:10px 0 4px}
+#invp .ivh{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+#invp .ivht{display:flex;flex-direction:column;gap:2px}
+#invp .ivgn{font:900 16px/1 var(--f-display);letter-spacing:.05em;text-transform:uppercase;color:var(--sodium)}
+#invp .ivgs{font:500 11px var(--f-mono);color:var(--muted)}#invp .ivgs b{color:var(--paper);font-weight:700}
+#invp .ivbt{display:flex;gap:6px}
+#invp .ivgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+#invp .ivc{position:relative;display:flex;gap:10px;align-items:center;background:#141414;border:2px solid #000;box-shadow:0 3px 0 rgba(0,0,0,.7);padding:8px}
+#invp .ivimg{width:52px;height:52px;flex:none;background:#1f1f1f;border:2px solid #000;padding:2px;image-rendering:auto}
+#invp .ivt{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+#invp .ivn{font:700 12px var(--f-mono);color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#invp .ivq b{font:900 22px/1 var(--f-display);letter-spacing:.02em;color:var(--sodium)}#invp .ivq i{font:500 10.5px var(--f-mono);color:var(--muted);font-style:normal}
+#invp .ivbar{display:block;height:5px;background:#000;border:1px solid #2c2c2c}#invp .ivbar u{display:block;height:100%;background:var(--good);text-decoration:none}
+#invp .ivs{min-height:13px;font:500 10px var(--f-mono);color:var(--muted)}#invp .ivs em{font-style:normal}
+#invp .ivs .bad,#invp .bad{color:var(--bad);font-weight:700}#invp .ivs .warn{color:var(--sodium);font-weight:700}
+#invp .ivc.low .ivbar u{background:var(--sodium)}#invp .ivc.out{opacity:.8}#invp .ivc.out .ivimg{filter:grayscale(1) brightness(.7)}#invp .ivc.out .ivq b{color:var(--bad)}#invp .ivc.out .ivbar u{width:0!important}
+#invp .ivd{position:absolute;right:8px;top:5px;font:700 12px var(--f-mono);animation:ivfade 4.5s forwards}#invp .ivd.dn{color:var(--bad)}#invp .ivd.up{color:var(--good)}
+#invp .ivc.flash{animation:ivflash .9s}
+@keyframes ivfade{0%,70%{opacity:1}100%{opacity:0}}
+@keyframes ivflash{0%{box-shadow:0 0 0 2px var(--sodium),0 3px 0 rgba(0,0,0,.7)}100%{box-shadow:0 3px 0 rgba(0,0,0,.7)}}
+#invp .ivfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px 12px;border-top:2px solid #1f1f1f;font:500 11px var(--f-mono);color:var(--muted)}
+#invp .ivfoot div{display:flex;gap:8px;flex-wrap:wrap}
+.ivmini{width:18px;height:18px;vertical-align:-4px;margin-right:6px}
+@media (max-width:700px){#invp{max-height:78vh}#invp .ivgrid{grid-template-columns:1fr 1fr}#invp .ivimg{width:42px;height:42px}}
+`;document.head.appendChild(st)})();
+
 </script>
 </body></html>
