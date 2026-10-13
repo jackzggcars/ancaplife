@@ -4859,7 +4859,7 @@ window.cxHeatCool=()=>ctSum('regulator')*.8+ctSum('fixer')*.6;
 window.cxBoostOffer=o=>{const L=ctSum('rainmaker');if(L)o.pay=Math.round(o.pay*(1+.07*L)/10)*10};
 window.cxMkOffer=()=>{const C=cx(),open=G.sites.filter(s=>s.status==='open');return open.length?mkOffer(C,open):null};
 window.cxMeet=function(k){const C=cx(),nw=netWorth();
- if(!(k.pay>=Math.max(6000,nw*.03)||k.kind==='gov'||k.kind==='corp'))return;
+ if(!(ctList().length===0||k.pay>=Math.max(1500,nw*.005)||k.kind!=='local'))return;
  const L=ctList();let c=L.find(x=>x.cl===k.cl);
  if(c){if(c.lvl<3){c.lvl++;c.isNew=1;news(`${c.name} (${c.cl}) thinks highly of you now. Relationship level ${c.lvl}`,'good');toast(`📇 ${c.name} upgraded to level ${c.lvl}`,'good')}return}
  const owned=new Set(L.map(x=>x.role)),opts=CT_BYKIND[k.kind]||CT_BYKIND.local,fresh=opts.filter(r=>!owned.has(r)),role=pick(fresh.length?fresh:opts),title=CT_TITLE[k.kind]||'CEO';
@@ -4913,7 +4913,7 @@ function pcHTML(){const L=ctList(),nNew=L.filter(c=>c.isNew).length;
  const icons=['contacts','read','graphs','slides'].map(id=>`<div class="pcdi ${PC.icon===id?'sel':''}" data-pc="icon" data-id="${id}">${pcIcon(id,40)}${id==='contacts'&&nNew?`<span class="pcdot">${nNew}</span>`:''}<span>${PC_APPS[id].t}</span></div>`).join('');
  const tb=['contacts','read','graphs','slides'].filter(id=>PC.w[id].open).map(id=>`<button class="pctb ${pcTopWin()===id?'on':''}" data-pc="tb" data-id="${id}">${pcIcon(id,16)}<span>${PC_APPS[id].t}</span></button>`).join('');
  const dlg=PC.dlg&&nNew?`<div class="pcw act pcdlg" style="z-index:900"><div class="pct"><span class="pcsvg" style="width:16px;height:16px"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#fff"/><text x="8" y="12" text-anchor="middle" font-size="11" font-weight="700" fill="#1e5aa8">i</text></svg></span><span>New contact</span><div class="pcbs"><button data-pc="dlgno">×</button></div></div><div class="pcbody pcdlgb"><span class="pcok">✔</span><p>You have ${nNew} new contact${nNew===1?'':'s'}.<br>Open the Contacts app now?</p><div><button class="pcbtn" data-pc="dlgyes">Yes/Y</button> <button class="pcbtn" data-pc="dlgno">No/N</button></div></div></div>`:'';
- return`<div class="pcdesk">${icons}${['read','graphs','slides','contacts'].map(pcWin).join('')}${dlg}</div>
+ return`<div class="pcdesk"><button class="pcx" data-pc="shut" title="Back to game (Esc)">✕ Exit</button>${icons}${['read','graphs','slides','contacts'].map(pcWin).join('')}${dlg}</div>
  <div class="pctask"><button class="pcstart ${PC.start?'on':''}" data-pc="start"><span class="pcsvg" style="width:16px;height:16px"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="1" y="2" width="6" height="6" fill="#e33"/><rect x="8" y="2" width="6" height="6" fill="#3a3"/><rect x="1" y="9" width="6" height="6" fill="#36e"/><rect x="8" y="9" width="6" height="6" fill="#ec3"/></svg></span><b>Start</b></button><i class="pcsep"></i>${tb}<span class="pcclk">Day ${G.day+1}</span></div>
  ${PC.start?`<div class="pcsm"><div class="pcsmb">ANCAP<br>OS 98</div><div class="pcsmi">${['contacts','read','graphs','slides'].map(id=>`<div data-pc="smopen" data-id="${id}">${pcIcon(id,24)}<span>${PC_APPS[id].t}</span></div>`).join('')}<hr><div data-pc="shut"><span class="pcsvg" style="width:24px;height:24px"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" fill="#6ab" stroke="#000"/><rect x="8" y="18" width="8" height="2" fill="#888"/></svg></span><span>Shut Down…</span></div></div></div>`:''}`}
 function pcRender(){if(!PC.open)return;const r=document.getElementById('oldpc');if(!r||r._boot)return;const keep=r.querySelector('.pclist'),st=keep?keep.scrollTop:0;r.innerHTML=pcHTML();const k2=r.querySelector('.pclist');if(k2)k2.scrollTop=st}
@@ -4924,6 +4924,7 @@ function pcStyle(){if(document.getElementById('pcstyle'))return;const s=document
 #oldpc{position:fixed;inset:0;z-index:80;background:#008080;font:12px/1.3 Tahoma,'MS Sans Serif','Segoe UI',Arial,sans-serif;color:#000;user-select:none;-webkit-user-select:none;overflow:hidden;cursor:default}
 #oldpc[hidden]{display:none}
 #oldpc img{image-rendering:auto}.pcsvg{display:inline-block;flex:none}.pcsvg svg{width:100%;height:100%;display:block}
+.pcx{position:absolute;top:8px;right:8px;z-index:950;font:700 12px Tahoma,'MS Sans Serif',Arial,sans-serif;padding:4px 12px;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080,2px 2px 0 rgba(0,0,0,.35);color:#000;cursor:pointer}.pcx:active{border-color:#404040 #fff #fff #404040}.pcx:hover{color:#a00}
 .pcdesk{position:absolute;left:0;top:0;right:0;bottom:30px;overflow:hidden}
 .pcdi{position:absolute;left:10px;width:84px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 2px;text-align:center;color:#fff;cursor:pointer}
 .pcdi:nth-child(1){top:10px}.pcdi:nth-child(2){top:100px}.pcdi:nth-child(3){top:190px}.pcdi:nth-child(4){top:280px}
