@@ -4069,7 +4069,7 @@ function mMarket(){
  <div class="tscroll"><table class="mkt"><thead><tr><th>Supply</th><th>Price</th><th>7 days</th><th>60-day trend</th></tr></thead><tbody>${rows}</tbody></table></div>
  <h3 class="eyebrow">News</h3><ul class="news">${G.news.slice(0,12).map(n=>`<li><b class="mono">${dshort(n.d)}</b> ${esc(n.t)}</li>`).join('')||'<li class="muted">Quiet so far.</li>'}</ul></div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`;
 }
-function mBank(){const lim=loanLimit(),opts=[5000,10000,25000,50000,100000,250000,1000000].filter(v=>v<=lim);
+function mBank(){const lim=loanLimit(),opts=[5000,10000,25000,50000,100000,250000,1000000,2500000,5000000,10000000].filter(v=>v<=lim);
  return`<div class="mhead"><p class="eyebrow">First Ledger Bank</p><h2 class="h">Loans</h2></div><div class="mbody"><div class="box"><h3 class="eyebrow">Business loan</h3><p>11% APR, repaid daily over three years. You can borrow up to <b class="mono">${money(lim)}</b> based on recent profit and property equity.</p>
  <div class="btnrow">${opts.map(v=>`<button class="btn ghost" data-act="loan" data-v="${v}">Borrow ${big(v)}</button>`).join('')||'<span class="muted">No credit available yet. Show a few weeks of profit first.</span>'}</div></div>
  <h3 class="eyebrow">Your loans</h3>${G.loans.length?G.loans.map(l=>`<div class="item"><div><b>${esc(l.desc)}</b><small>${(l.apr*100).toFixed(1)}% APR · ${money(l.pay,2)}/day</small></div><div class="ia"><span class="mono">${money(l.bal)}</span><button class="ghost sm" data-act="repay" data-id="${l.id}" ${G.cash<l.bal?'disabled':''}>Repay</button></div></div>`).join(''):'<p class="muted">No loans outstanding.</p>'}</div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
@@ -4707,14 +4707,14 @@ function careerDay(c0){
  for(const k of C.contracts){const sites=open.filter(s=>s.type===k.type);let prog=0;
   for(const s of sites){const cap=capDay(s),used=s.last&&s.last.open?s.last.cust:0;prog+=Math.max(0,cap-used)*.9+cap*.12}
   prog*=1+.25*(C.dept.logi||0);prog=Math.min(prog,k.units-k.done);k.done+=prog;G.cash-=prog*k.unitCost;k.left--;}
- for(const k of C.contracts.slice()){if(k.done>=k.units-.5){C.contracts.splice(C.contracts.indexOf(k),1);G.cash+=k.pay;C.done++;const cl=k.cl;C.rel=C.rel||{};C.rel[cl]=(C.rel[cl]||0)+1;
+ for(const k of C.contracts.slice()){if(k.done>=k.units-.5){C.contracts.splice(C.contracts.indexOf(k),1);G.cash+=k.pay;C.done++;try{window.cxMeet&&cxMeet(k)}catch(e){console.warn('contacts',e)}const cl=k.cl;C.rel=C.rel||{};C.rel[cl]=(C.rel[cl]||0)+1;
    for(const s of open.filter(s=>s.type===k.type))s.rep=Math.min(100,s.rep+2);news(`Contract delivered for ${k.cl}: +${fmt(k.pay)}`,'good');log.push(['done',k])}
   else if(k.left<=0){C.contracts.splice(C.contracts.indexOf(k),1);const pen=Math.round(k.pay*.3);G.cash-=pen;C.failed++;for(const s of open.filter(s=>s.type===k.type))s.rep=Math.max(0,s.rep-6);news(`Missed the ${k.cl} deadline. Penalty ${fmt(pen)} and a dent in your reputation`,'warn');log.push(['fail',k])}}
  // new offers every morning
- C.offers=C.offers.filter(o=>o.exp>G.day);if(C.rank>=1&&open.length){const n=Math.min(4,1+Math.floor(R()*2)+(C.rank>=4?1:0));for(let i=0;i<n&&C.offers.length<5;i++){const o=mkOffer(C,open);if(o)C.offers.push(o)}}
+ C.offers=C.offers.filter(o=>o.exp>G.day);if(C.rank>=1&&open.length){const n=Math.min(4,1+Math.floor(R()*2)+(C.rank>=4?1:0));for(let i=0;i<n&&C.offers.length<5;i++){const o=mkOffer(C,open);if(o){if(window.cxBoostOffer)cxBoostOffer(o);C.offers.push(o)}}}
  // RISK: regulator heat
  const dcs=open.filter(s=>s.type==='datacenter').length,shady=C.contracts.filter(k=>k.kind==='shady').length;
- C.heat+=Math.max(0,open.length-3)*.3+dcs*1.4+shady*1.2+(G.cash>2e6?.5:0)-(1.6+1.4*(C.dept.legal||0));C.heat=clamp(C.heat,0,100);
+ C.heat+=Math.max(0,open.length-3)*.3+dcs*1.4+shady*1.2+(G.cash>2e6?.5:0)-(1.6+1.4*(C.dept.legal||0))-(window.cxHeatCool?cxHeatCool():0);C.heat=clamp(C.heat,0,100);
  if(C.heat>35&&R()<(C.heat-35)/260)incident(C,open,log);
  // rivals grow, and sometimes snipe
  for(const r of C.rivals){r.nw*=1+r.g+(R()-.5)*.02+(C.market.id==='recession'?-.004:0);if(R()<.004)r.g=rnd2(.003,.011)}
@@ -4834,6 +4834,176 @@ const st=document.createElement('style');st.textContent=`
 .cxrk-un{background:#1b1b1b;border-radius:12px;padding:12px 14px;margin:0 auto 12px;max-width:360px;font-size:14px;line-height:1.6}.cxrk-un b{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
 .cxlock{display:inline-block;background:#000;color:var(--sodium);font-size:11px;font-weight:800;border-radius:999px;padding:2px 8px;margin-bottom:4px}
 @media (max-width:640px){.cxloop{grid-template-columns:1fr 1fr}#cxbtn .cxheat{display:none}}`;document.head.appendChild(st);
+
+// ================= CONNECTIONS · CONTACTS · OLD PC =================
+// After big contracts, the client's boss leaves you their card. Contacts give passive perks and a favor you can call in.
+const CT_ROLES={
+ banker:{n:'Banker',ic:'$',q:'"I know a guy at the bank. Actually, I am the guy at the bank."',
+  pas:L=>`Bank credit limit +${50*L}%`,fav:{n:'Friendly loan',cd:21,d:(c)=>`A one-off loan at 6% APR (the bank charges 11%). Size scales with your net worth.`}},
+ adman:{n:'Advertising',ic:'★',q:'"Brand is everything. Also, I have a billboard going spare."',
+  pas:L=>`+${5*L}% customers at every business`,fav:{n:'Billboard blitz',cd:12,d:c=>`+${30+10*(c.lvl-1)}% customers everywhere for 5 days.`}},
+ regulator:{n:'Regulator pal',ic:'§',q:'"Funny how paperwork gets lost when friends are involved."',
+  pas:L=>`Regulator heat cools ${(0.8*L).toFixed(1)}/day faster`,fav:{n:'Lose some paperwork',cd:8,d:c=>`Regulator heat −${12+6*c.lvl} straight away.`}},
+ rainmaker:{n:'Rainmaker',ic:'¤',q:'"Let me make a few calls. People owe me lunch."',
+  pas:L=>`New contract offers pay +${7*L}%`,fav:{n:'Warm introduction',cd:6,d:c=>`A fresh contract offer lands on your desk paying ${20+5*c.lvl}% extra.`}},
+ fixer:{n:'Fixer',ic:'?',q:'"We never met. Here is my number."',
+  pas:L=>`Regulator heat cools ${(0.6*L).toFixed(1)}/day faster`,fav:{n:'Make it go away',cd:8,d:c=>`Heat −${25+5*c.lvl}. He is not cheap (${fmt(fixCost())}).`}}};
+const CT_BYKIND={local:['adman','banker'],corp:['banker','adman','rainmaker'],gov:['regulator','banker'],shady:['fixer']};
+const CT_TITLE={local:'Owner',corp:'CEO',gov:'Director',shady:'Associate'};
+const CT_FIRST=['Margaret','Hiroshi','Daniel','Priya','Viktor','Amara','Lucas','Elena','Omar','Sofia','Graham','Chidi','Beatrix','Marcus','Ingrid','Tomás','Yasmin','Rupert','Nadia','Felix'];
+const CT_LAST=['Hargreave','Okonkwo','Lindgren','Castellano','Whitmore','Nakamura','Abernathy','Volkov','Delacroix','Fitzgerald','Mbeki','Rosenthal','Calloway','Santoro','Thorne','Ishikawa','Pemberton','Aldridge','Moreau','Kowalski'];
+function fixCost(){return Math.max(2000,Math.round(netWorth()*.004/100)*100)}
+function ctList(){const C=cx();if(!C.contacts)C.contacts=[];return C.contacts}
+function ctSum(role){let n=0;for(const c of ctList())if(c.role===role)n+=c.lvl;return n}
+window.cxHeatCool=()=>ctSum('regulator')*.8+ctSum('fixer')*.6;
+window.cxBoostOffer=o=>{const L=ctSum('rainmaker');if(L)o.pay=Math.round(o.pay*(1+.07*L)/10)*10};
+window.cxMkOffer=()=>{const C=cx(),open=G.sites.filter(s=>s.status==='open');return open.length?mkOffer(C,open):null};
+window.cxMeet=function(k){const C=cx(),nw=netWorth();
+ if(!(k.pay>=Math.max(6000,nw*.03)||k.kind==='gov'||k.kind==='corp'))return;
+ const L=ctList();let c=L.find(x=>x.cl===k.cl);
+ if(c){if(c.lvl<3){c.lvl++;c.isNew=1;news(`${c.name} (${c.cl}) thinks highly of you now. Relationship level ${c.lvl}`,'good');toast(`📇 ${c.name} upgraded to level ${c.lvl}`,'good')}return}
+ const owned=new Set(L.map(x=>x.role)),opts=CT_BYKIND[k.kind]||CT_BYKIND.local,fresh=opts.filter(r=>!owned.has(r)),role=pick(fresh.length?fresh:opts),title=CT_TITLE[k.kind]||'CEO';
+ c={id:'c'+Math.floor(R()*1e9),cl:k.cl,col:k.col,kind:k.kind,name:pick(CT_FIRST)+' '+pick(CT_LAST),title,role,lvl:1,cd:0,day:G.day,isNew:1};L.push(c);
+ news(`${c.name}, ${title} of ${c.cl}, left you their direct number`,'good');toast(`📇 New contact: ${c.name} (${c.cl})`,'good');try{pcTop()}catch(e){}};
+// passive hooks
+const _vhc=visitorsH;visitorsH=function(s,o){let v=_vhc(s,o);const C=G&&G.cx;if(!C||!C.contacts)return v;const L=ctSum('adman');if(L)v*=1+.05*L;if(C.adBoost&&G.day<=C.adBoost.until)v*=C.adBoost.mult;return v};
+const _llc=loanLimit;loanLimit=function(){let v=_llc();const L=G&&G.cx&&G.cx.contacts?ctSum('banker'):0;return L?Math.round(v*(1+.5*L)/1000)*1000:v};
+// favors
+function ctFavor(id){const C=cx(),c=ctList().find(x=>x.id===id);if(!c||G.day<c.cd)return;const nw=netWorth(),r=CT_ROLES[c.role],F=r.fav;
+ if(c.role==='banker'){const P=Math.min(5e6,Math.max(15000,Math.round(nw*.06*c.lvl/1000)*1000));addLoan('business',P,.06,1095,'Friendly loan · '+c.name);G.cash+=P;toast(`${c.name} wired you ${fmt(P)} at 6%`,'good')}
+ else if(c.role==='adman'){C.adBoost={until:G.day+5,mult:1.3+.1*(c.lvl-1)};toast('Billboards are up. Customers incoming','good')}
+ else if(c.role==='regulator'){C.heat=Math.max(0,C.heat-(12+6*c.lvl));toast('Some paperwork went missing. Heat down','good')}
+ else if(c.role==='rainmaker'){const o=cxMkOffer();if(!o){toast('Open a business first, then I can make calls','warn');return}o.pay=Math.round(o.pay*(1.2+.05*c.lvl)/10)*10;o.exp=G.day+4;o.seen=0;C.offers.unshift(o);toast(`${c.name} sent a client your way`,'good')}
+ else if(c.role==='fixer'){const cost=fixCost();if(G.cash<cost){toast(`You need ${fmt(cost)} cash`,'warn');return}G.cash-=cost;C.heat=Math.max(0,C.heat-(25+5*c.lvl));toast('Problem handled. Heat down','good')}
+ c.cd=G.day+F.cd;try{renderTop()}catch(e){}save();pcRender()}
+
+// ---------- the old PC ----------
+const PC={open:false,booted:false,z:10,sel:null,start:false,dlg:false,icon:null,w:{}};
+const PC_APPS={
+ contacts:{t:'Contacts',ic:`<svg viewBox="0 0 32 32" shape-rendering="crispEdges"><rect x="5" y="3" width="21" height="26" fill="#1e5aa8" stroke="#000"/><rect x="8" y="3" width="2" height="26" fill="#0b2f63"/><rect x="12" y="7" width="11" height="9" fill="#fff" stroke="#000"/><circle cx="17.5" cy="10.5" r="2" fill="#c0392b"/><rect x="14" y="13" width="7" height="3" fill="#c0392b"/><rect x="12" y="19" width="11" height="2" fill="#fff"/><rect x="12" y="23" width="8" height="2" fill="#fff"/><rect x="26" y="7" width="3" height="4" fill="#f2d73b" stroke="#000"/><rect x="26" y="14" width="3" height="4" fill="#e66" stroke="#000"/><rect x="26" y="21" width="3" height="4" fill="#6c6" stroke="#000"/></svg>`},
+ read:{t:'GRT Read',img:'media/grt-read.png'},graphs:{t:'GRT Graphs',img:'media/grt-graphs.png'},slides:{t:'GRT Slides',img:'media/grt-slides.png'}};
+const pcIcon=(id,s)=>{const a=PC_APPS[id];return a.img?`<img src="${a.img}" width="${s}" height="${s}" alt="" draggable="false">`:`<span class="pcsvg" style="width:${s}px;height:${s}px">${a.ic}</span>`};
+function pcLayout(){const W=innerWidth,H=innerHeight-30,wide=W>760,bw=Math.min(440,W-24),bh=Math.min(300,H-60),cw=Math.min(700,W-16),ch=Math.min(480,H-20);
+ return{read:{x:wide?120:8,y:18,w:bw,h:bh},graphs:{x:wide?250:16,y:64,w:bw,h:bh},slides:{x:wide?380:24,y:110,w:bw,h:bh},contacts:{x:Math.max(4,Math.round((W-cw)/2)+(wide?36:0)),y:Math.max(4,Math.round((H-ch)/2)),w:cw,h:ch}}}
+function pcInit(){const L=pcLayout();PC.w={};let z=1;for(const id of['read','graphs','slides'])PC.w[id]=Object.assign({open:true,min:false,max:false,z:z++},L[id]);PC.w.contacts=Object.assign({open:false,min:false,max:false,z:0},L.contacts);PC.z=z+1;PC.sel=null;PC.start=false;PC.icon=null;PC.dlg=ctList().some(c=>c.isNew)}
+function pcTopWin(){let b=null;for(const id in PC.w){const w=PC.w[id];if(w.open&&!w.min&&(!b||w.z>PC.w[b].z))b=id}return b}
+function pcBars(n,wd){let h='';for(let i=0;i<n;i++)h+=`<i style="width:${wd[i%wd.length]}%"></i>`;return h}
+function pcBody(id){
+ if(id==='read')return`<div class="pcmenu"><span>File</span><span>Edit</span><span>View</span><span>Help</span></div><div class="pctool"><img src="media/grt-read.png" width="26" height="26" alt=""><b class="pcb2">◄</b><b class="pcb2">►</b><div class="pcaddr">grt://library/reading-list</div></div>
+  <div class="pcsplit"><div class="pcside">${['Inbox','Saved','Articles','Papers','Archive'].map((x,i)=>`<div class="${i==1?'on':''}">▸ ${x}</div>`).join('')}</div><div class="pcdoc"><div class="pch"></div>${pcBars(14,[96,88,92,70,94,85,60])}<div class="pch s"></div>${pcBars(9,[90,95,66,82])}</div></div><div class="pcstat"><span>Ready</span><span>Page 1 of 1</span></div>`;
+ if(id==='graphs')return`<div class="pcmenu"><span>File</span><span>Edit</span><span>View</span><span>Help</span></div><div class="pctool"><img src="media/grt-graphs.png" width="26" height="26" alt=""><b class="pcb2">+ Node</b><b class="pcb2">Link</b><div class="pcaddr">untitled.graph</div></div>
+  <div class="pccan"><svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid meet"><g stroke="#c0392b" stroke-width="1.5" fill="none"><path d="M70 55L170 90"/><path d="M170 90L290 55"/><path d="M170 90L250 150"/><path d="M290 55L340 120"/></g>${[[30,35,80,40,'#fff'],[130,70,80,40,'#fff'],[250,35,80,40,'#f2d73b'],[210,130,80,40,'#e66be0'],[310,100,70,40,'#59e04a']].map(n=>`<g><rect x="${n[0]}" y="${n[1]}" width="${n[2]}" height="${n[3]}" fill="${n[4]}" stroke="#222" stroke-width="2"/><path d="M${n[0]+8} ${n[1]+14}h${n[2]-24}M${n[0]+8} ${n[1]+26}h${n[2]-34}" stroke="#555" stroke-width="2"/></g>`).join('')}</svg></div><div class="pcstat"><span>5 nodes, 4 links</span><span>100%</span></div>`;
+ if(id==='slides')return`<div class="pcmenu"><span>File</span><span>Edit</span><span>View</span><span>Insert</span><span>Help</span></div><div class="pctool"><img src="media/grt-slides.png" width="26" height="26" alt=""><b class="pcb2">New slide</b><b class="pcb2">▶ Present</b><div class="pcaddr">quarterly-review.slides</div></div>
+  <div class="pcsplit"><div class="pcside thumbs">${[1,2,3].map(i=>`<div class="${i==1?'on':''}"><em>${i}</em><i></i></div>`).join('')}</div><div class="pcslide"><div class="pcst"></div><div class="pcss"></div><div class="pcsb"></div></div></div><div class="pcstat"><span>Slide 1 of 3</span><span>Normal</span></div>`;
+ return''}
+function pcContacts(){const L=ctList(),sel=L.find(c=>c.id===PC.sel)||null;
+ const list=L.length?L.map(c=>`<div class="pcrow ${sel&&sel.id===c.id?'on':''}" data-pc="pick" data-id="${c.id}"><span class="pcav" style="background:${c.col}">${esc(c.name.split(' ').map(x=>x[0]).join(''))}</span><span class="pcnm"><b>${esc(c.name)}</b><small>${esc(c.cl)}</small></span>${c.isNew?'<span class="pcnew">NEW</span>':''}</div>`).join(''):`<p class="pcempty">No contacts yet.<br><br>Deliver a big contract and the person in charge may leave you their number.</p>`;
+ let det='<div class="pcnone">Select a contact</div>';
+ if(sel){const r=CT_ROLES[sel.role],F=r.fav,left=sel.cd-G.day,ready=left<=0,extra=sel.role==='fixer'&&G.cash<fixCost();
+  det=`<div class="pccard"><div class="pcbc"><span class="pcav big" style="background:${sel.col}">${esc(sel.name.split(' ').map(x=>x[0]).join(''))}</span><div><b>${esc(sel.name)}</b><div>${esc(sel.title)}, ${esc(sel.cl)}</div><div class="pcq">${r.q}</div></div></div>
+  <dl class="pcdl"><dt>Speciality</dt><dd>${r.n}</dd><dt>Relationship</dt><dd><span class="pclv">${'■'.repeat(sel.lvl)}${'□'.repeat(3-sel.lvl)}</span> Level ${sel.lvl}/3${sel.lvl<3?' <small>(deliver another big contract for them)</small>':''}</dd><dt>Always active</dt><dd>${r.pas(sel.lvl)}</dd><dt>Met</dt><dd>Day ${sel.day+1}</dd></dl>
+  <fieldset class="pcfs"><legend>Call in a favor</legend><b>${F.n}</b><p>${F.d(sel)}</p><button class="pcbtn" data-pc="favor" data-id="${sel.id}" ${ready&&!extra?'':'disabled'}>${ready?'Call '+esc(sel.name.split(' ')[0]):'Available in '+left+' day'+(left===1?'':'s')}</button></fieldset></div>`}
+ const tot=L.reduce((a,c)=>a+c.lvl,0);
+ return`<div class="pcmenu"><span>File</span><span>Edit</span><span>View</span><span>Help</span></div><div class="pctool"><span class="pcsvg" style="width:26px;height:26px">${PC_APPS.contacts.ic}</span><b class="pcb2">◄</b><b class="pcb2">►</b><div class="pcaddr">C:\\Contacts\\All</div></div>
+ <div class="pcsplit"><div class="pcside pclist">${list}</div><div class="pcdet">${det}</div></div><div class="pcstat"><span>${L.length} contact${L.length===1?'':'s'}</span><span>Network strength ${tot}</span></div>`}
+function pcWin(id){const w=PC.w[id],a=PC_APPS[id];if(!w.open)return'';
+ const st=w.max?'left:0;top:0;width:100%;height:calc(100% - 30px)':`left:${w.x}px;top:${w.y}px;width:${w.w}px;height:${w.h}px`;
+ return`<div class="pcw ${pcTopWin()===id?'act':''}" data-w="${id}" style="${st};z-index:${w.z};${w.min?'display:none':''}"><div class="pct" data-drag="${id}">${pcIcon(id,16)}<span>${a.t}</span><div class="pcbs"><button data-pc="min" data-id="${id}">_</button><button data-pc="max" data-id="${id}">□</button><button data-pc="close" data-id="${id}">×</button></div></div><div class="pcbody">${id==='contacts'?pcContacts():pcBody(id)}</div></div>`}
+function pcHTML(){const L=ctList(),nNew=L.filter(c=>c.isNew).length;
+ const icons=['contacts','read','graphs','slides'].map(id=>`<div class="pcdi ${PC.icon===id?'sel':''}" data-pc="icon" data-id="${id}">${pcIcon(id,40)}${id==='contacts'&&nNew?`<span class="pcdot">${nNew}</span>`:''}<span>${PC_APPS[id].t}</span></div>`).join('');
+ const tb=['contacts','read','graphs','slides'].filter(id=>PC.w[id].open).map(id=>`<button class="pctb ${pcTopWin()===id?'on':''}" data-pc="tb" data-id="${id}">${pcIcon(id,16)}<span>${PC_APPS[id].t}</span></button>`).join('');
+ const dlg=PC.dlg&&nNew?`<div class="pcw act pcdlg" style="z-index:900"><div class="pct"><span class="pcsvg" style="width:16px;height:16px"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#fff"/><text x="8" y="12" text-anchor="middle" font-size="11" font-weight="700" fill="#1e5aa8">i</text></svg></span><span>New contact</span><div class="pcbs"><button data-pc="dlgno">×</button></div></div><div class="pcbody pcdlgb"><span class="pcok">✔</span><p>You have ${nNew} new contact${nNew===1?'':'s'}.<br>Open the Contacts app now?</p><div><button class="pcbtn" data-pc="dlgyes">Yes/Y</button> <button class="pcbtn" data-pc="dlgno">No/N</button></div></div></div>`:'';
+ return`<div class="pcdesk">${icons}${['read','graphs','slides','contacts'].map(pcWin).join('')}${dlg}</div>
+ <div class="pctask"><button class="pcstart ${PC.start?'on':''}" data-pc="start"><span class="pcsvg" style="width:16px;height:16px"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="1" y="2" width="6" height="6" fill="#e33"/><rect x="8" y="2" width="6" height="6" fill="#3a3"/><rect x="1" y="9" width="6" height="6" fill="#36e"/><rect x="8" y="9" width="6" height="6" fill="#ec3"/></svg></span><b>Start</b></button><i class="pcsep"></i>${tb}<span class="pcclk">Day ${G.day+1}</span></div>
+ ${PC.start?`<div class="pcsm"><div class="pcsmb">ANCAP<br>OS 98</div><div class="pcsmi">${['contacts','read','graphs','slides'].map(id=>`<div data-pc="smopen" data-id="${id}">${pcIcon(id,24)}<span>${PC_APPS[id].t}</span></div>`).join('')}<hr><div data-pc="shut"><span class="pcsvg" style="width:24px;height:24px"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" fill="#6ab" stroke="#000"/><rect x="8" y="18" width="8" height="2" fill="#888"/></svg></span><span>Shut Down…</span></div></div></div>`:''}`}
+function pcRender(){if(!PC.open)return;const r=document.getElementById('oldpc');if(!r||r._boot)return;const keep=r.querySelector('.pclist'),st=keep?keep.scrollTop:0;r.innerHTML=pcHTML();const k2=r.querySelector('.pclist');if(k2)k2.scrollTop=st}
+function pcFocus(id){const w=PC.w[id];if(!w||!w.open)return;w.z=++PC.z;const r=document.getElementById('oldpc');if(!r)return;const el=r.querySelector(`.pcw[data-w="${id}"]`);if(el)el.style.zIndex=w.z;r.querySelectorAll('.pcw[data-w]').forEach(e=>e.classList.toggle('act',e.dataset.w===pcTopWin()));r.querySelectorAll('.pctb').forEach(e=>e.classList.toggle('on',e.dataset.id===pcTopWin()))}
+function pcOpenApp(id){const w=PC.w[id];w.open=true;w.min=false;w.z=++PC.z;PC.start=false;PC.dlg=false;PC.icon=id;if(id==='contacts'&&!PC.sel){const L=ctList();const n=L.find(c=>c.isNew)||L[0];if(n)PC.sel=n.id}pcSeen();pcRender()}
+function pcSeen(){if(PC.w.contacts&&PC.w.contacts.open&&!PC.w.contacts.min){const c=ctList().find(x=>x.id===PC.sel);if(c&&c.isNew){c.isNew=0;try{pcTop()}catch(e){}}}}
+function pcStyle(){if(document.getElementById('pcstyle'))return;const s=document.createElement('style');s.id='pcstyle';s.textContent=`
+#oldpc{position:fixed;inset:0;z-index:80;background:#008080;font:12px/1.3 Tahoma,'MS Sans Serif','Segoe UI',Arial,sans-serif;color:#000;user-select:none;-webkit-user-select:none;overflow:hidden;cursor:default}
+#oldpc[hidden]{display:none}
+#oldpc img{image-rendering:auto}.pcsvg{display:inline-block;flex:none}.pcsvg svg{width:100%;height:100%;display:block}
+.pcdesk{position:absolute;left:0;top:0;right:0;bottom:30px;overflow:hidden}
+.pcdi{position:absolute;left:10px;width:84px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 2px;text-align:center;color:#fff;cursor:pointer}
+.pcdi:nth-child(1){top:10px}.pcdi:nth-child(2){top:100px}.pcdi:nth-child(3){top:190px}.pcdi:nth-child(4){top:280px}
+.pcdi span:last-child{padding:1px 3px;text-shadow:1px 1px 0 #000;font-size:12px}.pcdi.sel span:last-child{background:#000080;outline:1px dotted #ff0;text-shadow:none}.pcdi.sel img,.pcdi.sel .pcsvg{filter:brightness(.7) sepia(1) hue-rotate(190deg) saturate(3)}
+.pcdot{position:absolute;top:0;right:12px;background:#e22;color:#fff;border:1px solid #000;min-width:16px;height:16px;line-height:14px;font-size:10px;font-weight:700;text-align:center;text-shadow:none!important;padding:0!important;border-radius:50%}
+.pcw{position:absolute;display:flex;flex-direction:column;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080,inset 1px 1px #dfdfdf,3px 3px 0 rgba(0,0,0,.35);padding:2px;max-width:100vw}
+.pct{display:flex;align-items:center;gap:5px;height:20px;padding:2px 3px;background:#808080;color:#c0c0c0;font-weight:700;cursor:move;touch-action:none;flex:none}
+.pcw.act>.pct{background:linear-gradient(90deg,#000080,#1084d0);color:#fff}
+.pct span:not(.pcsvg){flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pct img{width:16px;height:16px}
+.pcbs{display:flex;gap:2px}.pcbs button{width:16px;height:14px;padding:0;font:700 10px/10px Arial;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080;color:#000;cursor:pointer;display:grid;place-items:center}.pcbs button:active{border-color:#404040 #fff #fff #404040}
+.pcbody{flex:1;min-height:0;display:flex;flex-direction:column;margin-top:2px}
+.pcmenu{display:flex;gap:2px;padding:1px 2px;flex:none}.pcmenu span{padding:1px 7px}.pcmenu span:hover{background:#000080;color:#fff}
+.pctool{display:flex;align-items:center;gap:6px;padding:3px;border-top:1px solid #808080;border-bottom:1px solid #fff;flex:none}
+.pcb2{padding:3px 8px;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080;font-weight:400;white-space:nowrap}
+.pcaddr{flex:1;min-width:0;background:#fff;border:2px solid;border-color:#808080 #fff #fff #808080;box-shadow:inset 1px 1px #404040;padding:3px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcsplit{flex:1;min-height:0;display:flex;gap:3px;padding:3px 0 0}
+.pcside,.pcdoc,.pcdet,.pccan,.pcslide{background:#fff;border:2px solid;border-color:#808080 #fff #fff #808080;box-shadow:inset 1px 1px #404040;overflow:auto}
+.pcside{width:34%;max-width:230px;min-width:120px;flex:none}.pcside>div{padding:3px 8px}.pcside>div.on{background:#000080;color:#fff}
+.pcdoc{flex:1;padding:12px 14px;display:flex;flex-direction:column;gap:6px}.pcdoc i,.pcsb i,.pcss{display:block;height:6px;background:#9a9a9a}.pcdoc .pch{height:12px;width:50%;background:#000080}.pcdoc .pch.s{margin-top:8px;width:35%;background:#555}
+.pccan{flex:1;margin:3px 0 0;display:grid;place-items:center;background:#f4f1e6}.pccan svg{width:100%;height:100%}
+.pcside.thumbs{width:92px;min-width:92px;background:#808080;padding:6px}.pcside.thumbs div{background:#fff;border:2px solid #000;height:50px;margin-bottom:8px;padding:4px;position:relative}.pcside.thumbs div.on{outline:3px solid #ff0}.pcside.thumbs em{position:absolute;left:-1px;top:-1px;font-size:9px;background:#000;color:#fff;padding:0 3px;font-style:normal}.pcside.thumbs i{display:block;height:5px;background:#9a9a9a;margin:12px 6px 0}
+.pcslide{flex:1;background:#808080;display:flex;flex-direction:column;justify-content:center;padding:10px;gap:0;position:relative}.pcslide>div{background:#fff}
+.pcslide .pcst{height:34px;width:70%;margin:0 auto;background:#e0a846;border:2px solid #000}.pcslide .pcss{width:50%;margin:8px auto;height:8px}.pcslide .pcsb{height:70px;width:70%;margin:0 auto;background:repeating-linear-gradient(#fff 0 8px,#9a9a9a 8px 11px)}
+.pcstat{display:flex;gap:3px;flex:none;margin-top:3px}.pcstat span{flex:1;padding:2px 6px;border:1px solid;border-color:#808080 #fff #fff #808080}.pcstat span+span{flex:none;min-width:110px}
+.pcrow{display:flex;align-items:center;gap:8px;padding:5px 6px!important;cursor:pointer}.pcrow.on{background:#000080;color:#fff}.pcnm{display:flex;flex-direction:column;min-width:0;flex:1}.pcnm b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pcnm small{font-size:11px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcav{display:grid;place-items:center;width:30px;height:30px;flex:none;border:2px solid #000;color:#000;font-weight:700;font-size:12px;text-shadow:0 0 2px #fff}.pcav.big{width:54px;height:54px;font-size:20px}
+.pcnew{background:#e22;color:#fff;font-size:9px;font-weight:700;padding:1px 4px}.pcempty{padding:14px;color:#444;line-height:1.5}
+.pcdet{flex:1;padding:12px}.pcnone{color:#777;text-align:center;margin-top:40px}
+.pcbc{display:flex;gap:12px;align-items:center;padding:10px;border:2px solid #000;background:#fffbe6;margin-bottom:10px}.pcbc b{font-size:16px}.pcq{font-style:italic;color:#555;margin-top:5px;font-size:11.5px}
+.pcdl{display:grid;grid-template-columns:104px 1fr;gap:5px 8px;margin:0 0 10px}.pcdl dt{color:#555}.pcdl dd{margin:0;font-weight:700}.pcdl small{font-weight:400;color:#666}.pclv{color:#000080;letter-spacing:2px}
+.pcfs{border:2px groove #fff;padding:6px 10px 10px;margin:0}.pcfs legend{padding:0 4px}.pcfs p{margin:3px 0 8px}
+.pcbtn{font:12px Tahoma,'MS Sans Serif',Arial,sans-serif;padding:4px 14px;min-width:78px;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080;color:#000;cursor:pointer}.pcbtn:active:not(:disabled){border-color:#404040 #fff #fff #404040;padding:5px 13px 3px 15px}.pcbtn:disabled{color:#808080;text-shadow:1px 1px #fff;cursor:default}
+.pctask{position:absolute;left:0;right:0;bottom:0;height:30px;display:flex;align-items:center;gap:4px;padding:2px 3px;background:#c0c0c0;border-top:2px solid #fff;box-shadow:0 -1px #dfdfdf;z-index:1000}
+.pcstart,.pctb{display:flex;align-items:center;gap:5px;height:24px;padding:0 8px;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080;font:12px Tahoma,Arial,sans-serif;color:#000;cursor:pointer;min-width:0}.pcstart b{font-size:12px}.pctb{width:130px;justify-content:flex-start}.pctb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcstart.on,.pctb.on{border-color:#404040 #fff #fff #404040;box-shadow:inset 1px 1px #808080;background:repeating-conic-gradient(#c0c0c0 0 25%,#fff 0 50%) 0 0/2px 2px}.pcstart.on{background:#c0c0c0}
+.pcsep{width:2px;height:22px;border-left:1px solid #808080;border-right:1px solid #fff;margin:0 2px}.pcclk{margin-left:auto;padding:3px 10px;border:1px solid;border-color:#808080 #fff #fff #808080;white-space:nowrap}
+.pcsm{position:absolute;left:2px;bottom:30px;z-index:1001;display:flex;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:inset -1px -1px #808080,3px 3px 0 rgba(0,0,0,.35)}
+.pcsmb{width:28px;background:linear-gradient(#000080,#1084d0);color:#c0c0c0;writing-mode:vertical-rl;transform:rotate(180deg);font-weight:700;font-size:15px;padding:8px 2px;letter-spacing:1px;text-align:left}
+.pcsmi{min-width:190px;padding:2px}.pcsmi>div{display:flex;align-items:center;gap:10px;padding:6px 10px;font-size:13px;cursor:pointer}.pcsmi>div:hover{background:#000080;color:#fff}.pcsmi hr{border:0;border-top:1px solid #808080;border-bottom:1px solid #fff;margin:3px 2px}
+.pcdlg{left:50%;top:50%;width:min(320px,92vw);transform:translate(-50%,-50%)}.pcdlgb{padding:14px 12px 10px;align-items:center;gap:10px}.pcdlgb p{margin:0 0 4px;font-size:13px;text-align:center}.pcdlgb>div{display:flex;gap:10px;justify-content:center}.pcdlgb>.pcok{display:none}
+.pcboot{position:absolute;inset:0;background:#000;color:#bbb;font:14px 'Courier New',monospace;padding:28px;display:flex;flex-direction:column;gap:10px;z-index:5000;cursor:pointer}.pcboot b{color:#fff}.pcbar{width:260px;height:16px;border:2px solid #bbb;padding:2px}.pcbar i{display:block;height:100%;width:0;background:repeating-linear-gradient(90deg,#1084d0 0 10px,#000 10px 12px);animation:pcbar .9s steps(14) forwards}@keyframes pcbar{to{width:100%}}
+#pcbtn{display:flex;align-items:center;gap:7px;background:#141414;border:2px solid #2a2a2a;border-radius:999px;padding:5px 12px 5px 10px;color:var(--paper,#f6f4ec);font-weight:800;font-size:12px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;position:relative;white-space:nowrap;flex-shrink:0}#pcbtn:hover{border-color:var(--sodium,#ffde00)}#pcbtn .pcbadge{position:absolute;top:-6px;right:-6px;background:var(--bad,#ff5d4d);color:#fff;border-radius:999px;min-width:18px;height:18px;font-size:11px;line-height:18px;text-align:center;box-shadow:0 0 0 2px #000;animation:cxp 1.4s infinite}
+@media (max-width:760px){.pctb{width:auto;max-width:90px}.pctb span{display:none}.pcdi{left:4px;width:64px}.pcdi:nth-child(2){top:84px}.pcdi:nth-child(3){top:158px}.pcdi:nth-child(4){top:232px}.pcdi img,.pcdi .pcsvg{width:32px!important;height:32px!important}.pcside{width:38%;min-width:104px}.pcdl{grid-template-columns:84px 1fr}.pcclk{display:none}}`;document.head.appendChild(s)}
+function pcOpen(){if(!G||!ui.started)return;pcStyle();let r=document.getElementById('oldpc');if(!r){r=document.createElement('div');r.id='oldpc';document.body.appendChild(r);pcWire(r)}
+ ui.modal={kind:'pc'};PC.open=true;pcInit();r.hidden=false;$('#modal').hidden=true;
+ if(!PC.booted){PC.booted=true;r._boot=1;r.innerHTML=`<div class="pcboot"><b>ANCAP-OS 98 (c) Free Enterprise Systems</b><span>Memory test: 65536K OK</span><span>Detecting contacts... ${ctList().length} found</span><div class="pcbar"><i></i></div><span>Starting up...</span></div>`;
+  const go=()=>{if(r._boot){r._boot=0;pcRender()}};r.querySelector('.pcboot').onclick=go;setTimeout(go,1000)}else pcRender()}
+function pcClose(){PC.open=false;const r=document.getElementById('oldpc');if(r)r.hidden=true;if(ui.modal&&ui.modal.kind==='pc')ui.modal=null;$('#modal').hidden=!ui.modal;try{pcTop();renderTop()}catch(e){}}
+function pcWire(r){
+ let drag=null;
+ r.addEventListener('pointerdown',e=>{if(r._boot)return;const w=e.target.closest('.pcw[data-w]');
+  if(PC.start&&!e.target.closest('.pcsm,.pcstart')){PC.start=false;const m=r.querySelector('.pcsm');if(m)m.remove();const b=r.querySelector('.pcstart');if(b)b.classList.remove('on')}
+  if(w)pcFocus(w.dataset.w);
+  const t=e.target.closest('[data-drag]');if(t&&!e.target.closest('button')){const id=t.dataset.drag,W=PC.w[id];if(W.max)return;drag={id,dx:e.clientX-W.x,dy:e.clientY-W.y,el:t.parentElement};t.setPointerCapture&&t.setPointerCapture(e.pointerId)}});
+ r.addEventListener('pointermove',e=>{if(!drag)return;const W=PC.w[drag.id];W.x=Math.max(-W.w+80,Math.min(innerWidth-60,e.clientX-drag.dx));W.y=Math.max(0,Math.min(innerHeight-60,e.clientY-drag.dy));drag.el.style.left=W.x+'px';drag.el.style.top=W.y+'px'});
+ const end=()=>{drag=null};r.addEventListener('pointerup',end);r.addEventListener('pointercancel',end);
+ const act=(a,id)=>{
+  if(a==='icon'){const n=Date.now(),dbl=PC._lc&&PC._lc.id===id&&n-PC._lc.t<450;PC._lc={id,t:n};if(dbl||matchMedia('(pointer:coarse)').matches){pcOpenApp(id)}else{PC.icon=id;r.querySelectorAll('.pcdi').forEach(x=>x.classList.toggle('sel',x.dataset.id===id))}}
+  else if(a==='close'){PC.w[id].open=false;PC.w[id].max=false;pcRender()}
+  else if(a==='min'){PC.w[id].min=true;pcRender()}
+  else if(a==='max'){PC.w[id].max=!PC.w[id].max;pcRender()}
+  else if(a==='tb'){const w=PC.w[id];if(w.min){w.min=false;w.z=++PC.z}else if(pcTopWin()===id)w.min=true;else w.z=++PC.z;pcRender()}
+  else if(a==='start'){PC.start=!PC.start;pcRender()}
+  else if(a==='smopen')pcOpenApp(id);
+  else if(a==='shut')pcClose();
+  else if(a==='dlgyes')pcOpenApp('contacts');
+  else if(a==='dlgno'){PC.dlg=false;pcRender()}
+  else if(a==='pick'){PC.sel=id;pcSeen();pcRender()}
+  else if(a==='favor')ctFavor(id)};
+ r.addEventListener('click',e=>{if(r._boot)return;const t=e.target.closest('[data-pc]');if(!t||t.disabled)return;act(t.dataset.pc,t.dataset.id)});
+ r.addEventListener('dblclick',e=>{const t=e.target.closest('.pcdi');if(t)pcOpenApp(t.dataset.id)})}
+// top-bar button + modal plumbing
+function pcTop(){if(!G||!ui.started)return;let b=document.getElementById('pcbtn');
+ if(!b){const gc=document.getElementById('goalchip');if(!gc)return;b=document.createElement('button');b.id='pcbtn';b.title='Your computer';b.addEventListener('click',()=>{if(!ui.modal||ui.modal.kind==='pc')pcOpen()});gc.parentNode.insertBefore(b,gc)}
+ const n=ctList().filter(c=>c.isNew).length,html=`<span>🖥 PC</span>${n?`<span class="pcbadge">${n}</span>`:''}`;if(b._h!==html){b._h=html;b.innerHTML=html}}
+const _rm3=renderModal;renderModal=function(){const m=ui.modal;if(m&&m.kind==='pc'){$('#modal').hidden=true;return}return _rm3()};
+const _cm3=closeModal;closeModal=function(){if(PC.open){pcClose();return}return _cm3.apply(this,arguments)};
+const _rt3=renderTop;renderTop=function(){_rt3.apply(this,arguments);try{pcTop()}catch(e){}};
+window.pcOpen=pcOpen;
+
 setTimeout(()=>{try{if(G){cx();renderTop()}}catch(e){}},1500);
 })();
 
