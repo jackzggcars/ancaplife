@@ -2597,7 +2597,7 @@ const GLOWMAT=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,de
 // pull a lot's own triangles out of the chunk's building mesh (exact shape, roof and all)
 function lotShell(L,lot,off){if(!L||!L.meshes)return null;for(const m of L.meshes){const recs=m.userData&&m.userData.recs;if(!recs)continue;const rec=recs.find(r=>r.lot.key===lot.key);if(!rec)continue;
   const pa=m.geometry.attributes.position.array,na=m.geometry.attributes.normal.array,a=rec.t0*9,b=rec.t1*9;if(b<=a)return null;let any=false;for(let i=a;i<b;i++)if(pa[i]!==0){any=true;break}if(!any)return null;
-  const out=new Float32Array(b-a);for(let i=a;i<b;i+=3){out[i-a]=pa[i]+na[i]*off;out[i-a+1]=pa[i+1]+na[i+1]*off;out[i-a+2]=pa[i+2]+na[i+2]*off}return out}return null}
+  const out=new Float32Array(b-a);for(let i=a;i<b;i+=3){const k=off/127;out[i-a]=pa[i]+na[i]*k;out[i-a+1]=pa[i+1]+na[i+1]*k;out[i-a+2]=pa[i+2]+na[i+2]*k}return out}return null}
 function glowMesh(lots,toLocal,L){
  const P=[],C=[];
  const quad=(a,b,c,d,col,al)=>{for(const[v,k]of[[a,0],[b,1],[c,2],[a,0],[c,2],[d,3]]){P.push(v[0],v[1],v[2]);C.push(col.r,col.g,col.b,al[k])}};
@@ -6555,7 +6555,8 @@ html body #bar .hb-ic:hover{background:rgba(255,255,255,.08);color:var(--hb-y)}
 html body #bar .hb-ic{font-size:0!important;line-height:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;width:38px!important;height:38px!important;min-width:0!important;letter-spacing:0!important;place-items:center!important;text-align:center!important}html body #bar .hb-ic:hover{background:rgba(255,255,255,.08)!important}html body #bar .hb-ic>*:not(.hb-svg):not(.cxbadge){display:none!important}html body #bar .hb-ic .hb-svg{display:grid!important;place-items:center;width:22px;height:22px;margin:auto}html body #bar .hb-ic svg{width:21px!important;height:21px!important;display:block}
 html body #bar .hb-ic[data-n]:not([data-n=""])::after{content:attr(data-n);position:absolute;top:1px;right:0;min-width:15px;height:15px;padding:0 4px;box-sizing:border-box;border-radius:999px;background:var(--hb-y);color:#111;font:800 9.5px/15px var(--f-body,system-ui);text-align:center}
 html body #bar #cxbtn .cxbadge{display:block!important;position:absolute!important;top:1px!important;right:0!important;min-width:15px!important;height:15px!important;line-height:15px!important;font-size:9.5px!important;background:var(--hb-r)!important;box-shadow:none!important;animation:none!important}
-@media (max-width:1280px){.hb-search{width:170px}#hblvl{display:none!important}html body #moneybox #lp{display:none!important}}
+@media (max-width:1420px){html body .hb-pill .where small{display:none!important}}
+@media (max-width:1280px){html body #bar .hb-right{flex:0 1 auto!important}.hb-search{width:170px}#hblvl{display:none!important}html body #moneybox #lp{display:none!important}}
 @media (max-width:1080px){#hbrank{display:none!important}html body #bar .brand{font-size:0!important;gap:0}.hb-search{width:140px}}
 @media (max-width:820px){html body #bar .brand{font-size:0!important;gap:0}#hbrank,.hb-pill{display:none!important}.hb-search{width:34px;padding:0 9px}.hb-search input{display:none}.hb-search:focus-within{width:180px}.hb-search:focus-within input{display:block}}
 /* ================= GLASS THEME: semi-transparent dark cards, thin borders, soft buttons ================= */
