@@ -578,7 +578,7 @@ body{font-family:var(--f-body);font-size:14px;line-height:1.45;font-feature-sett
   <span class="brand"><i class="flag" aria-hidden="true"></i>ANCAP LIFE</span>
   <div id="crumb"></div>
   <div class="tcenter"><div class="clockbox"><b id="date"></b><div class="clock"><div id="clockfill"></div></div></div>
-  <div class="speed" role="group" aria-label="Game speed"><button data-act="speed" data-speed="0" aria-label="Pause">❚❚</button><button data-act="speed" data-speed="1">1×</button><button data-act="speed" data-speed="3">3×</button><button data-act="speed" data-speed="8">8×</button><button data-act="skipmenu" id="skipbtn" title="Skip ahead">⏭</button></div></div>
+  <div id="livebox" title="Shared world clock: everyone is on the same day"><i class="ldot" aria-hidden="true"></i><span>LIVE</span><b id="onlinen">1</b><small>online</small></div></div>
   <button id="goalchip" data-act="goals" hidden></button>
   <div class="money" id="moneybox"><div class="mrow"><canvas id="spark" width="128" height="44" aria-hidden="true"></canvas><b id="cash" class="mono"></b></div><small id="lp" class="mono"></small><div id="cashfx" aria-hidden="true"></div></div>
   <button class="ghost sm" data-act="shops" id="shopsbtn" hidden>My shops</button>
@@ -1057,7 +1057,9 @@ async function loadCity(id){
     if(base&&covered(L,base)){L.ccx=base.ccx!=null?base.ccx:base.cx;L.ccy=base.ccx!=null?base.ccy:base.cy;if(base.h<L.mh)L.mh=Math.max(0,base.h-.3)}
     else{L.mh=0;if(base){L.ccx=base.ccx!=null?base.ccx:base.cx;L.ccy=base.ccx!=null?base.ccy:base.cy}}}}
   // public parks and green spaces become bare land that players can buy (and mine)
-  for(let k=0;k<C.parks.length;k++){const ring=C.parks[k][0];if(!ring||ring.length<3)continue;const ar=Math.abs(polyArea(ring));if(ar<300)continue;let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}cx/=ring.length;cy/=ring.length;
+  for(let k=0;k<C.parks.length;k++){const ring=C.parks[k][0];if(!ring||ring.length<3)continue;const ar=Math.abs(polyArea(ring));if(ar<300||ar>100000)continue;let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}cx/=ring.length;cy/=ring.length;
+   // famous big parks (Central Park, Hyde Park, Bois de Boulogne...) stay public
+   if(inParkZ(d.lat0+cy/ky,d.lon0+cx/kx))continue;
    const L=mkLot(id,C.lots.length,ring,1,d.lat0+cy/ky,d.lon0+cx/kx,nearName(cx,cy)||streetName(E.lang,k%2,k,false),false,.9,R,E,null,null,false);
    L.h=0;L.floors=1;L.cx=cx;L.cy=cy;L.mh=0;L.gen=1;L.park=true;L.hidden=false;L.init={st:'plot'};C.lots.push(L)}
   // spatial buckets for picking & competition
@@ -1274,13 +1276,18 @@ const LAST=['Adeyemi','Bauer','Chen','Dubois','Evans','Fernández','Garcia','Had
 
 
 // ===================== ANCAP LIFE · ECONOMY =====================
-const DAY_LEN=5,START_CASH=30000,START_DATE=Date.UTC(2026,9,12);
+const DAY_LEN=15,START_CASH=30000,START_DATE=Date.UTC(2026,9,12);
+// one shared clock for every player: a game day every DAY_LEN real seconds since the world opened
+const WORLD_EPOCH=Date.UTC(2026,9,14);let CLOCK_SKEW=0;
+function worldDay(){return Math.max(0,(Date.now()+CLOCK_SKEW-WORLD_EPOCH)/(DAY_LEN*1000))}
+const WDAY=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const dayName=d=>'Day '+(Math.floor(d)+1).toLocaleString('en-US');
 const rnd=(a,b)=>a+Math.random()*(b-a);
 const gauss=()=>(Math.random()+Math.random()+Math.random()-1.5)*1.15;
 let G=null;
 
 function newGame(company){
- const g={v:2,company:company||'',day:0,clock:0,cash:START_CASH,seq:1,sites:[],props:[],loans:[],mkt:{},news:[],ov:{},goals:{},neg:0,over:false,nw:[],lastProfit:0,cam:null};
+ const wd=Math.floor(worldDay());const g={v:2,company:company||'',day:wd,day0:wd,clock:0,cash:START_CASH,seq:1,sites:[],props:[],loans:[],mkt:{},news:[],ov:{},goals:{},neg:0,over:false,nw:[],lastProfit:0,cam:null};
  for(const k in SUP)g.mkt[k]={m:1+gauss()*.04,h:[]};
  return g;
 }
@@ -1318,7 +1325,7 @@ function plotValue(E,lot){return Math.round(lot.area*E.rent*12/yieldOf(E)*.3*lot
 const buildCostSqm=E=>1700*Math.pow(E.price,.7)*infl();
 function maxFloors(lot){const c=coreness(lot.lat,lot.lon),E=econAt(lot.lat,lot.lon);return clamp(Math.round((3+c*40)),2,E.style==='paris'?7:70)}
 const buildDays=f=>25+f*9;
-function dateStr(d){return new Date(START_DATE+d*864e5).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})}
+function dateStr(d){return WDAY[((Math.floor(d)%7)+7)%7]+' · '+dayName(d)}
 function news(t,kind){G.news.unshift({d:G.day,t,k:kind||''});if(G.news.length>40)G.news.length=40;if(typeof onNews==='function')onNews(t,kind)}
 
 // ---------- prices ----------
@@ -1537,7 +1544,7 @@ const EVENTS=[
   c:[{t:'Stock cold drinks and ice',d:'Cash in on the heat.',tags:['+Customers'],cost:s=>Math.round(220*evP(s)),run:s=>{evFoot(s,1.35,4);return'Ice-cold drinks fly off the shelves.'}},
      {t:'Install air conditioning',d:'A cool oasis. Permanent upgrade.',tags:['+Reputation','Permanent'],cost:s=>Math.round(1500*evP(s)),run:s=>{s.ac=true;evRep(s,5);evFoot(s,1.2,4);return'People come in just to cool down, and stay to buy.'}},
      {t:'Ride it out',d:'Fewer customers for a few days.',tags:['−Customers'],run:s=>{evFoot(s,.82,4);return'Quiet days. Staff fan themselves with menus.'}}]},
- {id:'audit',w:1,ok:s=>G.day>20,who:{role:'taxman',title:'Tax inspector'},t:'Tax audit',
+ {id:'audit',w:1,ok:s=>G.day-(G.day0||0)>20,who:{role:'taxman',title:'Tax inspector'},t:'Tax audit',
   d:s=>`A letter arrives: ${G.event.nm} from the revenue office will be going through ${s.name}'s books next week.`,
   c:[{t:'Hire an accountant',d:'Everything in perfect order.',tags:['Safe'],cost:s=>Math.round(700*evP(s)),run:s=>'"Exemplary records." The audit is closed in a day.'},
      {t:'Handle it yourself',d:'Free, if your receipts are in order.',tags:['Gamble'],run:s=>{if(roll(.55))return'Somehow, every receipt is accounted for.';const f=Math.round(1600*evP(s));G.cash-=f;return`Missing paperwork. Penalty: ${usd(f)}.`}},
@@ -2455,6 +2462,7 @@ function* lotsMeshJob(lots,style,toLocal,lod){
  for(const lot of lots){PARTY=party;
   if(lot.hidden)continue;
   const ring=(lot.fp||lot.poly).map(toLocal),h=lotH(lot);
+  if(h<=0&&lot.park)continue; // park land keeps its grass; it is picked from the ground instead
   if(h<=0){const t0=gb.tris,r0=gb.nv;const rc=roofColorFor(lot)||new THREE.Color(propAtKey(lot.key)?'#d9c391':'#b9a27a');CAPIDX=null;groundPoly(gb,[ring],.30,rc);recs.push({lot,t0,t1:gb.tris,r0,r1:gb.nv});continue}
   const t0=gb.tris,v0=gb.nv,mh=Math.max(0,Math.min(lot.mh||0,h-2));
   const[r0,r1]=lot.civic?buildCivic(gb,ring,lot,lod,style):lot.kind==='farm'?buildFarm(gb,ring,lot,lod):buildOne(gb,ring,mh,h-mh,lot,lot.kind==='ind'?'ind':style,lod,roofColorFor(lot));CAPIDX=null;PARTY=null;
@@ -3765,7 +3773,7 @@ const big=n=>{const a=Math.abs(n),s=n<0?'−$':'$';if(a>=1e9)return s+(a/1e9).to
 const pm=n=>money(n,n!==0&&Math.abs(n)<10?2:0);
 const stars=r=>{const n=Math.round(clamp(r,0,100)/20*2)/2;let o='';for(let i=1;i<=5;i++)o+=n>=i?'★':n>=i-.5?'⯪':'☆';return o};
 const footLabel=l=>l>1.25?'Prime high street':l>1?'Busy street':l>.75?'Steady side street':l>.55?'Quiet street':'Backstreet';
-const dshort=d=>new Date(START_DATE+d*864e5).toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
+const dshort=d=>dayName(d);
 const altLabel=a=>a>=1e6?Math.round(a/1e3).toLocaleString('en-US')+' km':a>=1e4?Math.round(a/1e3)+' km':a>=1e3?(a/1e3).toFixed(1)+' km':Math.round(a)+' m';
 
 const ui={selLot:null,selKey:null,site:null,tab:'overview',speed:1,busy:false,modal:null,show:{lease:1,sale:1,rival:0},confirm:null,wiz:null,floors:null,street:false};
@@ -3857,7 +3865,9 @@ let last=performance.now(),chunkTick=0,uiTick=0;
 function loop(now){
  const dt=Math.min(.05,(now-last)/1000);last=now;
  if(FLIGHT){FLIGHT.t+=dt;const k=Math.min(1,FLIGHT.t/FLIGHT.dur);FLIGHT.step(k);if(k>=1){const f=FLIGHT;FLIGHT=null;ui.busy=false;f.then&&f.then()}}
- if(G&&!G.over&&!ui.modal&&ui.speed>0&&ui.started){G.clock+=dt*ui.speed/DAY_LEN;let n=0;while(G.clock>=1&&n<4){G.clock-=1;n++;simDay();afterDay()}}
+ // the world never pauses: everyone is on the same day, and a day ticks over every DAY_LEN seconds
+ if(G&&!G.over&&ui.started&&!ui.catching){const w=worldDay(),wd=Math.floor(w);G.clock=w-wd;
+  if(wd-G.day>3&&typeof catchUp==='function')catchUp(wd);else{let n=0;while(G.day<wd&&n<3){n++;simDay();afterDay()}}}
  if(G)$('#clockfill').style.width=(G.clock*100).toFixed(1)+'%';
  if(VIS.cycle)VIS.phase=(VIS.phase+dt/VIS.period)%1;camTick(dt);zoomTick(dt);updateCamera();updateLights();updateLayers();updatePatch();
  qualityTick(dt,now);updateChunks(now);updateLandmarks();interiorTick(dt,now);trafficTick(dt);tutTick(dt);cashTick(dt);if(!ui.interior)GLOWMAT.opacity=.78+.22*Math.sin(now*.0032);
@@ -3908,7 +3918,7 @@ function updateLabels(dt){
 // ===================== TOP BAR =====================
 function renderTop(){
  if(!G)return;
- $('#date').textContent=new Date(START_DATE+G.day*864e5).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
+ $('#date').textContent=WDAY[G.day%7]+' · '+dayName(G.day);
  const cash=$('#cash');if(ui.cashShown==null){ui.cashShown=G.cash;cash.textContent=money(G.cash)}cash.classList.toggle('neg',G.cash<0);drawSpark();
  const lp=$('#lp');lp.innerHTML=`<span class="${G.lastProfit>=0?'up':'down'}">${G.lastProfit>=0?'+':'−'}${big(Math.abs(G.lastProfit)).replace(/^−?\$/,'$')}</span> yesterday`;lp.title='Net worth '+big(netWorth());
  const E=WORLD.ready&&camAlt()<4e5?econAt(CAM.lat,CAM.lon):null;
@@ -4138,13 +4148,13 @@ function mBank(){const lim=loanLimit(),opts=[5000,10000,25000,50000,100000,25000
  <div class="btnrow">${opts.map(v=>`<button class="btn ghost" data-act="loan" data-v="${v}">Borrow ${big(v)}</button>`).join('')||'<span class="muted">No credit available yet. Show a few weeks of profit first.</span>'}</div></div>
  <h3 class="eyebrow">Your loans</h3>${G.loans.length?G.loans.map(l=>`<div class="item"><div><b>${esc(l.desc)}</b><small>${(l.apr*100).toFixed(1)}% APR · ${money(l.pay,2)}/day</small></div><div class="ia"><span class="mono">${money(l.bal)}</span><button class="ghost sm" data-act="repay" data-id="${l.id}" ${G.cash<l.bal?'disabled':''}>Repay</button></div></div>`).join(''):'<p class="muted">No loans outstanding.</p>'}</div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
 function mGoals(){const W=G.week;return`<div class="mhead"><p class="eyebrow">${esc(G.company||'Your company')}</p><h2 class="h">Goals</h2></div><div class="mbody">${W?`<h3 class="eyebrow">This week · ${7-(G.day-W.start)} days left</h3><div class="wk">${W.list.map(x=>`<div class="wkrow ${x.done?'ok':''}"><div><b>${esc(x.t)}</b><small class="mono">${x.done?'Done':Math.min(x.p,x.n).toLocaleString('en-US')+' / '+x.n.toLocaleString('en-US')}</small></div><span class="mono">+${money(x.r)}</span><div class="meter"><i style="width:${clamp(x.p/x.n*100,0,100)}%"></i></div></div>`).join('')}</div><h3 class="eyebrow">Milestones</h3>`:'<p class="muted">Weekly challenges start once your first business is open.</p>'}<ul class="checks big">${GOALS.map(g=>`<li class="${G.goals[g.id]!=null?'ok':''}"><span>${G.goals[g.id]!=null?'✓':'○'}</span><div class="gt">${esc(g.t)}${g.h&&G.goals[g.id]==null?`<small class="gh">${esc(g.h)}</small>`:''}</div>${G.goals[g.id]!=null?`<small class="mono">day ${G.goals[g.id]+1}</small>`:g.r?`<small class="mono">+${money(g.r)}</small>`:''}</li>`).join('')}</ul></div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
-function mMenu(){return`<div class="mhead"><p class="eyebrow">${esc(G.company||'ANCAP LIFE')} · day ${G.day+1}</p><h2 class="h">Menu</h2></div><div class="mbody">
+function mMenu(){return`<div class="mhead"><p class="eyebrow">${esc(G.company||'ANCAP LIFE')} · ${dayName(G.day)}</p><h2 class="h">Menu</h2></div><div class="mbody">
  <dl class="kv"><dt>Cash</dt><dd class="mono">${money(G.cash)}</dd><dt>Net worth</dt><dd class="mono">${big(netWorth())}</dd><dt>Loans</dt><dd class="mono">${money(G.loans.reduce((a,l)=>a+l.bal,0))}</dd></dl>
  <div class="btnrow"><button class="btn ghost" data-act="goals">Goals</button><button class="btn ghost" data-act="market">Supplier market</button><button class="btn ghost" data-act="bank">Bank &amp; loans</button></div>
  <h3 class="eyebrow">Company</h3><div class="renrow"><input id="corename" type="text" maxlength="40" value="${esc(G.company||'')}" aria-label="Company name"><button class="btn sm" data-act="renameco">Rename</button></div><button class="btn ghost wide" data-act="nextmodal">What should I do next?</button><button class="btn ghost wide" data-act="board">Leaderboard</button>
  <h3 class="eyebrow">Account</h3><div class="renrow"><span class="fine" style="flex:1;margin:0;align-self:center">${authed()?`Signed in as <b>${esc(dispName())}</b>${AUTH.cloud==='off'?' · saving on this device only':' · saved to your account'}`:'Playing as a guest · progress is saved in this browser only'}</span><button class="btn sm ghost" data-act="signout">${authed()?'Sign out':'Sign in'}</button></div>
  <h3 class="eyebrow">Settings</h3><label class="tog"><input type="checkbox" data-change="shadows" ${QUAL.shadows?'checked':''}> Sun shadows (turn off if the game feels slow)</label><label class="tog"><input type="checkbox" data-change="cycle" ${VIS.cycle?'checked':''}> Day and night (a full day lasts 10 minutes)</label><label class="tog"><input type="checkbox" data-change="traffic" ${TRAFFIC_ON?'checked':''}> Traffic</label>
- <h3 class="eyebrow">Controls</h3><p class="fine">Drag to move · right-drag (or Shift-drag) to turn and tilt · scroll to zoom · Space pauses. Inside a shop, drag to look around and click kit to move it.</p>
+ <h3 class="eyebrow">Controls</h3><p class="fine">Drag to move · right-drag (or Shift-drag) to turn and tilt · scroll to zoom · The world runs on a shared clock for every player. Inside a shop, drag to look around and click kit to move it.</p>
  <p class="fine">Saves automatically after every day. Map data: Natural Earth (public domain); London, New York and Paris streets and buildings © OpenStreetMap contributors.</p>
  <div class="box danger"><button class="btn ghost" data-act="newgame">${ui.confirm==='new'?'Yes, delete and start over':'Start a new game'}</button></div></div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
 function mConstruct(){
@@ -4155,7 +4165,7 @@ function mConstruct(){
  <dl class="kv"><dt>Build cost</dt><dd class="mono">${money(cost)}</dd><dt>Construction time</dt><dd class="mono">${days} days</dd><dt>Value when finished</dt><dd class="mono">${big(val)}</dd><dt>Upper-floor tenants</dt><dd class="mono">≈${money(inc)}/month</dd><dt>Your ground floor</dt><dd class="mono">${lot.sqm} m² shop unit</dd></dl></div>
  <div class="mfoot"><button class="ghost" data-act="close">Cancel</button><button class="btn ghost" data-act="build" data-mort="1" data-cost="${cost}" ${G.cash<dp?'disabled':''}>Loan · ${big(dp)} down</button><button class="btn" data-act="build" data-mort="0" data-cost="${cost}" ${G.cash<cost?'disabled':''}>Pay ${big(cost)}</button></div>`;
 }
-function mOver(){return`<div class="mhead"><p class="eyebrow">Day ${G.day+1}</p><h2 class="display">The bank called it in</h2></div><div class="mbody"><p>Your account stayed overdrawn for two weeks and the bank wound the company up. ${esc(G.company||'You')} reached a peak net worth of <b class="mono">${big(Math.max(START_CASH,...G.nw))}</b> and ${Object.keys(G.goals).length} of ${GOALS.length} goals.</p></div><div class="mfoot"><button class="btn" data-act="newgame2">Start again</button></div>`}
+function mOver(){return`<div class="mhead"><p class="eyebrow">${dayName(G.day)}</p><h2 class="display">The bank called it in</h2></div><div class="mbody"><p>Your account stayed overdrawn for two weeks and the bank wound the company up. ${esc(G.company||'You')} reached a peak net worth of <b class="mono">${big(Math.max(START_CASH,...G.nw))}</b> and ${Object.keys(G.goals).length} of ${GOALS.length} goals.</p></div><div class="mfoot"><button class="btn" data-act="newgame2">Start again</button></div>`}
 
 // ===================== ACTIONS =====================
 document.addEventListener('click',e=>{
@@ -4256,7 +4266,7 @@ document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='s
  if(t.dataset.change==='price'){const v=parseFloat(t.value);if(v>0)s.prices[t.dataset.id]=Math.round(v*100)/100;renderSite()}
  if(t.dataset.change==='auto')s.auto=t.checked});
 document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;
- if(e.code==='Space'){e.preventDefault();ui.speed=ui.speed?0:1;renderTop()}
+
  if(ui.interior&&!ui.modal&&(e.key==='PageUp'||e.key==='PageDown')){const I=ui.interior,Ls=lvList(I.site).filter(l=>lvOpen(I.site,l)),n=Ls.indexOf(I.lv)+(e.key==='PageUp'?1:-1);if(Ls[n]!=null)setLevel(Ls[n]);e.preventDefault();return}
  if((e.key==='r'||e.key==='R')&&ui.interior&&ui.interior.placing){interiorRotate();return}
  if(e.key==='Escape'&&ui.interior&&!ui.modal){if(ui.interior.placing)cancelPlacing();else{exitInterior();renderSite()}return}
@@ -4404,9 +4414,9 @@ function mEvent(){
   const d=[];if(Math.abs(dc)>=1)d.push(`<span class="${dc>0?'up':'down'}">${dc>0?'+':'−'}${money(Math.abs(dc))}</span>`);if(Math.abs(dr)>=.5)d.push(`<span class="${dr>0?'up':'down'}">${dr>0?'+':'−'}${Math.round(Math.abs(dr))} reputation</span>`);
   return`<div class="mhead"><p class="eyebrow">${esc(o.site)} · ${esc(o.title)}</p><h2 class="h">${head}</h2></div><div class="mbody"><div class="evwrap">${o.portrait}<div><p class="fine" style="margin:0 0 6px">You chose: <b>${esc(o.choice)}</b></p><div class="evres">${esc(o.text)}</div>${d.length?`<div class="deltas">${d.join('')}</div>`:''}</div></div></div><div class="mfoot"><button class="btn" data-act="evdone">Continue</button></div>`}
  const ev=G.event;if(!ev)return'';const e=EVENTS.find(x=>x.id===ev.id),s=G.sites.find(x=>x.id===ev.site);if(!e||!s){G.event=null;return''}
- return`<div class="mhead"><p class="eyebrow">${esc(s.name)} · ${esc(s.p.place)} · day ${G.day+1}</p><h2 class="h">${esc(e.t)}</h2></div><div class="mbody"><div class="evwrap">${portraitHTML(e,ev,s)}<div><p class="evstory">${esc(e.d(s))}</p>
+ return`<div class="mhead"><p class="eyebrow">${esc(s.name)} · ${esc(s.p.place)} · ${dayName(G.day)}</p><h2 class="h">${esc(e.t)}</h2></div><div class="mbody"><div class="evwrap">${portraitHTML(e,ev,s)}<div><p class="evstory">${esc(e.d(s))}</p>
  <div class="evc">${e.c.map((c,i)=>{const cost=c.cost?c.cost(s):0;return`<button class="evbtn" data-act="evchoice" data-i="${i}" ${cost>G.cash?'disabled':''}><b>${esc(c.t)}</b><span class="cost">${cost?money(cost):'FREE'}</span>${c.d?`<span class="hint">${esc(c.d)}</span>`:''}${c.tags?`<span class="evtags">${c.tags.map(tagHTML).join('')}</span>`:''}</button>`}).join('')}</div>
- <p class="fine">Game paused until you decide.</p></div></div></div>`}
+ <p class="fine">The world keeps turning while you decide.</p></div></div></div>`}
 function chooseEvent(i){
  const ev=G.event;if(!ev)return;const e=EVENTS.find(x=>x.id===ev.id),s=G.sites.find(x=>x.id===ev.site);if(!e||!s){G.event=null;closeModal();return}
  const portrait=portraitHTML(e,ev,s),c0=G.cash,r0=s.rep,choice=e.c[i]&&e.c[i].t,cost=e.c[i]&&e.c[i].cost?e.c[i].cost(s):0;
@@ -4432,7 +4442,7 @@ const TUT=[
   el:s=>{const k=bizSupplies(BIZ[s.type]).find(k=>!(s.inv[k]&&s.inv[k].q>0));return k?$(`#right [data-act="stock"][data-id="${k}"][data-d="7"]`):null},tab:'menu',
   done:s=>bizSupplies(BIZ[s.type]).every(k=>s.inv[k]&&s.inv[k].q>0)},
  {t:'Open for business',p:s=>'Everything is ready. Go back to Overview and open the doors.',el:s=>ui.tab==='overview'?$('#right [data-act="open"]'):$('#right .tabs button[data-id="overview"]'),done:s=>s.status==='open'},
- {t:'Time is money',p:s=>'Each day takes a few seconds. Speed it up to 3× and watch customers come in.',el:()=>$('#bar [data-act="speed"][data-speed="3"]'),done:()=>ui.speed>=3},
+ {t:'A shared world',p:s=>'Every player is on the same clock: a new day starts every '+DAY_LEN+' seconds, and your businesses keep trading while you are away. Wait for your first day of customers.',el:()=>$('#livebox'),done:s=>!!(s.last&&s.last.open)},
  {t:'Watch the money',p:s=>s.last&&s.last.open?`Yesterday ${s.name} made ${s.last.profit>=0?'a profit of':'a loss of'} ${money(Math.abs(s.last.profit))}. Your cash is up here, with yesterday's total under it. Rent and wages come out every day, open or not.`:'Waiting for your first day of trade…',el:()=>$('#bar .money'),next:s=>!!(s.last&&s.last.open)},
  {t:'Find your bottleneck',p:s=>'The Overview tells you what\'s holding you back: customers walking out means you need more kit or staff, and stockouts mean more supplies. Fix the biggest problem first.',el:()=>$('#right .tips')||$('#right .stats')||$('#right'),tab:'overview',next:true},
  {t:'Grow your empire',p:s=>'You\'re making money. Next, turn profit into more profit: fix your bottleneck, then open a second business. Your next goal is always shown up here. Click Finish for a checklist of what to do next.',el:()=>$('#goalchip:not([hidden])')||$('#bar .money'),next:true,last:true},
@@ -4487,7 +4497,7 @@ function nextSteps(){
  out.push({t:'Open a second business',h:'Step outside, zoom out and look for buildings glowing yellow. Farms and factories are out in the countryside. A loan from the Bank can get you there sooner.',p:Math.min(1,two/2),act:{site:s.id,out:1},btn:'Step outside'});
  if(s.tenure==='lease')out.push({t:'Buy your building',h:'No more rent, and you collect rent from the floors above. Business tab → Premises.',p:Math.min(1,G.cash/Math.max(1,bldgValue(econAt(s.lat,s.lon),siteLot(s)||{sqm:80,floors:3},(siteLot(s)||{floors:3}).floors)*.3)),act:{site:s.id,tab:'biz'},btn:'Premises'});
  return out}
-function mNext(){const st=nextSteps();return`<div class="mhead"><p class="eyebrow">${esc(G.company||'Your company')} · day ${G.day+1}</p><h2 class="h">What to do next</h2></div><div class="mbody"><p class="muted">Work down this list. Your current goal always shows in the yellow chip at the top, and weekly challenges pay cash bonuses.</p>
+function mNext(){const st=nextSteps();return`<div class="mhead"><p class="eyebrow">${esc(G.company||'Your company')} · ${dayName(G.day)}</p><h2 class="h">What to do next</h2></div><div class="mbody"><p class="muted">Work down this list. Your current goal always shows in the yellow chip at the top, and weekly challenges pay cash bonuses.</p>
  <div class="nexts">${st.map((x,i)=>`<div class="nx"><span class="nn">${i+1}</span><div><b>${esc(x.t)}</b><small>${esc(x.h)}</small><div class="meter"><i style="width:${clamp((x.p||0)*100,0,100)}%"></i></div></div>${x.act?`<button class="btn sm" data-act="nextgo" data-site="${x.act.site}" data-tab="${x.act.tab||''}" data-out="${x.act.out||''}">${esc(x.btn)}</button>`:''}</div>`).join('')}</div></div><div class="mfoot"><button class="ghost" data-act="goals">All goals</button><button class="btn" data-act="close">Got it</button></div>`}
 
 // ===================== MONEY COUNTER =====================
@@ -4678,9 +4688,9 @@ function renderFront(force){const el=$('#front');if(!el||el.hidden)return;
  if(!authed()||AUTH.mode==='newpass'){
   if(!force&&card.querySelector('#authform')){const lv=card.querySelector('.fr-live');if(lv)lv.innerHTML=liveHTML();return}
   card.innerHTML=authCard();return}
- const has=!!(G&&G.company&&(G.sites.length||G.day>0)),em=dispName()||'your account';
+ const has=!!(G&&G.company&&(G.sites.length||G.props.length||G.day>(G.day0||0))),em=dispName()||'your account';
  card.innerHTML=`<div class="fr-top"><span class="fr-tag">SEASON 1 · OPEN WORLD</span><span class="fr-who">${NET.on?'ONLINE':'OFFLINE'}</span></div>
- <h1>${has?'Welcome back':'Build your empire'}</h1><p class="fr-sub">${has?`${esc(G.company)} · day ${G.day+1} · ${big(G.cash)} in the bank`:'Start with $30,000 on a real map of Earth. Lease a shop, hire a team and grow into towers, landmarks and data centres.'}</p>
+ <h1>${has?'Welcome back':'Build your empire'}</h1><p class="fr-sub">${has?`${esc(G.company)} · ${dayName(G.day)} · ${big(G.cash)} in the bank`:'Start with $30,000 on a real map of Earth. Lease a shop, hire a team and grow into towers, landmarks and data centres.'}</p>
  <div class="fr-body"><div class="fr-acct"><span class="av">${esc(em[0])}</span><div><small>${AUTH.cloud==='off'?'SAVING ON THIS DEVICE':'SAVED TO YOUR ACCOUNT'}</small><b>${esc(em)}</b></div><button data-act="signout">Sign out</button></div>
  ${AUTH.adopted?'<p class="fr-sub" style="margin:0 0 14px;color:var(--good)">We found a game saved on this device and added it to your account.</p>':''}
  ${has?'':`<label class="fr-lbl" for="frname">Company name</label><input id="frname" type="text" maxlength="40" placeholder="e.g. Liberty Burgers" value="${esc(G&&G.company||'')}">`}
@@ -4866,7 +4876,7 @@ function mEmpire(){const C=cx(),nw=netWorth(),ri=C.rank,nx=CX_RANKS[ri+1];const 
     else{const P=C.ipo;body+=`<div class="box"><h3 class="eyebrow">Stock market</h3><div class="cxgrid">${stat('Market cap',fmt(P.cap))}${stat('Your stake',Math.round(P.stake*100)+'%')}${stat('Confidence',Math.round(P.conf*100)+'%',P.conf<1?'down':'up')}${stat('Quarter profit',fmt(P.q.profit))}${stat('Target',fmt(P.q.target))}${stat('Days left',28-(G.day-P.q.start))}</div></div>`}}}}
  if(cxTab==='rivals'){const me={n:G.company+' (you)',nw,c:'var(--sodium)',me:1};const L=C.rivals.concat([me]).sort((a,b)=>b.nw-a.nw);
   body=`<p class="muted">Rival corporations grow every day, snipe your contracts and pounce in recessions. Pass them all.</p><ol class="cxriv">${L.map((r,i)=>`<li class="${r.me?'me':''}"><span>${i+1}</span><b style="color:${r.c}">${esc(r.n)}</b><span class="mono">${fmt(r.nw)}</span>${!r.me&&ri>=6&&nw>r.nw*1.5?`<button class="btn sm" data-cx="takeover" data-id="${esc(r.n)}" ${G.cash<r.nw*.6?'disabled':''}>Take over · ${fmt(r.nw*.6)}</button>`:''}</li>`).join('')}</ol>`}
- return`<div class="mhead"><p class="eyebrow">${esc(G.company||'Your company')} · day ${G.day+1}</p><h2 class="h">Empire</h2></div><nav class="tabs cxtabs">${tabs.map(([k,t])=>`<button data-cx="tab" data-id="${k}" class="${cxTab===k?'on':''}">${t}</button>`).join('')}</nav><div class="mbody">${body}</div><div class="mfoot"><button class="btn" data-act="close">Back to work</button></div>`}
+ return`<div class="mhead"><p class="eyebrow">${esc(G.company||'Your company')} · ${dayName(G.day)}</p><h2 class="h">Empire</h2></div><nav class="tabs cxtabs">${tabs.map(([k,t])=>`<button data-cx="tab" data-id="${k}" class="${cxTab===k?'on':''}">${t}</button>`).join('')}</nav><div class="mbody">${body}</div><div class="mfoot"><button class="btn" data-act="close">Back to work</button></div>`}
 function lobbyCost(){return Math.round(Math.max(5000,netWorth()*.01)/500)*500}
 document.addEventListener('click',e=>{const t=e.target.closest('[data-cx]');if(!t||t.disabled||!G)return;const a=t.dataset.cx,id=t.dataset.id,C=cx();
  if(a==='open'){cxTab=C.brief&&C.offers.length&&cxTab==='today'?'today':cxTab;ui.modal={kind:'empire'};renderModal()}
@@ -4978,7 +4988,7 @@ function pcHTML(){const L=ctList(),nNew=L.filter(c=>c.isNew).length;
  const tb=['contacts','read','graphs','slides'].filter(id=>PC.w[id].open).map(id=>`<button class="pctb ${pcTopWin()===id?'on':''}" data-pc="tb" data-id="${id}">${pcIcon(id,16)}<span>${PC_APPS[id].t}</span></button>`).join('');
  const dlg=PC.dlg&&nNew?`<div class="pcw act pcdlg" style="z-index:900"><div class="pct"><span class="pcsvg" style="width:16px;height:16px"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="#fff"/><text x="8" y="12" text-anchor="middle" font-size="11" font-weight="700" fill="#1e5aa8">i</text></svg></span><span>New contact</span><div class="pcbs"><button data-pc="dlgno">×</button></div></div><div class="pcbody pcdlgb"><span class="pcok">✔</span><p>You have ${nNew} new contact${nNew===1?'':'s'}.<br>Open the Contacts app now?</p><div><button class="pcbtn" data-pc="dlgyes">Yes/Y</button> <button class="pcbtn" data-pc="dlgno">No/N</button></div></div></div>`:'';
  return`<div class="pcdesk"><button class="pcx" data-pc="shut" title="Back to game (Esc)">✕ Exit</button>${icons}${['read','graphs','slides','contacts'].map(pcWin).join('')}${dlg}</div>
- <div class="pctask"><button class="pcstart ${PC.start?'on':''}" data-pc="start"><span class="pcsvg" style="width:16px;height:16px"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="1" y="2" width="6" height="6" fill="#e33"/><rect x="8" y="2" width="6" height="6" fill="#3a3"/><rect x="1" y="9" width="6" height="6" fill="#36e"/><rect x="8" y="9" width="6" height="6" fill="#ec3"/></svg></span><b>Start</b></button><i class="pcsep"></i>${tb}<span class="pcclk">Day ${G.day+1}</span></div>
+ <div class="pctask"><button class="pcstart ${PC.start?'on':''}" data-pc="start"><span class="pcsvg" style="width:16px;height:16px"><svg viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="1" y="2" width="6" height="6" fill="#e33"/><rect x="8" y="2" width="6" height="6" fill="#3a3"/><rect x="1" y="9" width="6" height="6" fill="#36e"/><rect x="8" y="9" width="6" height="6" fill="#ec3"/></svg></span><b>Start</b></button><i class="pcsep"></i>${tb}<span class="pcclk">${dayName(G.day)}</span></div>
  ${PC.start?`<div class="pcsm"><div class="pcsmb">ANCAP<br>OS 98</div><div class="pcsmi">${['contacts','read','graphs','slides'].map(id=>`<div data-pc="smopen" data-id="${id}">${pcIcon(id,24)}<span>${PC_APPS[id].t}</span></div>`).join('')}<hr><div data-pc="shut"><span class="pcsvg" style="width:24px;height:24px"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" fill="#6ab" stroke="#000"/><rect x="8" y="18" width="8" height="2" fill="#888"/></svg></span><span>Shut Down…</span></div></div></div>`:''}`}
 function pcRender(){if(!PC.open)return;const r=document.getElementById('oldpc');if(!r||r._boot)return;const keep=r.querySelector('.pclist'),st=keep?keep.scrollTop:0;r.innerHTML=pcHTML();const k2=r.querySelector('.pclist');if(k2)k2.scrollTop=st}
 function pcFocus(id){const w=PC.w[id];if(!w||!w.open)return;w.z=++PC.z;const r=document.getElementById('oldpc');if(!r)return;const el=r.querySelector(`.pcw[data-w="${id}"]`);if(el)el.style.zIndex=w.z;r.querySelectorAll('.pcw[data-w]').forEach(e=>e.classList.toggle('act',e.dataset.w===pcTopWin()));r.querySelectorAll('.pctb').forEach(e=>e.classList.toggle('on',e.dataset.id===pcTopWin()))}
@@ -5091,7 +5101,7 @@ const MISSIONS=[
  {t:'Hire your first employee',h:'Staff tab → pick someone with good skill dots.',p:()=>G.sites.some(s=>s.staff.length)?1:0,r:300,x:40,go:'staff'},
  {t:'Stock your shelves',h:'Menu tab → buy a week of each supply.',p:()=>{const s=G.sites[0];if(!s)return 0;const k=bizSupplies(BIZ[s.type]);return k.filter(x=>s.inv[x]&&s.inv[x].q>0).length/k.length},r:300,x:40,go:'menu'},
  {t:'Open for business',h:'Overview tab → Open for business. Then speed time up.',p:()=>open().length?1:0,r:1000,x:80,go:'overview'},
- {t:'Serve 150 customers',h:'Keep the doors open. Speed up time with 3×.',p:()=>totCust()/150,r:800,x:80},
+ {t:'Serve 150 customers',h:'Keep the doors open. Customers come every day, even while you are away.',p:()=>totCust()/150,r:800,x:80},
  {t:'Bank $1,000 profit',h:'Price near the market and keep stock topped up.',p:()=>Math.max(0,totProfit())/1000,r:1000,x:100},
  {t:'Add an extra piece of kit',h:'More kit = more capacity = more sales. Kit tab.',p:()=>G.sites.some(s=>BIZ[s.type].equip.some(e=>!e.req&&eqActive(s,e.id)>0)||BIZ[s.type].equip.some(e=>e.req&&eqActive(s,e.id)>1))?1:0,r:600,x:80,go:'equip'},
  {t:'Reach Shopkeeper rank',h:'Grow net worth to $75,000. Contracts unlock.',p:()=>netWorth()/75000,r:1500,x:150},
@@ -6738,7 +6748,7 @@ const R=()=>{if(!G)return null;if(!G.rx)G.rx={net:{},hist:{},hold:{},list:[],avg
 const ON={on:false,net:{},trades:[]};
 const PH=k=>{let h=7;for(const c of k)h=(h*31+c.charCodeAt(0))%9973;return h/9973*6.2832};
 // online everyone shares one market clock (a market day every 3 real hours) so all players see the same world demand
-const mday=()=>ON.on?Date.now()/108e5:(G?G.day+(G.clock||0):0);
+const mday=()=>typeof worldDay==='function'?worldDay():(G?G.day+(G.clock||0):0);
 function npcNet(k,day){const r=RES[k],f=PH(k);return r.d*(.085*Math.sin(day*6.2832/41+f)+.05*Math.sin(day*6.2832/13+f*2.3)+.022*Math.sin(day*6.2832/5.3+f*4.1))}
 function seed(X,k){const h=[],d1=Math.floor(G.day||0);for(let d=d1-90;d<d1;d++)h.push({d,p:+(RES[k].b*Math.exp(npcNet(k,d)/RES[k].d)).toFixed(4)});X.hist[k]=h.concat(X.hist[k])}
 window.resState=R;
@@ -6804,6 +6814,10 @@ function resDay(){const X=R();
  for(const L of X.list.slice()){const p=price(L.res);if(L.ask>p*1.001)continue;const dem=RES[L.res].d*.012,q=Math.min(L.qty,dem);if(q<=0)continue;L.qty-=q;G.cash+=q*L.ask;trade(L.res,-q,true);L.sold=(L.sold||0)+q;if(L.qty<.01){X.list=X.list.filter(x=>x!==L);news(`Listing filled: ${RES[L.res].n} sold for ${fmt(L.sold*L.ask)}`,'good')}}
  for(const k of IDS){X.net[k]*=.965;record(k)}
 }
+// offline: mines keep digging for the days you were away (used by the multiplayer catch-up)
+window.resOffline=function(days){const X=R();let out=[];for(const p of G.props){const m=p.mine;if(!m)continue;const left=Math.max(0,m.reserve-m.ext);if(left<=0)continue;const q=Math.min(left,mineRate(m)*days),f=q/Math.max(1e-9,mineRate(m));
+  m.ext+=q;X.hold[m.type]+=q;for(const e of m.extra||[])X.hold[e.type]+=RES[e.type].rate*m.rich*Math.sqrt(m.size)*e.share*f;G.cash-=m.cost*.0018*f;out.push([m.type,q])}return out};
+window.resPrice=k=>RES[k]?price(k):0;window.resName=k=>RES[k]?RES[k].n:k;window.resUnit=k=>RES[k]?RES[k].u:'';
 // supply prices follow raw materials
 const PEG={timber:['wood',.7],steel:['iron',.7],diesel:['oil',.8],varnish:['oil',.3],power:['coal',.5],fittings:['iron',.3],coolant:['oil',.2]};
 const _sp=supPrice;supPrice=function(sid,E){const v=_sp(sid,E),pg=PEG[sid];if(!pg||!G||!G.rx)return v;return v*Math.pow(price(pg[0])/RES[pg[0]].b,pg[1])};
@@ -6978,7 +6992,7 @@ if(typeof pickLot==='function'){const _pk=pickLot;pickLot=function(x,y){const b=
 // ---------- parks in generated towns are bare land too ----------
 function addParkLots(ch){if(!ch||ch._pk||!ch.parks)return ch;ch._pk=1;const mx=(ch.cx+.5)*CHUNK,my=(ch.cy+.5)*CHUNK;
  ch.parks.forEach((poly,n)=>{if(!poly||poly.length<3)return;const ar=Math.abs(polyArea(poly));if(ar<300)return;let cx=0,cy=0;for(const q of poly){cx+=q[0];cy+=q[1]}cx/=poly.length;cy/=poly.length;
-  const[la,lo]=unmerc(mx+cx/ch.kc,my+cy/ch.kc);let st='Park Road',bd=1e18;for(const l of ch.lots){if(!l.street||l.park)continue;const d=(l.lat-la)**2+(l.lon-lo)**2;if(d<bd){bd=d;st=l.street}}
+  const[la,lo]=unmerc(mx+cx/ch.kc,my+cy/ch.kc);if(ar>100000||(typeof inParkZ==='function'&&inParkZ(la,lo)))return;let st='Park Road',bd=1e18;for(const l of ch.lots){if(!l.street||l.park)continue;const d=(l.lat-la)**2+(l.lon-lo)**2;if(d<bd){bd=d;st=l.street}}
   const sid='pk'+n,L={zone:ch.zone,sid,key:ch.zone+'#'+sid,i:hashStr(sid)%100003,poly,h:0,floors:1,area:Math.round(ar),sqm:Math.round(clamp(ar*.42,25,320)),lat:la,lon:lo,street:st,num:1+(n*37)%180,art:false,loc:.85,park:true,init:{st:'plot'}};
   ch.byId[sid]=L;ch.lots.push(L)});return ch}
 if(typeof genChunk==='function'){const _gch=genChunk;genChunk=function(){return addParkLots(_gch.apply(this,arguments))}}
@@ -7068,6 +7082,133 @@ html body .modal.rx-modal{width:min(1040px,calc(100vw - 32px))!important;max-wid
 #rxkey{position:fixed;right:68px;bottom:56px;z-index:19;width:210px;padding:9px 12px;border-radius:9px;background:rgba(24,26,30,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);color:#ecebe6;font:12px var(--f-body,system-ui)}
 #rxkey b{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8d9098}#rxkey i{display:block;height:8px;border-radius:4px;margin:6px 0 4px;background:linear-gradient(90deg,#2954bf,#26b39e,#8cdb40,#ffcc26,#ff522e)}#rxkey span{display:flex;justify-content:space-between}#rxkey small{color:#b9b8b2;font-size:11px}
 @media (max-width:820px){.rx-grid{grid-template-columns:1fr}}`;document.head.appendChild(st);
+})();
+
+</script>
+<script>
+// ANCAP LIFE · MULTIPLAYER LAYER
+// One shared world: a single clock for everyone (no pausing or fast-forward), businesses that keep trading while you are away,
+// the same market news for every player, other players' shops competing with yours, and a world panel with chat, live activity and who is online.
+(function(){
+const dbx=()=>(typeof NET!=='undefined'&&NET.on&&(NET.db||(typeof AUTH!=='undefined'&&AUTH.db)))||null;
+const fmt=v=>big(v),ago=t=>{const s=Math.max(0,(Date.now()-new Date(t).getTime())/1000);return s<60?'now':s<3600?Math.floor(s/60)+'m':s<86400?Math.floor(s/3600)+'h':Math.floor(s/86400)+'d'};
+const BN=t=>(typeof BIZ!=='undefined'&&BIZ[t]?BIZ[t].n:t||'business').toLowerCase();
+const placeOf=(la,lo)=>{try{return econAt(la,lo).place}catch(e){return''}};
+
+// ---------- 1. same world, same luck: each day's market noise and news come from the world day, so every player sees the same shifts ----------
+const _sd=simDay;simDay=function(){const r=Math.random;Math.random=mulberry32(hashStr('world-day:'+(G.day+1)));let out;try{out=_sd.apply(this,arguments)}finally{Math.random=r}
+ try{(G.mpProf||(G.mpProf=[])).push(G.lastProfit||0);if(G.mpProf.length>14)G.mpProf.shift()}catch(e){}return out};
+
+// ---------- 2. away from the game: managers keep things ticking, then the last stretch is played out in full ----------
+const FULL=30,MGR_CAP=Math.round(6*3600/DAY_LEN); // managers cover up to 6 real hours, then the businesses idle
+window.catchUp=function(wd){if(!G||ui.catching)return;ui.catching=true;const gap=wd-G.day,full=Math.min(FULL,gap),mgr=gap-full,c0=G.cash,S={gap,mgr:0,earn:0,loans:0,mines:[]};
+ if(mgr>0){const days=Math.min(mgr,MGR_CAP),h=G.mpProf&&G.mpProf.length?G.mpProf:[G.lastProfit||0],avg=h.reduce((a,b)=>a+b,0)/h.length;
+  S.mgr=days;S.earn=Math.max(0,avg)*.35*days;G.cash+=S.earn;
+  for(const l of G.loans){const pay=Math.min(l.bal,l.pay*days);l.bal-=pay;G.cash-=pay;S.loans+=pay}G.loans=G.loans.filter(l=>l.bal>.5);
+  try{if(window.resOffline)S.mines=window.resOffline(days)}catch(e){}
+  G.day+=mgr;if(G.week)G.week.start=Math.max(G.week.start,G.day-6)}
+ const ov=$('#skipov'),bar=$('#skbar'),dl=$('#skd'),pp=$('#skp');if(ov&&full>3){ov.hidden=false;ov.querySelector('.sk-t').textContent='CATCHING UP WITH THE WORLD';const sb=ov.querySelector('[data-act="skipstop"]');if(sb)sb.hidden=true}
+ const prevSkip=ui.skip;ui.skip={n:full,done:0,mp:1};let done=0;
+ (function step(){const t0=performance.now();while(done<full&&performance.now()-t0<30){simDay();afterDay();done++}
+  if(bar)bar.style.width=(done/full*100)+'%';if(dl)dl.textContent=dayName(G.day);if(pp)pp.textContent=`${full-done} days to go`;
+  if(done<full){setTimeout(step,0);return}
+  ui.skip=prevSkip||null;ui.catching=false;if(ov)ov.hidden=true;S.cash=G.cash-c0;renderAll();save();
+  if(gap>=40){ui.mpAway=S;ui.mpAwayPending=true}})()};
+setInterval(()=>{if(ui.mpAwayPending&&!ui.modal&&ui.started&&!ui.catching){ui.mpAwayPending=false;openModal('mpaway')}},700);
+function mAway(){const S=ui.mpAway||{};const real=S.gap*DAY_LEN,hrs=real>=3600?(real/3600).toFixed(1)+' hours':Math.max(1,Math.round(real/60))+' minutes';
+ const mines=(S.mines||[]).filter(m=>m[1]>0).map(([k,q])=>`<li>${esc(window.resName?resName(k):k)}: ${Math.round(q).toLocaleString()} ${esc(window.resUnit?resUnit(k):'')} dug</li>`).join('');
+ return`<div class="mhead"><p class="eyebrow">Shared world · ${dayName(G.day)}</p><h2 class="h">While you were away</h2></div><div class="mbody">
+ <p>The world kept turning for ${hrs} (${(S.gap||0).toLocaleString()} days). ${S.mgr?`Your managers ran things for ${S.mgr.toLocaleString()} days${S.mgr<(S.gap-FULL)?', then the businesses idled until you came back':''}.`:''}</p>
+ <dl class="kv"><dt>Cash change</dt><dd class="mono ${S.cash>=0?'up':'down'}">${S.cash>=0?'+':'−'}${fmt(Math.abs(S.cash||0))}</dd>${S.earn?`<dt>Managers earned</dt><dd class="mono up">${fmt(S.earn)}</dd>`:''}${S.loans?`<dt>Loan repayments</dt><dd class="mono">${fmt(S.loans)}</dd>`:''}</dl>
+ ${mines?`<ul class="fine">${mines}</ul>`:''}<p class="fine">Managers bank about a third of your recent daily profit. Play live to earn the full amount and react to rivals.</p></div><div class="mfoot"><button class="btn" data-act="close">Back to it</button></div>`}
+
+// ---------- 3. other players' shops compete with yours ----------
+const PR=320;
+function rivalsOf(lat,lon,type){const out=[];if(typeof NET==='undefined'||!NET.on)return out;for(const c of NET.claims.values()){if(c.owner===NET.uid||!c.biz_type||(type&&c.biz_type!==type))continue;if(Math.abs(c.lat-lat)>.004||Math.abs(c.lon-lon)>.006)continue;const d=distM(c.lat,c.lon,lat,lon);if(d<PR)out.push([c,d])}return out}
+if(typeof competition==='function'){const _cp=competition;competition=function(s){const f=_cp(s);try{const me=siteLot(s);if(!me)return f;const rs=rivalsOf(me.lat,me.lon,s.type);if(!rs.length)return f;
+  let x=0;for(const[c,d]of rs)x+=(1-d/PR)*((c.rep||40)/60);const s0=(1/f-1)/.22;return 1/(1+.22*Math.min(s0+x,9))}catch(e){return f}}}
+if(typeof nearbyRivals==='function'){const _nr=nearbyRivals;nearbyRivals=function(lot){const r=_nr(lot);try{for(const[c]of rivalsOf(lot.lat,lot.lon,null)){if(c.lot_key===lot.key)continue;r.o[c.biz_type]=(r.o[c.biz_type]||0)+1}}catch(e){}return r}}
+const rankOf=id=>{try{return leaderboard(1000).findIndex(p=>p.id===id)+1}catch(e){return 0}};
+const onlineSet=()=>{try{return new Set(Object.keys(NET.ch?NET.ch.presenceState():{}))}catch(e){return new Set()}};
+if(typeof lotPanel==='function'){const _lp=lotPanel;lotPanel=function(lot){let h=_lp(lot);try{const c=typeof netOther==='function'&&netOther(lot.key);if(!c)return h;
+  const p=NET.players.get(c.owner)||{},rk=rankOf(c.owner),on=onlineSet().has(c.owner),mine=c.biz_type?G.sites.filter(s=>s.type===c.biz_type&&s.status==='open'&&distM(s.lat,s.lon,c.lat,c.lon)<PR):[];
+  const box=`<div class="box mp-owner"><p class="eyebrow">Player-owned</p><div class="mp-who"><span class="mp-av">${esc((p.company||'?')[0])}</span><div><b>${esc(p.company||'Another player')}</b><small>${on?'<i class="ldot"></i> online now':'offline'}${rk?` · #${rk} on the leaderboard`:''}${p.net_worth?` · ${fmt(p.net_worth)}`:''}</small></div></div>
+   <p class="muted">${c.biz_type?`${esc(c.name||'Their '+BN(c.biz_type))} is a ${esc(BN(c.biz_type))} run by another player.`:'Land owned by another player.'} ${mine.length?`It takes customers from your ${mine.map(s=>esc(s.name)).join(', ')} within ${PR} m.`:c.biz_type?`If you open a ${esc(BN(c.biz_type))} within ${PR} m, you will split the customers.`:''}</p></div>`;
+  return h.replace(/(<div class="box)/,box+'$1')}catch(e){return h}}}
+
+// ---------- 4. the world panel: chat, live activity, who is online ----------
+let OPEN=false,TAB='chat',UNREAD=0,LASTSEND=0;const CHAT=[],FEED=[];let MUTE=new Set();try{MUTE=new Set(JSON.parse(localStorage.getItem('ancap.mute')||'[]'))}catch(e){}
+const saveMute=()=>{try{localStorage.setItem('ancap.mute',JSON.stringify([...MUTE]))}catch(e){}};
+function addFeed(t,lat,lon){FEED.unshift({t,lat,lon,at:new Date().toISOString()});if(FEED.length>60)FEED.pop();if(OPEN&&TAB==='feed')draw();
+ const n=performance.now();if(G&&ui.started&&n-(addFeed.last||0)>20000){addFeed.last=n;try{news(t,'city')}catch(e){}}}
+function dock(){if(document.getElementById('mppanel'))return;const el=document.createElement('div');el.id='mppanel';el.hidden=true;el.setAttribute('role','dialog');el.setAttribute('aria-label','World');
+ el.innerHTML=`<div class="mp-h"><b>World</b><span id="mp-sub"></span><button class="mp-x" data-mp="close" aria-label="Close">✕</button></div><nav class="mp-tabs"><button data-mp="tab" data-t="chat">Chat</button><button data-mp="tab" data-t="feed">Activity</button><button data-mp="tab" data-t="online">Online</button></nav><div id="mpbody" aria-live="polite"></div>
+ <form id="mpform" autocomplete="off"><input id="mpin" maxlength="200" placeholder="Say something to every player" aria-label="Chat message"><button class="btn" type="submit">Send</button></form>`;document.body.appendChild(el)}
+function addBtn(){const icons=document.querySelector('#bar .hb-icons');if(!icons||document.getElementById('mpbtn'))return;const b=document.createElement('button');b.id='mpbtn';b.className='hb-ic';b.dataset.mp='toggle';b.title='World: chat, activity, online players';b.setAttribute('aria-label','World');
+ b.innerHTML='<span class="hb-svg"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-2.9a15.6 15.6 0 0 0-1.4-3.6A8 8 0 0 1 18.9 8zM12 4c.8 1.1 1.5 2.5 1.9 4h-3.8c.4-1.5 1.1-2.9 1.9-4zM4.3 14a8.2 8.2 0 0 1 0-4h3.3a16.5 16.5 0 0 0 0 4zm.8 2h2.9c.3 1.3.8 2.5 1.4 3.6A8 8 0 0 1 5.1 16zM8 8H5.1a8 8 0 0 1 4.3-3.6C8.8 5.5 8.4 6.7 8 8zm4 12c-.8-1.1-1.5-2.5-1.9-4h3.8c-.4 1.5-1.1 2.9-1.9 4zm2.3-6H9.7a14.7 14.7 0 0 1 0-4h4.6a14.7 14.7 0 0 1 0 4zm.3 5.6c.6-1.1 1.1-2.3 1.4-3.6h2.9a8 8 0 0 1-4.3 3.6zm1.8-5.6a16.5 16.5 0 0 0 0-4h3.3a8.2 8.2 0 0 1 0 4z"/></svg></span><em id="mpbadge" hidden></em>';
+ icons.insertBefore(b,icons.firstChild)}
+function draw(){const body=document.getElementById('mpbody');if(!body)return;document.querySelectorAll('#mppanel .mp-tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===TAB));
+ const f=document.getElementById('mpform');if(f)f.hidden=TAB!=='chat';const sub=document.getElementById('mp-sub');if(sub)sub.textContent=`${NET.online||1} online · ${dayName(G?G.day:worldDay())}`;
+ if(!dbx()){body.innerHTML='<div class="mp-empty">Sign in or play as a guest online to chat and see other players.</div>';return}
+ if(TAB==='chat'){const rows=CHAT.filter(m=>!MUTE.has(m.player)).slice(-80);body.innerHTML=rows.length?rows.map(m=>`<div class="mp-msg ${m.player===NET.uid?'me':''}"><button class="mp-n" data-mp="who" data-id="${esc(m.player)}" title="${m.player===NET.uid?'You':'Mute or unmute'}">${esc(m.company||'Player')}</button><span>${esc(m.body)}</span><small>${ago(m.at)}</small></div>`).join(''):'<div class="mp-empty">No messages yet. Say hello.</div>';body.scrollTop=body.scrollHeight}
+ else if(TAB==='feed'){body.innerHTML=FEED.length?FEED.map(e=>`<div class="mp-ev"><span>${esc(e.t)}</span><small>${ago(e.at)}</small>${e.lat!=null?`<button class="ghost sm" data-act="flyll" data-lat="${e.lat}" data-lon="${e.lon}">Go</button>`:''}</div>`).join(''):'<div class="mp-empty">When players open businesses, buy land or make big trades, it shows up here.</div>'}
+ else{let st={};try{st=NET.ch?NET.ch.presenceState():{}}catch(e){}const rows=Object.entries(st).map(([id,a])=>Object.assign({id},a&&a[0]||{}));
+  body.innerHTML=rows.length?rows.map(r=>{const p=NET.players.get(r.id)||{},rk=rankOf(r.id);return`<div class="mp-ev"><i class="ldot"></i><span><b>${esc(r.company||p.company||'Player')}</b>${r.id===NET.uid?' (you)':''}<br><small>${rk?'#'+rk+' · ':''}${p.net_worth?fmt(p.net_worth):''}${r.place?' · '+esc(r.place):''}</small></span>${r.lat!=null&&r.id!==NET.uid?`<button class="ghost sm" data-act="flyll" data-lat="${r.lat}" data-lon="${r.lon}">Visit</button>`:''}</div>`}).join(''):'<div class="mp-empty">Just you right now.</div>'}}
+function setBadge(){const b=document.getElementById('mpbadge');if(!b)return;b.hidden=!UNREAD;b.textContent=UNREAD>9?'9+':UNREAD}
+function toggle(v){dock();OPEN=v==null?!OPEN:v;document.getElementById('mppanel').hidden=!OPEN;const b=document.getElementById('mpbtn');if(b)b.classList.toggle('on',OPEN);if(OPEN){if(TAB==='chat')UNREAD=0;setBadge();draw();if(TAB==='chat')setTimeout(()=>{const i=document.getElementById('mpin');i&&i.focus()},30)}}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-mp]');if(!t)return;e.preventDefault();const a=t.dataset.mp;
+ if(a==='toggle')toggle();else if(a==='close')toggle(false);else if(a==='tab'){TAB=t.dataset.t;if(TAB==='chat'){UNREAD=0;setBadge()}draw()}
+ else if(a==='who'){const id=t.dataset.id;if(!id||id===NET.uid)return;if(MUTE.has(id)){MUTE.delete(id);toast('Unmuted','')}else{MUTE.add(id);toast('Muted. You will not see their messages.','')}saveMute();draw()}});
+document.addEventListener('keydown',e=>{if(e.target&&e.target.id==='mpin')e.stopPropagation()},true);
+document.addEventListener('submit',async e=>{if(e.target.id!=='mpform')return;e.preventDefault();const i=document.getElementById('mpin'),db=dbx();if(!i||!db)return;
+ const body=i.value.replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,200);if(!body)return;
+ const n=Date.now();if(n-LASTSEND<2500){toast('Slow down a little','warn');return}LASTSEND=n;i.value='';
+ const row={player:NET.uid,company:(G&&G.company||'Player').slice(0,40),body};const r=await db.from('chat_messages').insert(row);if(r.error){toast('Chat is not set up yet on the server','warn');i.value=body}});
+
+// ---------- 5. realtime: chat, activity, presence with your HQ ----------
+let started=false;
+async function start(){const db=dbx();if(!db||started)return;started=true;
+ try{const r=await db.from('chat_messages').select('*').order('at',{ascending:false}).limit(60);if(!r.error&&r.data){CHAT.push(...r.data.reverse())}}catch(e){}
+ db.channel('mp').on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},e=>{const m=e.new;CHAT.push(m);if(CHAT.length>200)CHAT.shift();if(MUTE.has(m.player))return;if(!(OPEN&&TAB==='chat')&&m.player!==NET.uid){UNREAD++;setBadge()}if(OPEN)draw()})
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'claims'},e=>{const c=e.new;if(!c||c.owner===NET.uid)return;const who=netCompany(c.owner),pl=placeOf(c.lat,c.lon);addFeed(c.biz_type?`${who} opened ${c.name?c.name+', ':''}a ${BN(c.biz_type)}${pl?' in '+pl:''}`:c.kind==='landmark'?`${who} bought a landmark${pl?' in '+pl:''}`:`${who} bought ${c.kind==='plot'?'land':'a building'}${pl?' in '+pl:''}`,c.lat,c.lon)})
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'resource_trades'},e=>{const t=e.new;if(!t||t.player===NET.uid||!window.resPrice)return;const v=Math.abs(t.qty)*resPrice(t.res);if(v<25000)return;addFeed(`${netCompany(t.player)} ${t.qty>0?'bought':'sold'} ${Math.round(Math.abs(t.qty)).toLocaleString()} ${resUnit(t.res)} of ${resName(t.res).toLowerCase()} (${fmt(v)})`)})
+  .subscribe()}
+setInterval(()=>{if(!started&&dbx())start();
+ // presence carries your HQ so others can visit
+ try{if(NET.on&&NET.ch&&G&&ui.started){const s=G.sites.find(x=>x.status==='open')||G.sites[0]||G.props[0];NET.ch.track({company:G.company||'Someone',lat:s?+(+s.lat).toFixed(5):null,lon:s?+(+s.lon).toFixed(5):null,place:s&&s.p?s.p.place:''})}}catch(e){}},15000);
+setTimeout(()=>{if(dbx())start()},3000);
+
+// ---------- 6. live badge + leaderboard with who's online ----------
+setInterval(()=>{addBtn();dock();const n=document.getElementById('onlinen');if(n)n.textContent=(typeof NET!=='undefined'&&NET.on?NET.online:1);const lb=document.getElementById('livebox');if(lb)lb.classList.toggle('off',!(typeof NET!=='undefined'&&NET.on));if(OPEN&&TAB!=='chat')draw()},1000);
+if(typeof mBoard==='function')mBoard=function(){const L=leaderboard(50),on=onlineSet();return`<div class="mhead"><p class="eyebrow">Live world · ${NET.online} online · ${dayName(G?G.day:worldDay())}</p><h2 class="h">Leaderboard</h2></div><div class="mbody">${NET.on?`<ol class="lb">${L.map((p,i)=>`<li class="${p.id===NET.uid?'me':''}"><span class="rk">${i+1}</span><b>${on.has(p.id)?'<i class="ldot" title="Online"></i> ':''}${esc(p.company)}</b><small>${p.businesses} open</small><span class="mono">${big(p.net_worth)}</span></li>`).join('')||'<p class="muted">No players yet. Be the first.</p>'}</ol>`:'<p class="muted">Sign in or play as a guest online to join the shared world.</p>'}</div><div class="mfoot"><button class="btn" data-act="close">Close</button></div>`};
+const _rm=renderModal;renderModal=function(){const m=ui.modal;if(m&&m.kind==='mpaway'){$('#modal').hidden=false;$('#modal .modal').innerHTML=mAway();return}return _rm()};
+
+// ---------- styles ----------
+const st=document.createElement('style');st.textContent=`
+html body #bar #livebox{display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid var(--hb-line,rgba(255,255,255,.1));font:700 11px/1 var(--f-body,system-ui);letter-spacing:.08em;color:var(--hb-text,#eee);white-space:nowrap}
+#livebox span{color:#ff5b4d}#livebox b{font:800 12.5px/1 var(--f-body,system-ui);letter-spacing:0;margin-left:4px}#livebox small{display:none}
+html body #bar .hb-right .hb-search{flex:0 1 230px!important;width:auto!important;min-width:110px}html body #bar .hb-right{min-width:0}
+#livebox.off span{color:var(--hb-mut,#8d9098)}#livebox.off .ldot{background:#8d9098;box-shadow:none;animation:none}
+.ldot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff5b4d;box-shadow:0 0 0 3px rgba(255,91,77,.18);animation:mpPulse 1.6s ease-in-out infinite;vertical-align:middle}
+.mp-ev .ldot,.mp-owner .ldot,.lb .ldot{background:#5fd38a;box-shadow:0 0 0 3px rgba(95,211,138,.18)}
+@keyframes mpPulse{50%{opacity:.45}}@media (prefers-reduced-motion:reduce){.ldot{animation:none}}
+#mpbtn{position:relative}#mpbtn.on{color:var(--hb-y,#ffde00)!important}
+#mpbadge{position:absolute;top:2px;right:0;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#ff5b4d;color:#fff;font:700 10px/16px var(--f-body,system-ui);font-style:normal;text-align:center}
+#mppanel{position:fixed;z-index:40;right:16px;top:calc(var(--bar-h,56px) + 10px);width:min(370px,calc(100vw - 32px));height:min(520px,calc(100vh - var(--bar-h,56px) - 120px));display:flex;flex-direction:column;
+ background:rgba(24,26,30,.86);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.12);border-radius:12px;color:#ecebe6;font:13px var(--f-body,system-ui);box-shadow:0 18px 40px rgba(0,0,0,.35)}
+#mppanel[hidden]{display:none}
+.mp-h{display:flex;align-items:center;gap:10px;padding:12px 14px 8px}.mp-h b{font-size:15px}.mp-h span{flex:1;color:#8d9098;font-size:12px}.mp-x{all:unset;cursor:pointer;width:26px;height:26px;display:grid;place-items:center;border-radius:6px;color:#b9b8b2}.mp-x:hover{background:rgba(255,255,255,.08)}
+.mp-tabs{display:flex;gap:4px;padding:0 10px 8px;border-bottom:1px solid rgba(255,255,255,.08)}.mp-tabs button{all:unset;cursor:pointer;padding:6px 10px;border-radius:7px;color:#9a9ca4;font-weight:600}.mp-tabs button.on{background:rgba(255,222,0,.1);color:#ffde00}
+#mpbody{flex:1;overflow:auto;padding:8px 12px;display:flex;flex-direction:column;gap:6px;min-height:0}
+.mp-msg{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;line-height:1.35}.mp-msg span{word-break:break-word;min-width:0}.mp-msg small,.mp-ev small{color:#7d8088;font-size:11px}
+.mp-n{all:unset;cursor:pointer;font-weight:700;color:#ffde00;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mp-msg.me .mp-n{color:#8fd0ff}.mp-n:hover{text-decoration:underline}
+.mp-ev{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)}.mp-ev span{flex:1;min-width:0}
+.mp-empty{margin:auto;text-align:center;color:#8d9098;padding:20px}
+#mpform{display:flex;gap:8px;padding:10px 12px 12px;border-top:1px solid rgba(255,255,255,.08)}#mpform[hidden]{display:none}
+#mpin{flex:1;min-width:0;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#f0efea;padding:8px 10px;font:13px var(--f-body,system-ui)}#mpin:focus{outline:2px solid rgba(255,222,0,.5);outline-offset:0}
+#mpform .btn{padding:0 14px!important;min-height:34px}
+.mp-who{display:flex;gap:10px;align-items:center;margin:6px 0 8px}.mp-who b{display:block;font-size:15px}.mp-who small{color:#8d9098;font-size:12px}.mp-av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#c86bff;color:#fff;font-weight:800}
+`;document.head.appendChild(st);
 })();
 
 </script>
