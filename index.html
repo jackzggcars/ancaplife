@@ -1048,11 +1048,14 @@ async function loadCity(id){
   // building parts that start above the ground (min_height) must sit on a base part; otherwise drop them to the ground.
   // Keep each raised part in the same streaming cell as its base so the whole tower loads together.
   {const pip=(P,x,y)=>{let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c};
-   const gb={};for(const L of C.lots){if(L.mh>0)continue;const k=Math.floor(L.cx/120)+','+Math.floor(L.cy/120);(gb[k]||(gb[k]=[])).push(L)}
-   for(const L of C.lots){if(!(L.mh>0))continue;let base=null;const kx=Math.floor(L.cx/120),ky=Math.floor(L.cy/120);
-    for(let a=-1;a<=1&&!base;a++)for(let b=-1;b<=1&&!base;b++)for(const o of gb[(kx+a)+','+(ky+b)]||[]){if(o.h>=L.mh*.7&&pip(o.poly,L.cx,L.cy)){base=o;break}}
-    // keep the part raised only if its whole footprint sits on the base; otherwise build it down to the street so nothing hangs in the air
-    if(base){L.ccx=base.cx;L.ccy=base.cy;const inside=L.poly.every(q=>{const dx=L.cx-q[0],dy=L.cy-q[1],d=Math.hypot(dx,dy)||1,t=Math.min(1,.8/d);return pip(base.poly,q[0]+dx*t,q[1]+dy*t)});if(!inside)L.mh=0}else L.mh=0}}
+   const gb={};for(const L of C.lots){const k=Math.floor(L.cx/120)+','+Math.floor(L.cy/120);(gb[k]||(gb[k]=[])).push(L)}
+   const covered=(L,base)=>L.poly.every(q=>{const dx=L.cx-q[0],dy=L.cy-q[1],d=Math.hypot(dx,dy)||1,t=Math.min(1,.8/d);return pip(base.poly,q[0]+dx*t,q[1]+dy*t)});
+   const raised=C.lots.filter(L=>L.mh>0).sort((a,b)=>a.mh-b.mh);
+   for(const L of raised){let base=null;const kx=Math.floor(L.cx/120),ky=Math.floor(L.cy/120);
+    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)for(const o of gb[(kx+a)+','+(ky+b)]||[]){if(o===L||(o.mh||0)>=L.mh-.5||o.h<1)continue;if(!pip(o.poly,L.cx,L.cy))continue;if(!base||o.h>base.h)base=o}
+    // a raised part must rest on something that covers its whole footprint and reaches its underside; otherwise it goes down to the street
+    if(base&&covered(L,base)){L.ccx=base.ccx!=null?base.ccx:base.cx;L.ccy=base.ccx!=null?base.ccy:base.cy;if(base.h<L.mh)L.mh=Math.max(0,base.h-.3)}
+    else{L.mh=0;if(base){L.ccx=base.ccx!=null?base.ccx:base.cx;L.ccy=base.ccx!=null?base.ccy:base.cy}}}}
   // spatial buckets for picking & competition
   C.bucket={};for(const L of C.lots){const k=Math.floor(L.cx/300)+','+Math.floor(L.cy/300);(C.bucket[k]||(C.bucket[k]=[])).push(L)}
   // coverage is static (REAL_COVER_STATIC): loading real data never changes or discards generated chunks
@@ -2257,6 +2260,15 @@ function parapetRing(gb,r,top,ph,col){const I=insetRing(r,.35);if(!I)return null
 
 // ---------- party walls: edges that touch a neighbour get no windows, up to the neighbour's height ----------
 let PARTY=null;
+// an inset outline is only used if it is a clean, smaller copy of the footprint; concave shapes can fold over themselves when shrunk
+function safeInset(r,d){const I=insetRing(r,d);if(!I||I.length<3)return null;
+ const a0=polyArea(r),a1=polyArea(I),A0=Math.abs(a0),A1=Math.abs(a1);if(!(A1>A0*.12&&A1<A0)||Math.sign(a0)!==Math.sign(a1))return null;
+ const inside=(P,x,y)=>{let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c};
+ for(const p of I)if(!inside(r,p[0],p[1]))return null;
+ const X=(a,b,c,e)=>{const o=(p,q,s)=>Math.sign((q[0]-p[0])*(s[1]-p[1])-(q[1]-p[1])*(s[0]-p[0]));return o(a,b,c)*o(a,b,e)<0&&o(c,e,a)*o(c,e,b)<0};
+ const n=I.length;for(let i=0;i<n;i++)for(let j=i+2;j<n;j++){if(i===0&&j===n-1)continue;if(X(I[i],I[(i+1)%n],I[j],I[(j+1)%n]))return null}
+ for(let i=0;i<n;i++)for(let j=0;j<r.length;j++)if(X(I[i],I[(i+1)%n],r[j],r[(j+1)%r.length]))return null;
+ return I}
 function partyIndex(lots,toLocal){
  const G=10,grid=new Map();
  for(const lot of lots){if(lot.hidden||lot.house||lot.civic)continue;const h=lotH(lot);if(h<=0)continue;const R=lot.poly.map(toLocal);
@@ -2376,13 +2388,13 @@ function buildOne(gb,ring0,y0,h,lot,style,lod,statusCol){
  }
  else if(kind==='setback'&&h>55){
   const tiers=[[0,.5,0],[.5,.72,Math.min(6,minDim*.12)],[.72,.88,Math.min(10,minDim*.22)],[.88,1,Math.min(14,minDim*.32)]];let R=r;
-  for(const[f0,f1,ins]of tiers){const ya=f0===0?ys:y0+h*f0,yb=y0+h*f1;const Rn=ins?insetRing(r,ins):r;if(!Rn)break;R=Rn;wallsOf(R,ya,yb);if(f1<1){cap(gb,R,yb,tint(wall,.85));if(lod>=2)parapetRing(gb,R,yb,.9,coping)}}
+  for(const[f0,f1,ins]of tiers){const ya=f0===0?ys:y0+h*f0,yb=y0+h*f1;const Rn=ins?safeInset(r,ins):r;if(!Rn){wallsOf(R,ya,top);break}R=Rn;wallsOf(R,ya,yb);if(f1<1){cap(gb,R,yb,tint(wall,.85));if(lod>=2)parapetRing(gb,R,yb,.9,coping)}}
   roofStart=gb.nv;cap(gb,R,top,roof);roofEnd=gb.nv;
   if(A.spire&&s2<A.spire&&h>140){const[cx,cy]=centroid(R);prism(gb,cx,cy,Math.min(4,minDim*.08),top,h*.05,8,tint(coping,1),h*.13,new THREE.Color('#c8c3b5'))}
  }
  else if(kind==='podium'&&h>36){
   const p=clamp(h*.15,10,20);wallsOf(r,ys,y0+p);cap(gb,r,y0+p,new THREE.Color('#8f9499'));parapetRing(gb,r,y0+p,1,coping);
-  const T=insetRing(r,Math.min(8,minDim*.18))||r,vb2=y0+p;
+  const T=safeInset(r,Math.min(8,minDim*.18))||r,vb2=y0+p;
   if(lod>=3){for(let i=0;i<T.length;i++)facadeEdge(gb,T[i],T[(i+1)%T.length],vb2,top,vb2,A,wall)}else walls(gb,T,vb2,top,wall,up,vb2,bay,fh,false);
   parapetRing(gb,T,top,1.2,tint(wall,1.1));
   roofStart=gb.nv;cap(gb,T,top,roof);roofEnd=gb.nv;
