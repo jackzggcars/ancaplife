@@ -689,19 +689,19 @@ const CITIES=[
  {id:'london',name:'London',country:'United Kingdom',lat:51.507,lon:-0.128,rent:45,wage:15.5,price:1.15,foot:520,lang:'en',style:'london',real:'london',frame:{rot:0,sx:95,sy:95,amp:.9}},
  {id:'nyc',name:'New York',country:'United States',lat:40.758,lon:-73.985,rent:55,wage:17,price:1.25,foot:600,lang:'us',style:'nyc',real:'nyc',frame:{rot:-29*D2R,sx:80,sy:270,amp:.04}},
  {id:'paris',name:'Paris',country:'France',lat:48.857,lon:2.352,rent:40,wage:14,price:1.1,foot:480,lang:'fr',style:'paris',real:'paris',frame:{rot:.3,sx:105,sy:120,amp:1}},
- {id:'tokyo',name:'Tokyo',country:'Japan',lat:35.681,lon:139.767,rent:38,wage:9,price:.9,foot:650,lang:'ja',style:'tokyo',frame:{rot:-.15,sx:72,sy:88,amp:1.1}},
+ {id:'tokyo',name:'Tokyo',country:'Japan',lat:35.681,lon:139.767,rent:38,wage:9,price:.9,foot:650,lang:'ja',style:'tokyo',real:'tokyo',frame:{rot:-.15,sx:72,sy:88,amp:1.1}},
  {id:'sydney',name:'Sydney',country:'Australia',lat:-33.868,lon:151.209,rent:35,wage:18,price:1.1,foot:300,lang:'en',style:'modern'},
  {id:'saopaulo',name:'São Paulo',country:'Brazil',lat:-23.55,lon:-46.633,rent:16,wage:3.5,price:.55,foot:450,lang:'pt',style:'latam'},
  {id:'lagos',name:'Lagos',country:'Nigeria',lat:6.455,lon:3.394,rent:12,wage:1.5,price:.4,foot:420,lang:'en',style:'africa'},
  {id:'mumbai',name:'Mumbai',country:'India',lat:18.94,lon:72.835,rent:14,wage:1.4,price:.3,foot:600,lang:'en',style:'southasia'},
- {id:'berlin',name:'Berlin',country:'Germany',lat:52.52,lon:13.405,rent:26,wage:14,price:1,foot:330,lang:'de',style:'euro'},
+ {id:'berlin',name:'Berlin',country:'Germany',lat:52.5163,lon:13.395,rent:26,wage:14,price:1,foot:330,lang:'de',style:'euro',real:'berlin'},
  {id:'toronto',name:'Toronto',country:'Canada',lat:43.653,lon:-79.383,rent:30,wage:13,price:1,foot:280,lang:'en',style:'modern',frame:{rot:-.29,sx:100,sy:200,amp:.05}},
  {id:'mexico',name:'Mexico City',country:'Mexico',lat:19.433,lon:-99.133,rent:13,wage:2.5,price:.5,foot:450,lang:'es',style:'latam',frame:{rot:.05,sx:90,sy:110,amp:.15}},
  {id:'cairo',name:'Cairo',country:'Egypt',lat:30.044,lon:31.236,rent:8,wage:1.2,price:.3,foot:450,lang:'ar',style:'mideast'},
  {id:'singapore',name:'Singapore',country:'Singapore',lat:1.283,lon:103.851,rent:42,wage:9,price:1.05,foot:420,lang:'en',style:'modern'},
  {id:'la',name:'Los Angeles',country:'United States',lat:34.05,lon:-118.244,rent:32,wage:17,price:1.2,foot:220,lang:'us',style:'us',frame:{rot:.63,sx:100,sy:180,amp:.05}},
  {id:'seoul',name:'Seoul',country:'South Korea',lat:37.566,lon:126.978,rent:24,wage:8,price:.85,foot:520,lang:'ko',style:'tokyo'},
- {id:'chicago',name:'Chicago',country:'United States',lat:41.882,lon:-87.628,rent:28,wage:16,price:1.1,foot:380,lang:'us',style:'nyc',frame:{rot:0,sx:100,sy:200,amp:.03}},
+ {id:'chicago',name:'Chicago',country:'United States',lat:41.882,lon:-87.628,rent:28,wage:16,price:1.1,foot:380,lang:'us',style:'nyc',real:'chicago',frame:{rot:0,sx:100,sy:200,amp:.03}},
 ];
 const CBY={};CITIES.forEach(c=>CBY[c.id]=c);
 const LANG={GBR:'en',USA:'us',CAN:'en',AUS:'en',NZL:'en',IRL:'en',ZAF:'en',NGA:'en',IND:'en',PAK:'en',KEN:'en',GHA:'en',SGP:'en',PHL:'en',MYS:'en',
@@ -1074,7 +1074,11 @@ async function loadCity(id){
 const REAL_COVER_STATIC={
  london:{lat0:51.5074,lon0:-0.1278,box:[[-1421,-1364,482,-230]],poly:[-4427,-1777,-4775,-1537,-4928,-1570,-4910,-1438,-4886,-1288,-4898,-1228,-4892,-934,-4892,-754,-4910,-688,-5048,-370,-4886,-142,-4934,-46,-5033,149,-4832,458,-5012,770,-4898,950,-4844,1244,-4838,1304,-5075,1583,-5096,1856,-4922,2108,-4802,2324,-4832,2504,-5015,2759,-4709,3005,-4457,3113,-4229,2981,-4109,2969,-4025,2963,-3923,2945,-3617,3011,-3107,3035,-2963,2969,-2849,3029,-2537,2981,-1709,3209,-1319,3155,-1067,3173,-968,3140,-725,2963,-533,3059,-317,3089,85,2975,295,3029,535,3005,667,2939,799,2987,991,2921,1159,2927,1339,2963,1471,2951,1627,3053,2059,2963,2251,3017,2635,3131,2767,3047,2989,2903,3082,2846,3016,2684,3076,2474,3016,2378,3040,2264,2998,2072,3022,1958,2974,1880,2968,1784,2986,1682,3034,1538,3034,1454,2956,1244,3058,1028,2998,944,3040,770,2992,614,3142,362,3121,197,3166,-172,3022,-658,3178,-1042,2962,-1414,3001,-1561,2893,-1567,2749,-1513,2443,-1555,2185,-1429,1903,-1555,1543,-1567,1453,-1531,1297,-1633,1003,-1657,721,-1663,517,-1621,421,-1645,133,-1771,-119,-1561,-191,-1585,-365,-1603,-641,-1567,-797,-1615,-911,-1699,-1331,-1651,-1469,-1597,-1721,-1543,-2009,-1591,-2177,-1579,-2435,-1777,-2681,-1729,-2969,-1777,-3359,-1567,-3527,-1681,-3821,-1555,-4121,-1663,-4397,-1777]},
  nyc:{lat0:40.758,lon0:-73.9855,box:[[-626,-1188,2154,2492]]},
- paris:{lat0:48.8606,lon0:2.3376,box:[[182,-344,987,455]]}};
+ paris:{lat0:48.8606,lon0:2.3376,box:[[182,-344,987,455]]},
+ // added later as new entries (see rule above): built from OpenStreetMap with tools/build_city.py
+ chicago:{lat0:41.8817,lon0:-87.6278,box:[[-1600,-1700,1600,1700]]},
+ berlin:{lat0:52.5163,lon0:13.395,box:[[-1800,-1400,1800,1400]]},
+ tokyo:{lat0:35.679,lon0:139.766,box:[[-1500,-1500,1500,1500]]}};
 for(const id in REAL_COVER_STATIC){const h=REAL_COVER_STATIC[id];REAL[id]={lat0:h.lat0,lon0:h.lon0,kx:111320*Math.cos(h.lat0*D2R),ky:110540,cover:h.box,covp:h.poly||null,cbb:h.poly?bboxOf(h.poly):null}}
 
 // ===================== ANCAP LIFE · BUSINESS DATA =====================
@@ -4154,7 +4158,7 @@ function mMenu(){return`<div class="mhead"><p class="eyebrow">${esc(G.company||'
  <h3 class="eyebrow">Company</h3><div class="renrow"><input id="corename" type="text" maxlength="40" value="${esc(G.company||'')}" aria-label="Company name"><button class="btn sm" data-act="renameco">Rename</button></div><button class="btn ghost wide" data-act="nextmodal">What should I do next?</button><button class="btn ghost wide" data-act="board">Leaderboard</button>
  <h3 class="eyebrow">Account</h3><div class="renrow"><span class="fine" style="flex:1;margin:0;align-self:center">${authed()?`Signed in as <b>${esc(dispName())}</b>${AUTH.cloud==='off'?' · saving on this device only':' · saved to your account'}`:'Playing as a guest · progress is saved in this browser only'}</span><button class="btn sm ghost" data-act="signout">${authed()?'Sign out':'Sign in'}</button></div>
  <h3 class="eyebrow">Settings</h3><label class="tog"><input type="checkbox" data-change="shadows" ${QUAL.shadows?'checked':''}> Sun shadows (turn off if the game feels slow)</label><label class="tog"><input type="checkbox" data-change="cycle" ${VIS.cycle?'checked':''}> Day and night (a full day lasts 10 minutes)</label><label class="tog"><input type="checkbox" data-change="traffic" ${TRAFFIC_ON?'checked':''}> Traffic</label>
- <h3 class="eyebrow">Controls</h3><p class="fine">Drag to move · right-drag (or Shift-drag) to turn and tilt · scroll to zoom · The world runs on a shared clock for every player. Inside a shop, drag to look around and click kit to move it.</p>
+ <h3 class="eyebrow">Controls</h3><p class="fine">Drag to move · right-drag (or Shift-drag) to turn and tilt · scroll to zoom · The world runs on a shared clock for every player. Inside a shop, drag to look around and click kit to move it.</p><p class="fine">Real-city streets and buildings: map data © OpenStreetMap contributors, available under the Open Database License (openstreetmap.org/copyright).</p>
  <p class="fine">Saves automatically after every day. Map data: Natural Earth (public domain); London, New York and Paris streets and buildings © OpenStreetMap contributors.</p>
  <div class="box danger"><button class="btn ghost" data-act="newgame">${ui.confirm==='new'?'Yes, delete and start over':'Start a new game'}</button></div></div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
 function mConstruct(){
@@ -6703,7 +6707,40 @@ html body .fl-obj,html body .fl-event{display:flex!important;flex-direction:colu
 html body .fl-perkbtn{display:flex!important;align-items:center;justify-content:center;gap:6px;min-height:40px;box-sizing:border-box}
 html body #legend{display:flex!important;align-items:center!important;gap:4px!important;padding:5px!important}html body #legend button{display:inline-flex!important;align-items:center!important;gap:6px!important;line-height:1!important}
 html body #legend button i{width:10px!important;height:10px!important;display:inline-block!important;margin:0!important}
-html body #ticker{display:flex!important;align-items:center!important;padding:0 12px!important}
+html body 
+/* inventory panel in the glass style */
+html body #invp{border-radius:14px!important;padding:16px 16px 14px!important;box-shadow:0 20px 50px rgba(0,0,0,.45)!important;backdrop-filter:blur(18px)!important;-webkit-backdrop-filter:blur(18px)!important;width:min(460px,calc(100vw - 24px))!important}
+html body #invp h3{font:700 17px/1.2 var(--f-body,system-ui)!important;letter-spacing:0!important;text-transform:none!important;text-align:left!important;color:var(--hb-text,#f1f0ea)!important;margin:0 0 12px!important;padding-right:30px}
+html body #invp .ivg{padding:0 0 14px!important}
+html body #invp .ivh{margin-bottom:8px!important;gap:8px!important}
+html body #invp .ivgn{font:600 11px/1 var(--f-body,system-ui)!important;letter-spacing:.08em!important;color:var(--hb-text,#f1f0ea)!important}
+html body #invp .ivgs{font:500 11px/1 var(--f-body,system-ui)!important;color:var(--hb-mut,#8d9098)!important}
+html body #invp .ivgs b{color:var(--hb-text,#f1f0ea)!important;font-weight:600}
+html body #invp .ivbt{opacity:1!important}
+html body #invp .ivbt .sm,html body #invp .ivbt button{min-height:24px!important;padding:0 9px!important;font:600 11px/1 var(--f-body,system-ui)!important;border-radius:7px!important}
+html body #invp .ivgrid{grid-template-columns:repeat(4,1fr)!important;gap:8px!important}
+html body #invp .ivc{background:rgba(255,255,255,.045)!important;border:1px solid rgba(255,255,255,.09)!important;border-radius:11px!important;box-shadow:none!important;transition:background .15s,border-color .15s,transform .15s}
+html body #invp .ivc:hover{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.18)!important;transform:translateY(-1px)}
+html body #invp .ivc.sel{border-color:var(--hb-y,#ffde00)!important;box-shadow:0 0 0 1px var(--hb-y,#ffde00) inset,0 0 18px rgba(255,222,0,.12)!important;background:rgba(255,222,0,.06)!important}
+html body #invp .ivimg{width:60%!important;height:60%!important;filter:drop-shadow(0 3px 4px rgba(0,0,0,.35))}
+html body #invp .ivq{right:6px!important;bottom:6px!important;font:700 11.5px/1 var(--f-body,system-ui)!important;letter-spacing:0!important;color:#fff!important;text-shadow:none!important;background:rgba(0,0,0,.5);padding:3px 6px;border-radius:6px;font-variant-numeric:tabular-nums}
+html body #invp .ivc.low .ivq{color:#ffd23f!important}html body #invp .ivc.out .ivq{color:#ff7a6b!important}
+html body #invp .ivd{font:600 11px/1 var(--f-body,system-ui)!important;left:7px!important;top:6px!important;text-shadow:none!important}
+html body #invp .ivdetw{border-top:1px solid rgba(255,255,255,.08)!important;margin-top:4px!important;padding-top:10px!important}
+html body #invp .ivhint{font:500 12px/1.3 var(--f-body,system-ui)!important;color:var(--hb-mut,#8d9098)!important}
+html body #invp .ivdet img{background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:9px!important;padding:4px!important}
+html body #invp .ivdet b{font:600 13px/1.2 var(--f-body,system-ui)!important;color:var(--hb-text,#f1f0ea)!important}
+html body #invp .ivdet span{font:500 12px/1.3 var(--f-body,system-ui)!important;color:var(--hb-mut,#8d9098)!important}
+html body #invp .ivbar{height:5px!important;border:0!important;border-radius:3px!important;background:rgba(255,255,255,.08)!important;overflow:hidden}
+html body #invp .ivbar u{border-radius:3px}
+html body #invp .ivfoot{flex-direction:row!important;justify-content:flex-end!important;gap:8px!important;margin-top:12px!important;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}
+html body #invp .ivfoot .btn{min-width:110px!important;order:2}html body #invp .ivlinks{gap:6px!important}
+html body #invp .ivlinks button,html body #invp .ivfoot .ghost{font:600 12.5px/1 var(--f-body,system-ui)!important;border-radius:7px!important}
+html body #invp .rx-inv{border-top:1px solid rgba(255,255,255,.08)!important;margin-top:12px;padding:12px 0 0!important}
+html body #invp .rx-inv small{font:600 11px/1 var(--f-body,system-ui)!important;letter-spacing:.08em!important;color:var(--hb-text,#f1f0ea)!important}
+html body #invp .rx-inv button{border-radius:9px!important;padding:5px 9px!important;font:600 12px/1 var(--f-body,system-ui)!important}
+html body #invp .ivbody::-webkit-scrollbar{width:6px}html body #invp .ivbody::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+#ticker{display:flex!important;align-items:center!important;padding:0 12px!important}
 html body .tk{display:inline-flex!important;align-items:center!important;gap:8px!important;line-height:1!important}
 `;document.head.appendChild(st);
 const t0=setInterval(()=>{if(document.getElementById('bar')&&typeof G!=='undefined'){build();clearInterval(t0)}},200);
@@ -7054,7 +7091,7 @@ function addBtn(){const icons=document.querySelector('#bar .hb-icons');if(!icons
 setInterval(addBtn,1000);
 // inventory panel: raw materials strip
 if(typeof renderInvPanel==='function'){const _ri=renderInvPanel;renderInvPanel=function(){_ri.apply(this,arguments);try{const el=document.getElementById('invp');if(!el||el.hidden||!G)return;const X=R(),items=IDS.filter(id=>X.hold[id]>.001);if(!items.length)return;
-  el.insertAdjacentHTML('beforeend',`<div class="rx-inv"><small>RAW MATERIALS · WAREHOUSE</small><div>${items.map(id=>`<button data-res="sel" data-k="${id}" data-t="market" title="${RES[id].n}">${icon(id,26)}<span class="mono">${X.hold[id]>=100?Math.round(X.hold[id]).toLocaleString():X.hold[id].toFixed(1)}</span></button>`).join('')}</div></div>`)}catch(e){}}}
+  const ft=el.querySelector('.ivfoot');(ft?ft:el).insertAdjacentHTML(ft?'beforebegin':'beforeend',`<div class="rx-inv"><small>RAW MATERIALS · WAREHOUSE</small><div>${items.map(id=>`<button data-res="sel" data-k="${id}" data-t="market" title="${RES[id].n}">${icon(id,26)}<span class="mono">${X.hold[id]>=100?Math.round(X.hold[id]).toLocaleString():X.hold[id].toFixed(1)}</span></button>`).join('')}</div></div>`)}catch(e){}}}
 // ---------- bare land is clickable: buildings are hit by the raycast, plots are found where the ray meets the ground ----------
 const _ri2=new THREE.Matrix4(),_ro=new THREE.Vector3(),_rd=new THREE.Vector3();
 function pipXY(R,x,y){let c=false;for(let a=0,b=R.length-1;a<R.length;b=a++){const A=R[a],B=R[b];if((A[1]>y)!==(B[1]>y)&&x<(B[0]-A[0])*(y-A[1])/(B[1]-A[1])+A[0])c=!c}return c}
