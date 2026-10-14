@@ -1045,6 +1045,13 @@ async function loadCity(id){
    const loc=clamp(.55+.85*Math.exp(-((r/3200)**2))+(R()-.5)*.2,.35,1.6);
    const L=mkLot(id,i,p,Math.max(4,h),lat,lon,st,false,loc,R,E,pz&&pz[0],pz&&pz[1],!!b[2]);
    L.cx=cx;L.cy=cy;L.mh=b[1]/10;L.gen=b[2];return L});
+  // building parts that start above the ground (min_height) must sit on a base part; otherwise drop them to the ground.
+  // Keep each raised part in the same streaming cell as its base so the whole tower loads together.
+  {const pip=(P,x,y)=>{let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c};
+   const gb={};for(const L of C.lots){if(L.mh>0)continue;const k=Math.floor(L.cx/120)+','+Math.floor(L.cy/120);(gb[k]||(gb[k]=[])).push(L)}
+   for(const L of C.lots){if(!(L.mh>0))continue;let base=null;const kx=Math.floor(L.cx/120),ky=Math.floor(L.cy/120);
+    for(let a=-1;a<=1&&!base;a++)for(let b=-1;b<=1&&!base;b++)for(const o of gb[(kx+a)+','+(ky+b)]||[]){if(o.h>=L.mh*.7&&pip(o.poly,L.cx,L.cy)){base=o;break}}
+    if(base){L.ccx=base.cx;L.ccy=base.cy}else L.mh=0}}
   // spatial buckets for picking & competition
   C.bucket={};for(const L of C.lots){const k=Math.floor(L.cx/300)+','+Math.floor(L.cy/300);(C.bucket[k]||(C.bucket[k]=[])).push(L)}
   // coverage is static (REAL_COVER_STATIC): loading real data never changes or discards generated chunks
@@ -2704,7 +2711,7 @@ function hugSphere(g){const p=g.attributes.position,a=p.array;for(let i=0;i<a.le
 const RCELL=900;
 function realCells(C){
  if(C.cells)return C.cells;const cells=new Map(),get=(x,y)=>{const k=Math.floor(x/RCELL)+','+Math.floor(y/RCELL);if(!cells.has(k))cells.set(k,{k,ix:Math.floor(x/RCELL),iy:Math.floor(y/RCELL),lots:[],roads:[],water:[],parks:[],trees:[]});return cells.get(k)};
- for(const l of C.lots)get(l.cx,l.cy).lots.push(l);
+ for(const l of C.lots)get(l.ccx!=null?l.ccx:l.cx,l.ccx!=null?l.ccy:l.cy).lots.push(l);
  for(const r of C.roads){let sx=0,sy=0;for(const p of r.p){sx+=p[0];sy+=p[1]}get(sx/r.p.length,sy/r.p.length).roads.push(r)}
  const big=(ps,key)=>{for(const p of ps){let sx=0,sy=0;for(const q of p[0]){sx+=q[0];sy+=q[1]}get(sx/p[0].length,sy/p[0].length)[key].push(p)}};big(C.water,'water');big(C.parks,'parks');
  for(const t of C.trees)get(t[0],t[1]).trees.push(t);
@@ -2766,7 +2773,7 @@ function computeWant(){
  const test=(lat,lon,rad,hgt)=>{ecef(lat,lon,hgt/2,_tv);const d=_tv.distanceTo(cp);if(d>vis+rad)return-1;_sph.center.copy(_tv).sub(ORIGIN);_sph.radius=rad+hgt;if(d>rad*1.6+500&&!_fr.intersectsSphere(_sph))return-1;return d};
  for(const c of CITIES){if(!c.real)continue;if(distM(nla,nlo,c.lat,c.lon)>vis+30000)continue;const C=CITYDATA[c.real];
   if(!C){loadCity(c.real).then(C=>{C.id=c.id;C.style=c.style;PATCH.dirty=true;wantT=0});continue}if(!C.ready)continue;C.style=c.style;
-  for(const cell of realCells(C).values()){const d=test(cell.lat,cell.lon,RCELL*.72,250);if(d<0)continue;const key='r:'+c.real+':'+cell.k,cur=LIVE.get(key);want.set(key,{kind:'real',C,cell,lvl:alt>15000?0:lodFor(d,cur&&cur.lod),d})}}
+  for(const cell of realCells(C).values()){const d=test(cell.lat,cell.lon,RCELL*.72,450);if(d<0)continue;const key='r:'+c.real+':'+cell.k,cur=LIVE.get(key);want.set(key,{kind:'real',C,cell,lvl:alt>15000?0:lodFor(d,cur&&cur.lod),d})}}
  if(alt<9500){const range=Math.min(vis,18000),[mx,my]=merc(nla,nlo),k=Math.cos(nla*D2R),n=Math.ceil(range/(CHUNK*k))+1,ci=Math.floor(mx/CHUNK),cj=Math.floor(my/CHUNK);
   for(let a=-n;a<=n;a++)for(let b=-n;b<=n;b++){const cx=ci+a,cy=cj+b,[la,lo]=chunkCenter(cx,cy);const d=test(la,lo,CHUNK*k*.72,200);if(d<0||d>range+CHUNK)continue;const key='p:'+cx+':'+cy,cur=LIVE.get(key);want.set(key,{kind:'proc',cx,cy,lvl:lodFor(d,cur&&cur.lod),d})}}
  return want;
