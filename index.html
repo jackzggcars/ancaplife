@@ -1051,7 +1051,8 @@ async function loadCity(id){
    const gb={};for(const L of C.lots){if(L.mh>0)continue;const k=Math.floor(L.cx/120)+','+Math.floor(L.cy/120);(gb[k]||(gb[k]=[])).push(L)}
    for(const L of C.lots){if(!(L.mh>0))continue;let base=null;const kx=Math.floor(L.cx/120),ky=Math.floor(L.cy/120);
     for(let a=-1;a<=1&&!base;a++)for(let b=-1;b<=1&&!base;b++)for(const o of gb[(kx+a)+','+(ky+b)]||[]){if(o.h>=L.mh*.7&&pip(o.poly,L.cx,L.cy)){base=o;break}}
-    if(base){L.ccx=base.cx;L.ccy=base.cy}else L.mh=0}}
+    // keep the part raised only if its whole footprint sits on the base; otherwise build it down to the street so nothing hangs in the air
+    if(base){L.ccx=base.cx;L.ccy=base.cy;const inside=L.poly.every(q=>{const dx=L.cx-q[0],dy=L.cy-q[1],d=Math.hypot(dx,dy)||1,t=Math.min(1,.8/d);return pip(base.poly,q[0]+dx*t,q[1]+dy*t)});if(!inside)L.mh=0}else L.mh=0}}
   // spatial buckets for picking & competition
   C.bucket={};for(const L of C.lots){const k=Math.floor(L.cx/300)+','+Math.floor(L.cy/300);(C.bucket[k]||(C.bucket[k]=[])).push(L)}
   // coverage is static (REAL_COVER_STATIC): loading real data never changes or discards generated chunks
