@@ -1901,12 +1901,12 @@ function atlasMaterial(){
  const gl2=renderer.capabilities.isWebGL2;if(!gl2)m.extensions={derivatives:true};
  m.onBeforeCompile=sh=>{
   biasDepthVS(sh);sh.uniforms.uSkyC=SKYSHEEN;sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying float vAOh;varying vec3 vNv;varying vec3 vVv;varying vec3 vOP;varying float vNy;').replace('#include <project_vertex>','#include <project_vertex>\nvAOh=position.y;vOP=position;vNy=objectNormal.y;vNv=normalize(normalMatrix*objectNormal);vVv=-mvPosition.xyz;');
-  sh.fragmentShader=sh.fragmentShader.split('gl_FrontFacing').join('true').replace('#include <common>','#include <common>\nvarying float vAOh;varying vec3 vNv;varying vec3 vVv;uniform vec3 uSkyC;varying vec3 vOP;varying float vNy;');
+  sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vAOh;varying vec3 vNv;varying vec3 vVv;uniform vec3 uSkyC;varying vec3 vOP;varying float vNy;');
   sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nattribute float atile;\nvarying float vTile;').replace('#include <uv_vertex>','#include <uv_vertex>\nvTile=atile;');
   sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vTile;\nuniform float uNight;').replace('#include <map_fragment>',`
   float tI=floor(vTile+.5),tc=mod(tI,4.),tr=floor(tI/4.);
   vec2 tuv=(vec2(tc,3.-tr)+.03+fract(vUv)*.94)*.25;
-  ${gl2?'vec4 texelColor=textureGrad(map,tuv,dFdx(vUv)*.33,dFdy(vUv)*.33);':'vec4 texelColor=texture2D(map,tuv);'}
+  ${gl2?'vec4 texelColor=textureGrad(map,tuv,dFdx(vUv)*.28,dFdy(vUv)*.28);':'vec4 texelColor=texture2D(map,tuv);'}
   texelColor=mapTexelToLinear(texelColor);
   diffuseColor*=texelColor;
   float fx_lum=dot(texelColor.rgb,vec3(.299,.587,.114));
@@ -2750,7 +2750,7 @@ function createLive(key,w){
 function disposeLive(L){WR.remove(L.grp);L.grp.traverse(o=>{if(o.geometry&&o.geometry!==TREE_GEO)o.geometry.dispose();if(o.isSprite){o.material.map&&o.material.map.dispose();o.material.dispose()}});for(const[k,P]of PINS)if(!P.sprite.parent||P.sprite.parent===L.grp)PINS.delete(k)}
 
 // ---------- what should be loaded: everything inside the view, out to the haze ----------
-const LOD_D=[700,2500,6500]; // camera distance under which a chunk gets level 3, 2, 1
+const LOD_D=[950,2500,6500]; // camera distance under which a chunk gets level 3, 2, 1
 // adaptive detail: if frames get slow the full-detail and shadow radius shrinks; it grows back when there is headroom
 const QUAL={q:1,ema:16,t:0,shadows:true,fixed:false};try{if(localStorage.getItem('groundfloor.shadows')==='0')QUAL.shadows=false}catch(e){}
 function qualityTick(dt,now){QUAL.ema=QUAL.ema*.95+dt*1000*.05;if(QUAL.fixed||now-QUAL.t<2500)return;QUAL.t=now;
@@ -6450,7 +6450,7 @@ const ICON={
  trophy:'<path d="M7 3h10v2h4v3a5 5 0 0 1-4.6 4.98A5 5 0 0 1 13 15.9V18h3v3H8v-3h3v-2.1a5 5 0 0 1-3.4-2.92A5 5 0 0 1 3 8V5h4V3zm0 4H5v1a3 3 0 0 0 2 2.83V7zm10 0v3.83A3 3 0 0 0 19 8V7h-2zM9 5v6a3 3 0 0 0 6 0V5H9z"/>',
  corp:'<path d="M4 21V5l8-3v6l8 3v10H4zm2-2h4v-2H6v2zm0-4h4v-2H6v2zm0-4h4V9H6v2zm0-4h4V4.9L6 6.4V7zm6 12h6v-2h-6v2zm0-4h6v-2h-6v2zm0-4h6v-.6l-6-2.25V11z"/>',
  pc:'<path d="M3 4h18v12H13v2h3v2H8v-2h3v-2H3V4zm2 2v8h14V6H5z"/>',
- gear:'<path d="M10.3 2h3.4l.5 2.6 1.6.9 2.5-1 1.7 2.9-2 1.7v1.8l2 1.7-1.7 2.9-2.5-1-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5 1-1.7-2.9 2-1.7v-1.8l-2-1.7L5.7 4.5l2.5 1 1.6-.9.5-2.6zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>',
+ gear:'<path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2.5h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.65 8.98a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/>',
  pin:'<path d="M12 2a7 7 0 0 1 7 7c0 5-7 13-7 13S5 14 5 9a7 7 0 0 1 7-7zm0 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>',
  city:'<path d="M3 21V9h5V3h8v8h5v10H3zm2-2h3v-8H5v8zm5 0h4V5h-4v14zm6 0h3v-6h-3v6z"/>',
  star:'<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z"/>'};
@@ -6631,6 +6631,45 @@ html body .fl-perkbtn{width:100%;animation:none!important;padding:11px!important
 html body .fl-week{border-left:3px solid var(--hb-y)!important}
 html body .tut-card{border:1px solid rgba(255,222,0,.35)!important}html body .tut-card h3{font:700 18px/1.2 var(--f-body,system-ui)!important;letter-spacing:0!important;text-transform:none!important}
 html body .tut-arrow{filter:none!important}
+
+/* ---------- fit & alignment pass ---------- */
+html body .panel .pad{padding:16px 16px 18px!important}
+html body .panel .box,html body .modal .box,html body .panel .next,html body .panel .tips{padding:12px 14px!important;margin:10px 0!important}
+html body .panel .box p,html body .panel .next p{margin:6px 0!important}html body .panel .box>:first-child{margin-top:0!important}html body .panel .box>:last-child{margin-bottom:0!important}
+html body .stats div,html body .caps div{padding:9px 11px!important}
+html body .prow,html body .mi,html body .bcard,html body .wkrow,html body .cxk,html body .nx,html body .evbtn{padding:11px 13px!important}
+html body .kv{display:grid!important;grid-template-columns:auto 1fr!important;gap:7px 12px!important;margin:12px 0!important}html body .kv dt{color:var(--hb-mut)!important;margin:0!important}html body .kv dd{margin:0!important;text-align:right!important;color:#ecebe6!important}
+html body .panel .close{position:absolute!important;top:12px!important;right:12px!important;width:28px!important;height:28px!important;padding:0!important;display:grid!important;place-items:center!important;font-size:13px!important;line-height:1!important;border-radius:6px!important}
+html body .offrow{display:flex!important;align-items:stretch!important;gap:6px!important;margin:10px 0!important}html body .offrow input{flex:1;min-width:0;height:34px!important;box-sizing:border-box;padding:0 10px!important;margin:0!important}html body .offrow .ghost{height:34px!important;padding:0 10px!important;display:grid!important;place-items:center!important}
+html body .btnrow{display:flex!important;gap:8px!important;flex-wrap:wrap;margin:10px 0 4px!important}html body .btnrow .btn{flex:1;white-space:nowrap;font-size:12.5px!important;min-height:36px;display:inline-flex!important;align-items:center;justify-content:center;padding:0 12px!important}
+html body .btn,html body .ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;line-height:1!important;box-sizing:border-box;vertical-align:middle}
+html body .btn.sm,html body .ghost.sm{min-height:30px;padding:0 11px!important}
+html body .btn.wide{width:100%;min-height:40px}
+html body .price{display:flex!important;align-items:baseline!important;gap:8px!important;margin:0 0 6px!important}
+html body .pill{display:inline-flex!important;align-items:center!important;justify-content:center!important;line-height:1!important;vertical-align:middle;height:20px;box-sizing:border-box;padding:0 8px!important}
+html body .seg{display:inline-flex!important}html body .seg button{display:inline-flex!important;align-items:center;justify-content:center;min-height:28px;padding:0 10px!important}
+html body .stepper{display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:wrap}html body .stepper .ghost{width:30px;height:30px;padding:0!important}
+/* search: one clean field, no inner box */
+html body .hb-search input,html body #hbsearch{all:unset!important;flex:1!important;min-width:0!important;height:100%!important;font:500 13px/30px var(--f-body,system-ui)!important;color:var(--hb-text)!important;background:transparent!important;border:0!important;box-shadow:none!important;outline:none!important;padding:0!important;margin:0!important}
+html body .hb-search{height:32px!important;box-sizing:border-box;padding:0 12px!important;gap:9px!important;border-radius:8px!important}html body .hb-search svg{flex:none;width:15px;height:15px}
+/* location pill: perfectly centred single line */
+html body .hb-pill{height:32px!important;padding:0 16px!important;display:inline-flex!important}html body .hb-pill .where{height:100%;display:inline-flex!important;align-items:center!important;white-space:nowrap}
+html body .hb-pill .where,html body .hb-pill .where small{line-height:1!important;padding:0!important;transform:none!important;position:static!important}
+/* top bar icons: same size, centred, gear included */
+html body #bar .hb-ic .hb-svg{width:24px!important;height:24px!important}html body #bar .hb-ic svg{width:22px!important;height:22px!important}
+html body #bar .speed button{display:inline-flex!important;align-items:center!important;justify-content:center!important}
+html body #bar .clockbox{justify-content:center}
+/* left HUD: no coloured side edges */
+html body .fl-obj,html body .fl-event,html body .fl-week,html body .tips,html body .toast{border-left:1px solid var(--gl-line)!important}
+html body .fl-lvl{display:flex!important;align-items:center!important;gap:10px!important;height:38px;box-sizing:border-box}
+html body .fl-badge{width:28px!important;height:28px!important;display:grid!important;place-items:center!important;line-height:1!important;padding:0!important;flex:none}
+html body .fl-streak{display:inline-flex;align-items:center;gap:3px;line-height:1!important;font:600 12.5px/1 var(--f-body,system-ui)!important}
+html body .fl-obj,html body .fl-event{display:flex!important;flex-direction:column!important;gap:4px!important}
+html body .fl-perkbtn{display:flex!important;align-items:center;justify-content:center;gap:6px;min-height:40px;box-sizing:border-box}
+html body #legend{display:flex!important;align-items:center!important;gap:4px!important;padding:5px!important}html body #legend button{display:inline-flex!important;align-items:center!important;gap:6px!important;line-height:1!important}
+html body #legend button i{width:10px!important;height:10px!important;display:inline-block!important;margin:0!important}
+html body #ticker{display:flex!important;align-items:center!important;padding:0 12px!important}
+html body .tk{display:inline-flex!important;align-items:center!important;gap:8px!important;line-height:1!important}
 `;document.head.appendChild(st);
 const t0=setInterval(()=>{if(document.getElementById('bar')&&typeof G!=='undefined'){build();clearInterval(t0)}},200);
 setInterval(()=>{try{keep()}catch(e){}},700);
