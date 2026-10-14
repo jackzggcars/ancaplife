@@ -6866,50 +6866,128 @@ const SITES=new Map();
 const MASKA=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false,depthTest:true,stencilWrite:true,stencilRef:1,stencilFunc:THREE.AlwaysStencilFunc,stencilZPass:THREE.ReplaceStencilOp,stencilFail:THREE.KeepStencilOp,stencilZFail:THREE.KeepStencilOp});
 const MASK=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:true,depthTest:true,depthFunc:THREE.AlwaysDepth,stencilWrite:true,stencilRef:1,stencilFunc:THREE.EqualStencilFunc,stencilZPass:THREE.ZeroStencilOp,stencilFail:THREE.KeepStencilOp,stencilZFail:THREE.KeepStencilOp});
 MASK.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <logdepthbuf_fragment>','#include <logdepthbuf_fragment>\n#if defined(USE_LOGDEPTHBUF)&&defined(USE_LOGDEPTHBUF_EXT)\n gl_FragDepthEXT=1.0;\n#endif')};MASK.customProgramCacheKey=()=>'rxmask';
-const MAT=new THREE.MeshLambertMaterial({vertexColors:true});
-const FLOOR={stone:'#8d8b84',sand:'#d2b97f',cement:'#c4c0b2',coal:'#26262a',iron:'#8a4b31',copper:'#4f8f78',gold:'#b89a4a',diamonds:'#6d7f88',oil:'#121214',wood:'#6b5a3c'};
+const MAT=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+const PITMAT=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+const FLOOR={stone:'#9a968c',sand:'#d2b97f',cement:'#c9c4b4',coal:'#2a2a2e',iron:'#8a4b31',copper:'#56695e',gold:'#b89a4a',diamonds:'#5d6670',oil:'#151517',wood:'#6b5a3c'};
 const C=h=>new THREE.Color(h);
 function shrink(ring,f){let cx=0,cy=0;for(const p of ring){cx+=p[0];cy+=p[1]}cx/=ring.length;cy/=ring.length;return ring.map(p=>[cx+(p[0]-cx)*f,cy+(p[1]-cy)*f])}
-function tri(gb,a,b,c,col){gb.tri(a,b,c,[0,1,0],col,col,col)}
-function quadV(gb,a,b,y0,y1,col){gb.quad([a[0],y0,-a[1]],[b[0],y0,-b[1]],[b[0],y1,-b[1]],[a[0],y1,-a[1]],[0,0,1],col,15)}
 function fill(gb,ring,y,col){try{const T=THREE.ShapeUtils.triangulateShape(ring.map(p=>new THREE.Vector2(p[0],p[1])),[]);for(const t of T){const a=ring[t[0]],b=ring[t[1]],c=ring[t[2]];gb.tri([a[0],y,-a[1]],[b[0],y,-b[1]],[c[0],y,-c[1]],[0,1,0],col,col,col)}}catch(e){}}
-function pitGeo(ring,depth,type){const gb=new GB(),steps=Math.max(1,Math.ceil(depth/2.2)),dirt=C('#8a6f4f'),dirt2=C('#7a6145'),rock=C('#8f8c85'),floor=C(FLOOR[type]);
- let prev=ring,y=.3;quadsWall(gb,ring,.3,0,dirt2);y=0;
- for(let k=1;k<=steps;k++){const cur=shrink(ring,1-.62*k/(steps+.6)),y1=-Math.min(depth,k*depth/steps);
-  for(let i=0;i<prev.length;i++){const j=(i+1)%prev.length;gb.quad([prev[i][0],y,-prev[i][1]],[prev[j][0],y,-prev[j][1]],[cur[j][0],y,-cur[j][1]],[cur[i][0],y,-cur[i][1]],[0,1,0],k%2?dirt:rock,15)}
-  quadsWall(gb,cur,y,y1,k>steps/2?rock:dirt2);prev=cur;y=y1}
- fill(gb,prev,y+.02,floor);return{geo:gb.geo(),floorRing:prev,floorY:y}}
-function quadsWall(gb,ring,y0,y1,col){for(let i=0;i<ring.length;i++){const a=ring[i],b=ring[(i+1)%ring.length];gb.quad([a[0],y0,-a[1]],[b[0],y0,-b[1]],[b[0],y1,-b[1]],[a[0],y1,-a[1]],[0,0,1],col,15)}}
 function maskGeo(ring){const gb=new GB();fill(gb,shrink(ring,.999),.36,C('#000'));return gb.geo()}
+// ---------- solid-geometry helpers: every face wound outward, so nothing goes missing from any angle ----------
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],crs=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+function T3(g,a,b,c,n,col){const k=crs(sub(b,a),sub(c,a));if(k[0]*n[0]+k[1]*n[1]+k[2]*n[2]<0){const t=b;b=c;c=t}g.tri(a,b,c,n,col,col,col)}
+function Q4(g,a,b,c,d,n,col){T3(g,a,b,c,n,col);T3(g,a,c,d,n,col)}
+const shade=(c,k)=>new THREE.Color(Math.min(1,c.r*k),Math.min(1,c.g*k),Math.min(1,c.b*k));
+// axis-aligned box from min to max corner
+function bx(g,x0,y0,z0,x1,y1,z1,col){const P=(x,y,z)=>[x,y,z],s=shade(col,.86),t=shade(col,1.04);
+ Q4(g,P(x0,y1,z0),P(x1,y1,z0),P(x1,y1,z1),P(x0,y1,z1),[0,1,0],t);Q4(g,P(x0,y0,z0),P(x1,y0,z0),P(x1,y0,z1),P(x0,y0,z1),[0,-1,0],shade(col,.6));
+ Q4(g,P(x1,y0,z0),P(x1,y1,z0),P(x1,y1,z1),P(x1,y0,z1),[1,0,0],col);Q4(g,P(x0,y0,z0),P(x0,y1,z0),P(x0,y1,z1),P(x0,y0,z1),[-1,0,0],s);
+ Q4(g,P(x0,y0,z1),P(x1,y0,z1),P(x1,y1,z1),P(x0,y1,z1),[0,0,1],s);Q4(g,P(x0,y0,z0),P(x1,y0,z0),P(x1,y1,z0),P(x0,y1,z0),[0,0,-1],s)}
+// centred box with half sizes
+const cb=(g,cx,cy,cz,hx,hy,hz,col)=>bx(g,cx-hx,cy-hy,cz-hz,cx+hx,cy+hy,cz+hz,col);
+// cylinder along an axis ('x','y' or 'z') centred at c, radius r, half length h
+function cyl(g,c,r,h,ax,col,seg){const n=seg||12,cap=shade(col,.9),pt=(a,s)=>{const u=Math.cos(a)*r,v=Math.sin(a)*r;return ax==='x'?[c[0]+s*h,c[1]+u,c[2]+v]:ax==='y'?[c[0]+u,c[1]+s*h,c[2]+v]:[c[0]+u,c[1]+v,c[2]+s*h]},nr=a=>{const u=Math.cos(a),v=Math.sin(a);return ax==='x'?[0,u,v]:ax==='y'?[u,0,v]:[u,v,0]},na=s=>ax==='x'?[s,0,0]:ax==='y'?[0,s,0]:[0,0,s],ce=s=>ax==='x'?[c[0]+s*h,c[1],c[2]]:ax==='y'?[c[0],c[1]+s*h,c[2]]:[c[0],c[1],c[2]+s*h];
+ for(let i=0;i<n;i++){const a0=i/n*6.2832,a1=(i+1)/n*6.2832,am=(a0+a1)/2;Q4(g,pt(a0,-1),pt(a1,-1),pt(a1,1),pt(a0,1),nr(am),shade(col,.8+.25*Math.max(0,Math.sin(am))));T3(g,ce(1),pt(a0,1),pt(a1,1),na(1),cap);T3(g,ce(-1),pt(a0,-1),pt(a1,-1),na(-1),cap)}}
+// a beam between two points in the x-y plane (z thickness), for booms, braces and struts
+function beam(g,a,b,w,dz,col,z){z=z||0;const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1,nx=-dy/L*w/2,ny=dx/L*w/2,p=(q,s,zz)=>[q[0]+nx*s,q[1]+ny*s,z+zz];
+ const A=p(a,1,dz),B=p(b,1,dz),C2=p(b,-1,dz),D=p(a,-1,dz),A2=p(a,1,-dz),B2=p(b,1,-dz),C3=p(b,-1,-dz),D2=p(a,-1,-dz),n=[-dy/L,dx/L,0],sh=shade(col,.85);
+ Q4(g,A,B,B2,A2,n,shade(col,1.03));Q4(g,D,C2,C3,D2,[-n[0],-n[1],0],shade(col,.7));Q4(g,A,B,C2,D,[0,0,1],sh);Q4(g,A2,B2,C3,D2,[0,0,-1],sh);Q4(g,A,D,D2,A2,[-dx/L,-dy/L,0],sh);Q4(g,B,C2,C3,B2,[dx/L,dy/L,0],sh)}
 const geo=f=>{const g=new GB();f(g);return g.geo()};
-const YEL=C('#f2c230'),DK=C('#2b2e33'),GR=C('#8d949b'),WH=C('#e8e4d8'),RED=C('#c8463a');
-function excavator(){const root=new THREE.Group();const base=new THREE.Mesh(geo(g=>{ibox(g,0,-1.2,2.1,.5,0,1,DK);ibox(g,0,1.2,2.1,.5,0,1,DK);ibox(g,0,0,1.2,1.2,.9,1.3,GR)}),MAT);root.add(base);
- const tur=new THREE.Group();tur.position.y=1.3;root.add(tur);tur.add(new THREE.Mesh(geo(g=>{ibox(g,-.4,0,1.8,1.3,0,1.3,YEL);ibox(g,.6,.6,.7,.6,1.3,2.6,YEL);ibox(g,.62,.6,.6,.62,1.6,2.45,C('#9cc8d6'));ibox(g,-1.9,0,.35,1.2,.2,1.2,DK)}),MAT));
- const boom=new THREE.Group();boom.position.set(1.2,1,-.3);tur.add(boom);boom.add(new THREE.Mesh(geo(g=>{icube(g,0,-.25,-.25,4.2,.25,.25,YEL)}),MAT));boom.rotation.z=.55;
- const stick=new THREE.Group();stick.position.set(4.2,0,0);boom.add(stick);stick.add(new THREE.Mesh(geo(g=>{icube(g,-.2,-3,-.2,.2,0,.2,YEL);icube(g,-.5,-3.6,-.45,.4,-3,.45,DK)}),MAT));stick.rotation.z=-1.2;
- root.userData.anim=t=>{tur.rotation.y=Math.sin(t*.35)*1.1;boom.rotation.z=.45+Math.sin(t*.7)*.18;stick.rotation.z=-1.25+Math.sin(t*.7+1)*.35};return root}
-function truck(){return new THREE.Mesh(geo(g=>{for(const x of[-1.6,1.4])for(const z of[-1,1])ilathe(g,x,z,[[0,0],[.55,0],[.55,1.1],[0,1.1]],DK,8);ibox(g,1.6,0,.9,1.1,.6,2.6,YEL);ibox(g,1.7,0,.7,1,1.8,2.5,C('#9cc8d6'));ibox(g,-.9,0,2,1.25,1,1.4,DK);ibox(g,-.9,0,2,1.25,1.4,2.8,YEL);ibox(g,-.9,0,1.8,1.05,2.4,2.85,C('#8a6f4f'))}),MAT)}
-function pumpjack(){const root=new THREE.Group();root.add(new THREE.Mesh(geo(g=>{ibox(g,0,0,3.5,1,0,.5,C('#9a968a'));for(const z of[-.7,.7])icube(g,-.3,.5,z-.12,.3,4.6,z+.12,DK);ibox(g,2.4,0,.6,.5,.5,1.6,RED);ibox(g,-2.6,0,.2,.2,.5,1.4,GR);ilathe(g,-2.6,0,[[.12,1.4],[.12,2.2],[0,2.2]],GR,6)}),MAT));
- const beam=new THREE.Group();beam.position.y=4.6;root.add(beam);beam.add(new THREE.Mesh(geo(g=>{icube(g,-3.2,-.25,-.2,2.6,.25,.2,DK);icube(g,-3.9,-1.4,-.35,-3.1,.5,.35,C('#3a3d44'));icube(g,2.4,-.9,-.25,3.1,-.2,.25,RED)}),MAT));
- root.userData.anim=t=>{beam.rotation.z=Math.sin(t*1.6)*.32};return root}
-function headframe(){const H=18;return new THREE.Mesh(geo(g=>{for(const x of[-2,2])for(const z of[-2,2])icube(g,x-.18,0,z-.18,x+.18,H,z+.18,RED);for(let y=3;y<H;y+=3){icube(g,-2,y,-2.1,2,y+.25,-1.9,RED);icube(g,-2,y,1.9,2,y+.25,2.1,RED);icube(g,-2.1,y,-2,-1.9,y+.25,2,RED);icube(g,1.9,y,-2,2.1,y+.25,2,RED)}
- icube(g,-2.4,H,-2.4,2.4,H+.6,2.4,DK);ilathe(g,0,0,[[0,H+.6],[0,H+.6]],DK);ibox(g,0,0,.15,2.6,H+.6,H+3.6,GR);ibox(g,5,0,3,2.5,0,4.5,C('#c9cfd4'));ibox(g,5,0,3.1,2.6,4.5,4.9,C('#5d636f'));ibox(g,2.6,0,.1,.1,4,H,DK)}),MAT)}
-function logs(n){return new THREE.Mesh(geo(g=>{for(let i=0;i<n;i++){const z=-1.5+(i%4)*.75,y=.35+Math.floor(i/4)*.7;g.quad([-3,y+.35,z],[3,y+.35,z],[3,y+.35,z+.7],[-3,y+.35,z+.7],[0,1,0],C('#a8733f'),15);icube(g,-3,y-.35,z,3,y+.35,z+.7,C('#8a5a30'))}}),MAT)}
+const YEL=C('#f0b81f'),YD=C('#c99412'),DK=C('#2d3036'),DK2=C('#45494f'),GR=C('#9aa1a8'),GLS=C('#9fd0e0'),RED=C('#c8463a'),TYRE=C('#1d1e21'),HUB=C('#b8bcc2');
+// ---------- the pit: a smooth open-cast excavation with benches, rock strata and a flat floor ----------
+function segD(px,py,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1;let t=((px-a[0])*dx+(py-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));const x=a[0]+dx*t,y=a[1]+dy*t;return[Math.hypot(px-x,py-y),x,y]}
+function inPoly(R,x,y){let c=false;for(let a=0,b=R.length-1;a<R.length;b=a++){const A=R[a],B=R[b];if((A[1]>y)!==(B[1]>y)&&x<(B[0]-A[0])*(y-A[1])/(B[1]-A[1])+A[0])c=!c}return c}
+function pitGeo(ring,depth,type,seed){const xs=ring.map(p=>p[0]),ys=ring.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+ const area=Math.abs(polyArea(ring)),cs=clamp(Math.sqrt(area)/70,.8,2.2),nx=Math.max(3,Math.ceil((x1-x0)/cs)),ny=Math.max(3,Math.ceil((y1-y0)/cs)),W=nx+1;
+ const P=[],D=[],IN=[];let R=0;
+ for(let j=0;j<=ny;j++)for(let i=0;i<=nx;i++){let x=x0+(x1-x0)*i/nx,y=y0+(y1-y0)*j/ny;const ins=inPoly(ring,x,y);let best=[1e9,x,y];for(let k=0;k<ring.length;k++){const s=segD(x,y,ring[k],ring[(k+1)%ring.length]);if(s[0]<best[0])best=s}
+  if(!ins){x=best[1];y=best[2]}const d=ins?best[0]:0;P.push([x,y]);D.push(d);IN.push(ins);if(d>R)R=d}
+ // realistic wall: ~40° slopes broken into benches; small lots get a shallower bowl
+ const dep=Math.min(depth,R*.85),run=Math.max(1,Math.min(R*.92,dep*1.25)),nb=Math.max(1,Math.round(dep/4.5)),floorC=C(FLOOR[type]);
+ const soil=C('#7b6043'),soil2=C('#6a5139'),rockA=C('#9a9385'),rockB=C('#7c766b'),rockC=C('#c2b8a3');
+ const Y=new Float32Array(P.length),COL=[];let fsx=0,fsy=0,fn=0;
+ for(let k=0;k<P.length;k++){const[x,y]=P[k];let t=clamp(D[k]/run,0,1);const tn=t*nb,bi=Math.min(nb-1,Math.floor(tn)),u=t>=1?1:tn-bi,fu=u<.58?(q=>q*q*(3-2*q))(u/.58):1,s=t>=1?1:(bi+fu)/nb,bench=u>=.62&&t<1;
+  const nz=(vn(x*.11+seed,y*.11,31)-.5)*1.1*Math.sin(Math.PI*t)+(vn(x*.37,y*.37+seed,32)-.5)*.35*t,yy=.3-dep*s+nz*Math.min(1,dep/6);Y[k]=Math.min(.3,yy);
+  let c;const dd=.3-Y[k];if(t>=.995){c=floorC.clone().lerp(rockB,.12*vn(x*.2,y*.2,33));fsx+=x;fsy+=y;fn++}
+  else if(dd<1.4)c=soil.clone().lerp(soil2,vn(x*.3,y*.3,34));else if(bench)c=rockC.clone().lerp(rockA,.25*vn(x*.4,y*.4,37));else{const band=.5+.5*Math.sin(dd*1.6+vn(x*.05,y*.05,35)*3);c=rockA.clone().lerp(rockB,band)}
+  const v=.93+vn(x*.9,y*.9,36)*.14;COL.push(c.r*v,c.g*v,c.b*v)}
+ const pos=new Float32Array(P.length*3);for(let k=0;k<P.length;k++){pos[k*3]=P[k][0];pos[k*3+1]=Y[k];pos[k*3+2]=-P[k][1]}
+ const idx=[];for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const a=j*W+i,b=a+1,c=a+W+1,d=a+W;const gx=x0+(x1-x0)*(i+.5)/nx,gy=y0+(y1-y0)*(j+.5)/ny;if(!inPoly(ring,gx,gy)&&!(IN[a]||IN[b]||IN[c]||IN[d]))continue;idx.push(a,c,b,a,d,c)}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(COL,3));g.setIndex(idx);g.computeVertexNormals();
+ // a short skirt below the rim hides any sliver between the ground cut-out and the mesh edge
+ const sk=new GB();for(let k=0;k<ring.length;k++){const a=ring[k],b=ring[(k+1)%ring.length];Q4(sk,[a[0],.3,-a[1]],[b[0],.3,-b[1]],[b[0],-1.6,-b[1]],[a[0],-1.6,-a[1]],[0,1,0],soil2)}
+ // flattest, deepest spot: where the machines work
+ let fx,fy;if(fn){fx=fsx/fn;fy=fsy/fn}else{let bi=0;for(let k=1;k<P.length;k++)if(Y[k]<Y[bi])bi=k;fx=P[bi][0];fy=P[bi][1]}
+ let fy2=.3;{let bd=1e9;for(let k=0;k<P.length;k++){const d=Math.hypot(P[k][0]-fx,P[k][1]-fy);if(d<bd){bd=d;fy2=Y[k]}}}
+ return{geo:g,skirt:sk.geo(),fx,fy,floorY:fy2,R,run,dep}}
+// ---------- machines ----------
+function excavator(){const root=new THREE.Group();
+ // undercarriage: two tracks with rounded ends, idlers and rollers
+ root.add(new THREE.Mesh(geo(g=>{for(const z of[-1.25,1.25]){bx(g,-1.75,.15,z-.38,1.75,.95,z+.38,DK);for(const x of[-1.75,1.75])cyl(g,[x,.55,z],.42,.38,'z',DK,12);
+   for(let x=-1.2;x<=1.21;x+=.6)cyl(g,[x,.28,z],.17,.4,'z',DK2,8);cyl(g,[1.75,.55,z],.2,.41,'z',GR,8);bx(g,-1.6,.95,z-.34,1.6,1.02,z+.34,DK2)}
+  bx(g,-1.1,.55,-.9,1.1,1.05,.9,DK2);cyl(g,[0,1.15,0],.8,.12,'y',GR,14)}),MAT));
+ // upper house: swings on the slewing ring
+ const tur=new THREE.Group();tur.position.y=1.28;root.add(tur);
+ tur.add(new THREE.Mesh(geo(g=>{bx(g,-1.55,0,-1.15,1.35,.95,1.15,YEL);bx(g,-2.35,.05,-1.15,-1.5,1.05,1.15,DK2);bx(g,-2.3,1.05,-1.1,-1.55,1.12,1.1,DK);
+   bx(g,.25,.95,.25,1.45,2.55,1.12,YEL);bx(g,.32,1.25,.2,1.47,2.4,1.14,GLS);bx(g,.25,2.55,.22,1.5,2.65,1.15,YD);bx(g,-1.4,.95,-1.05,-.2,1.45,.9,YD);
+   cyl(g,[-.9,1.75,-.6],.08,.35,'y',DK,6);bx(g,-1.6,.95,-1.12,1.3,1.02,-1.05,DK)}),MAT));
+ // boom: classic bent "banana" in two segments with its ram
+ const boom=new THREE.Group();boom.position.set(1.1,.9,-.35);tur.add(boom);
+ boom.add(new THREE.Mesh(geo(g=>{beam(g,[0,0],[2.9,2.0],.55,.28,YEL);beam(g,[2.75,1.95],[5.0,1.3],.48,.26,YEL);cyl(g,[0,0,0],.3,.32,'z',YD,10);cyl(g,[2.85,1.98,0],.32,.3,'z',YD,10);
+   beam(g,[.4,-.35],[2.3,1.1],.16,.12,GR,0)}),MAT));boom.rotation.z=.15;
+ const stick=new THREE.Group();stick.position.set(5.0,1.3,0);boom.add(stick);
+ stick.add(new THREE.Mesh(geo(g=>{beam(g,[0,0],[.3,-3.0],.42,.22,YEL);cyl(g,[0,0,0],.26,.26,'z',YD,10);beam(g,[-.5,.6],[.0,-.4],.14,.1,GR,0)}),MAT));stick.rotation.z=-.5;
+ const bucket=new THREE.Group();bucket.position.set(.3,-3.0,0);stick.add(bucket);
+ bucket.add(new THREE.Mesh(geo(g=>{bx(g,-.1,-1.0,-.55,.75,-.1,-.48,DK);bx(g,-.1,-1.0,.48,.75,-.1,.55,DK);bx(g,-.1,-1.05,-.55,.8,-.95,.55,DK);beam(g,[-.1,-.15],[.75,-.95],.08,.55,DK,0);
+   for(let z=-.42;z<=.43;z+=.21)bx(g,.78,-1.08,z-.05,.98,-.98,z+.05,GR);cyl(g,[0,0,0],.18,.3,'z',DK2,8)}),MAT));
+ root.userData.anim=t=>{const c=(t*.16)%1,swing=c<.5?0:Math.sin((c-.5)*2*Math.PI)*1.57;tur.rotation.y=swing;const dig=Math.sin(t*1.38);
+  boom.rotation.z=.12+(c<.5?.18+dig*.12:.45);stick.rotation.z=-.55+(c<.5?dig*.35:.25);bucket.rotation.z=c<.5?-.3+dig*.45:.7};return root}
+function truck(){const root=new THREE.Group();root.add(new THREE.Mesh(geo(g=>{
+  bx(g,-3.3,1.0,-1.25,2.9,1.45,1.25,DK2);for(const x of[-2.4,-1.0])for(const z of[-1.35,1.35]){cyl(g,[x,.95,z],.95,.32,'z',TYRE,14);cyl(g,[x,.95,z+(z>0?.33:-.33)],.42,.02,'z',HUB,10)}
+  for(const z of[-1.35,1.35]){cyl(g,[2.1,.95,z],.95,.32,'z',TYRE,14);cyl(g,[2.1,.95,z+(z>0?.33:-.33)],.42,.02,'z',HUB,10)}
+  bx(g,1.6,1.45,-1.3,3.2,2.4,1.3,YEL);bx(g,2.0,2.4,-1.25,3.15,3.6,.1,YEL);bx(g,2.05,2.6,-1.27,3.2,3.4,.12,GLS);bx(g,3.2,1.5,-1.1,3.35,2.3,1.1,DK);for(const z of[-.8,.8])bx(g,3.3,1.9,z-.18,3.38,2.1,z+.18,C('#f5f1d8'))}),MAT));
+ // dump body tips up to unload
+ const bed=new THREE.Group();bed.position.set(-3.3,1.5,0);root.add(bed);
+ bed.add(new THREE.Mesh(geo(g=>{bx(g,0,0,-1.45,4.9,.18,1.45,YD);bx(g,0,.18,-1.45,4.9,1.7,-1.3,YEL);bx(g,0,.18,1.3,4.9,1.7,1.45,YEL);bx(g,4.75,.18,-1.45,4.95,2.1,1.45,YEL);bx(g,4.75,2.1,-1.45,5.9,2.25,1.45,YD);
+   bx(g,.3,.18,-1.28,4.7,1.25,1.28,C('#8a6c4c'));cb(g,2.6,1.35,.2,1.3,.25,.8,C('#7d6145'))}),MAT));
+ root.userData.anim=t=>{const c=(t*.07+.5)%1;bed.rotation.z=c>.8?-Math.sin((c-.8)/.2*Math.PI)*.75:0};return root}
+function pumpjack(){const root=new THREE.Group(),Ctank=C('#6f7780');root.add(new THREE.Mesh(geo(g=>{bx(g,-4.2,0,-1.2,3.2,.5,1.2,C('#8f8b80'));
+  for(const z of[-.75,.75]){beam(g,[-.9,.5],[0,5.2],.22,.12,DK2,z);beam(g,[.9,.5],[0,5.2],.22,.12,DK2,z)}bx(g,-.25,5.1,-.85,.25,5.4,.85,DK);
+  bx(g,1.8,.5,-.9,3.1,1.6,.9,RED);cyl(g,[2.45,1.75,0],.3,1.15,'z',DK,10);cyl(g,[-3.6,.5,0],.14,1.6,'y',GR,8);bx(g,-3.85,.5,-.25,-3.35,.8,.25,DK)}),MAT));
+ const beamG=new THREE.Group();beamG.position.set(0,5.4,0);root.add(beamG);
+ beamG.add(new THREE.Mesh(geo(g=>{bx(g,-3.3,-.22,-.24,2.6,.22,.24,DK);bx(g,-4.0,-1.6,-.42,-3.2,.55,.42,Ctank);beam(g,[-4.0,.55],[-3.2,.9],.1,.42,Ctank,0);bx(g,2.4,-.6,-.15,2.8,-.1,.15,DK)}),MAT));
+ const crank=new THREE.Group();crank.position.set(2.45,1.75,0);root.add(crank);
+ crank.add(new THREE.Mesh(geo(g=>{for(const z of[-1.05,1.05]){bx(g,-.22,-1.0,z-.12,.22,.25,z+.12,DK2);bx(g,-.6,-1.25,z-.14,.6,-.75,z+.14,RED)}}),MAT));
+ root.userData.anim=t=>{const a=t*1.5;crank.rotation.z=a;beamG.rotation.z=Math.sin(a)*.28};return root}
+function headframe(){const H=20,root=new THREE.Group();root.add(new THREE.Mesh(geo(g=>{
+  for(const x of[-2.2,2.2])for(const z of[-2.2,2.2])cb(g,x,H/2,z,.2,H/2,.2,RED);
+  for(let y=3;y<H;y+=3.2){const k=1;for(const z of[-2.2,2.2]){beam(g,[-2.2*k,y],[2.2*k,y],.18,.12,RED,z*k);beam(g,[-2.2*k,y],[2.2*k,y+3.2],.1,.08,RED,z*k)}}
+  bx(g,-2.4,H,-2.4,2.4,H+.5,2.4,DK);beam(g,[7,0],[2.2,H-2],.35,.3,RED,-2.2);beam(g,[7,0],[2.2,H-2],.35,.3,RED,2.2);
+  cyl(g,[0,H+1.6,-.7],1.5,.12,'z',DK2,18);cyl(g,[0,H+1.6,.7],1.5,.12,'z',DK2,18);cyl(g,[0,H+1.6,0],.18,.9,'z',GR,8);
+  bx(g,6,0,-3,12,6,3,C('#c9cfd4'));bx(g,5.9,6,-3.1,12.1,6.4,3.1,C('#5d636f'));bx(g,6.5,1,-3.02,11.5,1.8,-3.0,GLS);
+  for(const z of[-.7,.7])beam(g,[1.5,H+1.6],[6.5,5.5],.06,.03,DK,z);cyl(g,[0,H/2,0],.04,H/2,'y',DK,4)}),MAT));return root}
+function logs(n){return new THREE.Mesh(geo(g=>{for(let i=0;i<n;i++){const z=-1.6+(i%4)*.8,y=.4+Math.floor(i/4)*.7;cyl(g,[0,y,z],.38,3,'x',C('#8a5a30'),10)}bx(g,-3.2,0,-2.1,-3.0,1.6,2.1,DK2);bx(g,3.0,0,-2.1,3.2,1.6,2.1,DK2)}),MAT)}
+function cabin(){return new THREE.Mesh(geo(g=>{bx(g,-3,0,-1.2,3,2.6,1.2,C('#e8e4d8'));bx(g,-3.05,2.6,-1.25,3.05,2.75,1.25,C('#5d636f'));for(const x of[-1.8,0,1.8])bx(g,x-.5,1.2,1.2,x+.5,2,1.22,GLS);bx(g,2.2,0,1.2,2.9,2.1,1.23,DK2)}),MAT)}
 function buildSite(p,lot,L){const m=p.mine,r=RES[m.type],ring=localRing(L,lot),grp=new THREE.Group(),pct=clamp(m.ext/m.reserve,0,1);
- let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}cx/=ring.length;cy/=ring.length;const anims=[];
+ let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}cx/=ring.length;cy/=ring.length;const anims=[],sc=clamp(Math.sqrt(lot.area||800)/55,1,1.9);
+ const rimPt=k=>{const a=ring[k%ring.length],b=ring[(k+1)%ring.length];const x=(a[0]+b[0])/2,y=(a[1]+b[1])/2;return[x+(cx-x)*.02,y+(cy-y)*.02]};
  if(r.kind==='forest'){const n=Math.max(0,Math.round((1-pct)*Math.min(80,(lot.area||800)/40)));if(n&&typeof TREE_GEO!=='undefined'){const im=new THREE.InstancedMesh(TREE_GEO,typeof TREEMAT!=='undefined'?TREEMAT:MAT,n),dm=new THREE.Object3D(),inner=shrink(ring,.85);let k=0;
    const xs=inner.map(q=>q[0]),ys=inner.map(q=>q[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);for(let i=0;i<n*6&&k<n;i++){const x=x0+hash2(i,lot.i|0,3)*(x1-x0),y=y0+hash2(lot.i|0,i,5)*(y1-y0);
-    let inside=false;for(let a=0,b=inner.length-1;a<inner.length;b=a++){const A=inner[a],B=inner[b];if((A[1]>y)!==(B[1]>y)&&x<(B[0]-A[0])*(y-A[1])/(B[1]-A[1])+A[0])inside=!inside}if(!inside)continue;
-    dm.position.set(x,0,-y);dm.scale.setScalar(.8+hash2(i,7,7)*.5);dm.updateMatrix();im.setMatrixAt(k,dm.matrix);im.setColorAt(k,new THREE.Color().setHSL(.27+hash2(i,3,3)*.08,.45,.32+hash2(i,4,4)*.12));k++}im.count=k;if(im.instanceColor)im.instanceColor.needsUpdate=true;im.castShadow=true;grp.add(im)}
-  const lg=logs(10);lg.position.set(cx,0,-cy);grp.add(lg);const ex=excavator();ex.position.set(cx+6,0,-cy+4);grp.add(ex);anims.push(ex)}
- else{const depth=r.kind==='oil'?1.4:3+24*Math.pow(pct,.6);const pit=pitGeo(ring,depth,m.type);const mg=maskGeo(ring),ma=new THREE.Mesh(mg,MASKA);ma.renderOrder=4;ma.userData.mask=1;grp.add(ma);const mk=new THREE.Mesh(mg,MASK);mk.renderOrder=4.5;mk.userData.mask=1;grp.add(mk);
-  const pm=new THREE.Mesh(pit.geo,MAT);pm.renderOrder=5;pm.receiveShadow=true;grp.add(pm);
-  let fx=0,fy=0;for(const q of pit.floorRing){fx+=q[0];fy+=q[1]}fx/=pit.floorRing.length;fy/=pit.floorRing.length;
-  if(r.kind==='oil'){const pj=pumpjack();pj.scale.setScalar(1.7);pj.position.set(cx-3,0,-cy);pj.renderOrder=6;grp.add(pj);anims.push(pj);const tank=new THREE.Mesh(geo(g=>{ilathe(g,6,0,[[2,0],[2,4],[0,4.1]],C('#c9cfd4'),12);ilathe(g,6,5,[[2,0],[2,4],[0,4.1]],C('#c9cfd4'),12)}),MAT);tank.position.set(cx,0,-cy);grp.add(tank)}
-  else if(r.kind==='mine'){const hf=headframe();hf.scale.setScalar(clamp(Math.sqrt(lot.area||800)/40,1,2.5));hf.position.set(fx,pit.floorY,-fy);grp.add(hf)}
-  else{const ex=excavator();ex.scale.setScalar(clamp(Math.sqrt(lot.area||800)/22,1.5,4));ex.position.set(fx,pit.floorY,-fy);grp.add(ex);anims.push(ex)}
-  const tr=truck();tr.scale.setScalar(clamp(Math.sqrt(lot.area||800)/30,1,3));const e0=ring[0];tr.position.set(e0[0]+(cx-e0[0])*.08,.3,-(e0[1]+(cy-e0[1])*.08));tr.rotation.y=Math.atan2(cx-e0[0],cy-e0[1]);grp.add(tr)}
+    if(!inPoly(inner,x,y))continue;dm.position.set(x,0,-y);dm.scale.setScalar(.8+hash2(i,7,7)*.5);dm.updateMatrix();im.setMatrixAt(k,dm.matrix);im.setColorAt(k,new THREE.Color().setHSL(.27+hash2(i,3,3)*.08,.45,.32+hash2(i,4,4)*.12));k++}im.count=k;if(im.instanceColor)im.instanceColor.needsUpdate=true;im.castShadow=true;grp.add(im)}
+  const lg=logs(10);lg.position.set(cx,.3,-cy);grp.add(lg);const ex=excavator();ex.scale.setScalar(sc);ex.position.set(cx+7,.3,-cy+4);grp.add(ex);anims.push(ex);const tr=truck();tr.scale.setScalar(sc);tr.position.set(cx-6,.3,-cy-5);grp.add(tr)}
+ else{const oil=r.kind==='oil',depth=oil?1.6:4+24*Math.pow(pct,.6),pit=pitGeo(ring,depth,m.type,(lot.i|0)%97);
+  const mg=maskGeo(ring),ma=new THREE.Mesh(mg,MASKA);ma.renderOrder=4;ma.userData.mask=1;grp.add(ma);const mk=new THREE.Mesh(mg,MASK);mk.renderOrder=4.5;mk.userData.mask=1;grp.add(mk);
+  const pm=new THREE.Mesh(pit.geo,PITMAT);pm.renderOrder=5;pm.receiveShadow=true;grp.add(pm);const sk=new THREE.Mesh(pit.skirt,PITMAT);sk.renderOrder=5;grp.add(sk);
+  const fx=pit.fx,fy=pit.fy,fl=pit.floorY,toC=Math.atan2(cy-fy,cx-fx);
+  if(oil){const pj=pumpjack();pj.scale.setScalar(sc);pj.position.set(fx,fl,-fy);grp.add(pj);anims.push(pj);
+   const tk=new THREE.Mesh(geo(g=>{for(const z of[-3,3]){cyl(g,[0,2.2,z],2.3,2.2,'y',C('#c9cfd4'),16);cyl(g,[0,4.45,z],2.35,.06,'y',C('#9aa1a8'),16)}cyl(g,[0,.8,0],.2,4,'z',GR,8)}),MAT);const rp=rimPt(1);tk.position.set(rp[0],.3,-rp[1]);tk.scale.setScalar(sc);grp.add(tk)}
+  else if(r.kind==='mine'){const hf=headframe();hf.scale.setScalar(clamp(sc*.85,1,1.6));hf.position.set(fx,fl,-fy);grp.add(hf)}
+  else{const ex=excavator();ex.scale.setScalar(sc);ex.position.set(fx,fl,-fy);ex.rotation.y=toC;grp.add(ex);anims.push(ex);
+   // the haul truck waits beside the digger, inside the reach of its swing
+   const tr=truck();tr.scale.setScalar(sc);const a=toC+Math.PI/2,d=6.5*sc;tr.position.set(fx+Math.cos(a)*d,fl,-(fy+Math.sin(a)*d));tr.rotation.y=toC;grp.add(tr);anims.push(tr)}
+  if(!oil){const rp=rimPt(0),cbn=cabin();cbn.scale.setScalar(Math.min(sc,1.4));cbn.position.set(rp[0],.3,-rp[1]);const a=ring[0],b=ring[1%ring.length];cbn.rotation.y=Math.atan2(b[1]-a[1],b[0]-a[0]);grp.add(cbn)}}
  grp.traverse(o=>{if(o.isMesh){o.castShadow=!o.userData.mask;if(!o.renderOrder)o.renderOrder=6}});grp.userData.anims=anims;return grp}
+window.__rxModels={excavator,truck,pumpjack,headframe,logs,cabin};
 function syncSites(){if(!G)return;const want=new Set();
  for(const p of G.props){if(!p.mine)continue;want.add(p.key);const lot=lotByKey(p.key);if(!lot)continue;const L=liveFor(lot);if(!L||!L.grp||L.kind==='lm'||(L.lod!=null&&L.lod<1))continue;
   const stage=Math.round(clamp(p.mine.ext/p.mine.reserve,0,1)*12),S=SITES.get(p.key);
