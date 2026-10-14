@@ -1681,8 +1681,9 @@ WR.add(atmo);
 
 // ---------- lights: sun follows the camera at globe scale, sits high in the local sky at street scale ----------
 const AMB=new THREE.AmbientLight('#b8c4d6',.62);scene.add(AMB);
+const HEMI=new THREE.HemisphereLight('#bcd4f0','#6e6250',.0);scene.add(HEMI);
 const sun=new THREE.DirectionalLight('#fff4e0',.82);WR.add(sun);WR.add(sun.target);
-sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.0004;sun.shadow.normalBias=.6;
+sun.shadow.mapSize.set(MAXTEX>=16384?4096:2048,MAXTEX>=16384?4096:2048);sun.shadow.bias=-.0004;sun.shadow.normalBias=.6;
 const VIS={phase:.12,period:600,cycle:true};
 try{if(localStorage.getItem('groundfloor.cycle')==='0')VIS.cycle=false}catch(e){}
 const DAYC={sun:new THREE.Color('#fff4e0'),sunDusk:new THREE.Color('#ffa868'),moon:new THREE.Color('#9fb4e6'),amb:new THREE.Color('#b8c4d6'),ambDusk:new THREE.Color('#c9a29a'),ambNight:new THREE.Color('#4c5c8a'),
@@ -1692,7 +1693,7 @@ function dayParams(){if(!VIS.cycle)return{el:.95,az:.6,night:0,dusk:0};const p=V
  if(p<.62)el=1.0*Math.sin(Math.PI*p/.62);else el=-.45*Math.sin(Math.PI*(p-.62)/.38);
  const dusk=el>-.12?clamp(1-Math.abs(el)/.32,0,1):0,night=clamp((-el-.02)/.16,0,1);return{el,az:-.4+p*2.2,night,dusk:dusk*(1-night)}}
 function updateLights(){
- const alt=camAlt(),{U,E,N}=enu(CAM.lat,CAM.lon);
+ const alt=camAlt(),{U,E,N}=enu(CAM.lat,CAM.lon);GROUND_T.value=performance.now()/1000;
  // day and night: the sun climbs, sets orange, and a cool moon takes over; windows and street lamps light up after dark
  const dp=dayParams(),kk=clamp((Math.log10(alt)-4.7)/1,0,1),night=dp.night*(1-kk),dusk=dp.dusk*(1-kk);
  const el=dp.el>.06?dp.el:.75,az=dp.el>.06?dp.az:dp.az+2.6;
@@ -1706,11 +1707,15 @@ function updateLights(){
  AMB.intensity=(.4+.22*k)*(1-.12*dusk)*(1-.45*night);sun.intensity=(1.12-.34*k)*(1-.3*dusk)*(1-.75*night);
  const want=alt<9000&&QUAL.shadows&&QUAL.q>.6;sun.castShadow=want;
  // shadow frustum grows in fixed steps and its centre snaps to whole shadow-map texels, so shadows don't crawl or shimmer as the camera moves
- const raw=clamp(CAM.dist*(1+camTilt()*1.1),200,3200),S=200*Math.pow(1.5,Math.ceil(Math.log(raw/200)/Math.log(1.5))),c=sun.shadow.camera;
- if(want&&c.right!==S){c.left=-S;c.right=S;c.top=S;c.bottom=-S;c.near=10;c.far=9000;c.updateProjectionMatrix();sun.shadow.normalBias=Math.max(.6,S/1024*.9)}
+ const raw=clamp(CAM.dist*(.8+camTilt()*1.0),110,2600),S=110*Math.pow(1.4,Math.ceil(Math.log(raw/110)/Math.log(1.4))),c=sun.shadow.camera;
+ if(want&&c.right!==S){c.left=-S;c.right=S;c.top=S;c.bottom=-S;c.near=10;c.far=9000;c.updateProjectionMatrix();sun.shadow.normalBias=Math.max(.35,S/sun.shadow.mapSize.x*1.6);sun.shadow.radius=3}
  const T=ecef(CAM.lat,CAM.lon,0),X=new THREE.Vector3(0,1,0).cross(d).normalize(),Y=d.clone().cross(X),tx=2*S/sun.shadow.mapSize.x;
  const a=T.dot(X),b=T.dot(Y);T.addScaledVector(X,Math.round(a/tx)*tx-a).addScaledVector(Y,Math.round(b/tx)*tx-b);
  sun.target.position.copy(T);sun.position.copy(T).addScaledVector(d,4000);
+ // street scale: strong warm sun + cool sky fill from above + low ambient, so shade is dark but never black
+ const st=1-k;HEMI.position.copy(U);HEMI.color.set('#bcd4f0').lerp(DAYC.skyLowDusk,dusk*.6).lerp(DAYC.ambNight,night);HEMI.groundColor.set('#6e6250').lerp(new THREE.Color('#1c2236'),night);
+ HEMI.intensity=st*(.34-.1*dusk-.18*night);AMB.intensity*=1-.62*st;sun.intensity*=1+.05*st*(1-night);
+ SKYSHEEN.value.copy(SKY_MID).lerp(SKY_LOW,.55);
 }
 
 // ---------- globe ----------
@@ -1824,7 +1829,7 @@ function updateLayers(){
  const stars=scene.getObjectByName('stars');stars.material.opacity=clamp((Math.log10(alt)-5.2)/.8,0,1);stars.visible=stars.material.opacity>0;
  atmo.material.uniforms.op.value=clamp((Math.log10(alt)-5)/1,0,1);
  // haze hides where detail ends
- if(alt<60000){const rp=PATCH.cur?PATCH.cur.r:patchRadius(alt);scene.fog.color.copy(scene.background);scene.fog.far=Math.max(rp*.9,alt*8);scene.fog.near=Math.min(scene.fog.far*.45,Math.max(alt*2.5,2500))}else{scene.fog.near=1e11;scene.fog.far=1e12}
+ if(alt<60000){const rp=PATCH.cur?PATCH.cur.r:patchRadius(alt);scene.fog.color.copy(scene.background);scene.fog.far=Math.min(Math.max(rp*.9,alt*8),Math.max(alt*6,2600));scene.fog.near=Math.min(scene.fog.far*.35,Math.max(alt*1.6,700))}else{scene.fog.near=1e11;scene.fog.far=1e12}
  const op=(lo,hi)=>clamp((Math.log10(alt)-Math.log10(lo))/.35,0,1)*clamp((Math.log10(hi)-Math.log10(alt))/.35,0,1);
  const set=(m,o)=>{if(!m)return;m.material.opacity=o*m.userData.op;m.visible=o>.01};
  set(GLOBE.borders,op(25000,1e9));set(GLOBE.states,op(40000,1.2e7));
@@ -1871,12 +1876,32 @@ const NIGHT_U={value:0};
 // so every surface in the bottom half-metre is pulled very slightly toward the camera in proportion to its height.
 // Same warp for every material, so where a wall meets the pavement the two still intersect on the same line.
 const DEPTH_K=6e-4;
+const SKYSHEEN={value:new THREE.Color('#9cc0e0')};
+// ground detail: pavers on light paving, grain on asphalt, mottled lawns, rippling water. All from world position, no textures.
+const GROUND_T={value:0};
+function groundShader(sh){biasDepthVS(sh);sh.uniforms.uT=GROUND_T;
+ sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vGP;').replace('#include <begin_vertex>','#include <begin_vertex>\nvGP=position;');
+ sh.fragmentShader=sh.fragmentShader.split('gl_FrontFacing').join('true').replace('#include <common>',`#include <common>
+varying vec3 vGP;uniform float uT;
+float gh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float gn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(gh(i),gh(i+vec2(1,0)),f.x),mix(gh(i+vec2(0,1)),gh(i+vec2(1,1)),f.x),f.y);}`)
+ .replace('vec4 diffuseColor = vec4( diffuse, opacity );',`vec4 diffuseColor = vec4( diffuse, opacity );
+ {vec3 c=vColor;vec2 w=vGP.xz;float lum=dot(c,vec3(.299,.587,.114));float green=c.g-max(c.r,c.b);float blue=c.b-max(c.r,c.g);
+  float n=gn(w*.35)*.6+gn(w*1.7)*.4;float k=1.;
+  if(blue>.08){float r=sin(w.x*.9+uT*1.3)*sin(w.y*.7-uT)*.5+.5;k=.9+.16*n+.08*r;}
+  else if(green>.06){float big=gn(w*.05);k=.86+.22*n*(.6+.4*big);k*=mix(.9,1.06,smoothstep(.35,.65,big));}
+  else if(lum>.55){vec2 t=fract(w/vec2(1.2,.6));float g=step(.05,t.x)*step(.08,t.y);k=(.9+.1*gh(floor(w/vec2(1.2,.6))))*mix(.86,1.,g)*(.97+.05*n);}
+  else{k=.9+.14*n+.05*gh(floor(w*6.));}
+  vColor_k=k;}`)
+ .replace('vec4 diffuseColor = vec4( diffuse, opacity );','float vColor_k=1.;\n vec4 diffuseColor = vec4( diffuse, opacity );')
+ .replace('#include <color_fragment>','#include <color_fragment>\n diffuseColor.rgb*=vColor_k;');}
 function biasDepthVS(sh){sh.vertexShader=sh.vertexShader.replace('#include <logdepthbuf_vertex>','#include <logdepthbuf_vertex>\n#ifdef USE_LOGDEPTHBUF_EXT\n vFragDepth*=1.0-clamp(position.y,0.0,0.5)*'+DEPTH_K.toFixed(6)+';\n#endif')}
 function atlasMaterial(){
  const m=new THREE.MeshLambertMaterial({vertexColors:true,map:ATLAS,side:THREE.DoubleSide});
  const gl2=renderer.capabilities.isWebGL2;if(!gl2)m.extensions={derivatives:true};
  m.onBeforeCompile=sh=>{
-  biasDepthVS(sh);
+  biasDepthVS(sh);sh.uniforms.uSkyC=SKYSHEEN;sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying float vAOh;varying vec3 vNv;varying vec3 vVv;varying vec3 vOP;varying float vNy;').replace('#include <project_vertex>','#include <project_vertex>\nvAOh=position.y;vOP=position;vNy=objectNormal.y;vNv=normalize(normalMatrix*objectNormal);vVv=-mvPosition.xyz;');
+  sh.fragmentShader=sh.fragmentShader.split('gl_FrontFacing').join('true').replace('#include <common>','#include <common>\nvarying float vAOh;varying vec3 vNv;varying vec3 vVv;uniform vec3 uSkyC;varying vec3 vOP;varying float vNy;');
   sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nattribute float atile;\nvarying float vTile;').replace('#include <uv_vertex>','#include <uv_vertex>\nvTile=atile;');
   sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vTile;\nuniform float uNight;').replace('#include <map_fragment>',`
   float tI=floor(vTile+.5),tc=mod(tI,4.),tr=floor(tI/4.);
@@ -1887,7 +1912,12 @@ function atlasMaterial(){
   float fx_lum=dot(texelColor.rgb,vec3(.299,.587,.114));
   float fx_glass=step(texelColor.r+.025,texelColor.b)*step(fx_lum,.42);
   float fx_h=fract(sin(dot(floor(vUv)+vec2(tI*7.13,tI*3.7),vec2(12.9898,78.233)))*43758.5453);
-  totalEmissiveRadiance+=vec3(1.,.72,.40)*uNight*fx_glass*step(.48,fx_h)*(.65+.35*fx_h);`);sh.uniforms.uNight=NIGHT_U};
+  totalEmissiveRadiance+=vec3(1.,.72,.40)*uNight*fx_glass*step(.48,fx_h)*(.65+.35*fx_h);
+  float fx_ao=.72+.28*smoothstep(0.,4.,vAOh);diffuseColor.rgb*=fx_ao;
+  if(vNy>.85&&vAOh>2.5){vec2 rp=vOP.xz;float rn=fract(sin(dot(floor(rp*1.6),vec2(12.99,78.23)))*43758.5),rb=fract(sin(dot(floor(rp*.08),vec2(39.3,11.1)))*43758.5);
+   diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.55,.53,.5)*(.85+.25*rb),.28)*(.94+.08*rn);}
+  vec3 fx_n=normalize(vNv),fx_v=normalize(vVv);float fx_f=pow(1.-clamp(abs(dot(fx_n,fx_v)),0.,1.),3.);
+  totalEmissiveRadiance+=uSkyC*fx_glass*(.1+.5*fx_f)*(1.-uNight*.75)*step(abs(fx_n.y),.6);`);sh.uniforms.uNight=NIGHT_U};
  return m;
 }
 const BMAT=atlasMaterial();
@@ -2556,9 +2586,9 @@ function lmGlow(L,v){if(v.glow){v.g.remove(v.glow);v.glow.geometry.dispose();v.g
 function lmGlowAll(){for(const L of LANDMARKS){const v=LMLIVE.get(L.id);if(v)lmGlow(L,v)}}
 
 // ===================== ANCAP LIFE · STREAMING (frustum-based, 4 levels of detail) =====================
-const MATS={flat:(()=>{const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});m.onBeforeCompile=biasDepthVS;m.customProgramCacheKey=()=>'flatbias';return m})(),tree:new THREE.MeshLambertMaterial({vertexColors:true})};
+const MATS={flat:(()=>{const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});m.onBeforeCompile=groundShader;m.customProgramCacheKey=()=>'ground2';return m})(),tree:new THREE.MeshLambertMaterial({vertexColors:true})};
 const LIVE=new Map();
-const ROADCOL={major:new THREE.Color('#5d636f'),minor:new THREE.Color('#6b707b'),path:new THREE.Color('#e3dac0'),walk:new THREE.Color('#dcd8cd'),park:new THREE.Color('#8fc06a'),dirt:new THREE.Color('#c9b48a'),water:new THREE.Color('#4f98c9'),line:new THREE.Color('#e9cf73')};
+const ROADCOL={major:new THREE.Color('#464b54'),minor:new THREE.Color('#50555e'),path:new THREE.Color('#e3dac0'),walk:new THREE.Color('#dcd8cd'),park:new THREE.Color('#8fc06a'),dirt:new THREE.Color('#c9b48a'),water:new THREE.Color('#4f98c9'),line:new THREE.Color('#e9cf73')};
 function roofColorFor(lot){const st=lotState(lot);if(st.st==='build')return new THREE.Color('#d4a347');return null}
 // status is shown as a soft coloured glow around the building (ground halo, rising haze, bright crown), never by repainting the roof
 const GLOWC={player:new THREE.Color('#ffffff'),lease:new THREE.Color('#ffde00'),sale:new THREE.Color('#2fd3e6'),rival:new THREE.Color('#ff4b3e'),other:new THREE.Color('#c86bff')};
@@ -2573,8 +2603,8 @@ function glowMesh(lots,toLocal){
   for(let i=0;i<O.length;i++){const j=(i+1)%O.length;
    quad(V(O[i],.4),V(O[j],.4),V(O2[j],.4),V(O2[i],.4),col,[.62,.62,0,0]);
    if(h>1)quad(V(O[i],.4),V(O[j],.4),V(O[j],Math.min(h*.7,45)),V(O[i],Math.min(h*.7,45)),col,[.42,.42,0,0]);
-   quad(V(O[i],top-.35),V(O[j],top-.35),V(O[j],top+.55),V(O[i],top+.55),col,[1,1,1,1]);
-   quad(V(O[i],top+.55),V(O[j],top+.55),V(O[j],top+5),V(O[i],top+5),col,[.85,.85,0,0])}}
+   quad(V(O[i],top+.2),V(O[j],top+.2),V(O[j],top+6),V(O[i],top+6),col,[.5,.5,0,0])}
+  try{const tr=THREE.ShapeUtils.triangulateShape(R.map(p=>new THREE.Vector2(p[0],p[1])),[]);for(const t of tr){const a=R[t[0]],b=R[t[1]],c=R[t[2]];for(const v of[a,b,c]){P.push(v[0],top+.25,-v[1]);C.push(col.r,col.g,col.b,.22)}}}catch(e){}}
  if(!P.length)return null;
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('color',new THREE.Float32BufferAttribute(C,4));
  const m=new THREE.Mesh(g,GLOWMAT);m.renderOrder=6;return m}
@@ -2618,7 +2648,7 @@ function propsMesh(list,toLocal,kind){if(!list.length)return null;const im=new T
  list.forEach((a,i)=>{const p=toLocal(a);dm.position.set(p[0],.1,-p[1]);dm.rotation.set(0,a[2],0);dm.scale.setScalar(1);dm.updateMatrix();im.setMatrixAt(i,dm.matrix);if(kind==='car')im.setColorAt(i,CARC[a[3]%CARC.length])});if(im.instanceColor)im.instanceColor.needsUpdate=true;im.castShadow=true;return im}
 function treesMesh(trees,toLocal){
  if(!trees.length)return null;const im=new THREE.InstancedMesh(TREE_GEO,MATS.tree,trees.length),dm=new THREE.Object3D();
- trees.forEach((tr,i)=>{const p=toLocal(tr);dm.position.set(p[0],0,-p[1]);dm.scale.setScalar(tr[2]||1);dm.rotation.y=i;dm.updateMatrix();im.setMatrixAt(i,dm.matrix)});return im;
+ const tc=new THREE.Color();trees.forEach((tr,i)=>{const p=toLocal(tr),h=hash2(Math.round(p[0]),Math.round(p[1]),3),h2=hash2(Math.round(p[1]),Math.round(p[0]),5);dm.position.set(p[0],0,-p[1]);const s=(tr[2]||1)*(.75+h*.6);dm.scale.set(s*(.9+h2*.25),s*(.85+h*.4),s*(.9+h2*.25));dm.rotation.y=i;dm.updateMatrix();im.setMatrixAt(i,dm.matrix);tc.setHSL(.24+h2*.08,.32+h*.18,.62+h*.28);im.setColorAt(i,tc)});return im;
 }
 // ---------- ground (roads, pavements, parks, water): built once per chunk ----------
 const FC=h=>new THREE.Color(h);
@@ -2643,7 +2673,7 @@ function fieldGround(gb,f){
 }
 const YARDC=[FC('#8fc06a'),FC('#9cc874'),FC('#86b862')];
 // ---------- roads: asphalt, raised kerbs and pavements, lane markings and zebra crossings ----------
-const PAVE=[FC('#d3cfc4'),FC('#dad4c6'),FC('#d9d4c8')],CURB=FC('#a9a69e'),MARKW=FC('#f2f0ea'),MARKY=FC('#e9c43b'),ASPH=FC('#5b6069'),ASPH2=FC('#666b74');
+const PAVE=[FC('#d3cfc4'),FC('#dad4c6'),FC('#d9d4c8')],CURB=FC('#a9a69e'),MARKW=FC('#f2f0ea'),MARKY=FC('#e9c43b'),ASPH=FC('#4a4f58'),ASPH2=FC('#565b64');
 function ribbonFlat(gb,a,b,w,y,col){const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<.01)return;const nx=-dy/L*w/2,ny=dx/L*w/2;gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]+nx,y,-(b[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],UPN,col,col,col);gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],[a[0]-nx,y,-(a[1]-ny)],UPN,col,col,col)}
 function markRoad(gb,a,b,w,c,amer,y){
  const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<14)return;const ux=dx/L,uy=dy/L,nx=-uy,ny=ux;
@@ -2664,7 +2694,8 @@ function procGround(ch){const gb=new GB();
  if(!bases.length)for(const b of ch.blocks)groundPoly(gb,[b],.08,ROADCOL.walk);
  if(!bases.length)for(const p of ch.parks)groundPoly(gb,[p],.11,ROADCOL.park);
  for(const y of ch.yards||[])groundPoly(gb,[y.p],.34,YARDC[y.c]);
- return gb.tris?new THREE.Mesh(gb.geo(),MATS.flat):null}
+ return gb.tris?new THREE.Mesh(hugSphere(gb.geo()),MATS.flat):null}
+function hugSphere(g){const p=g.attributes.position,a=p.array;for(let i=0;i<a.length;i+=3){a[i+1]-=(a[i]*a[i]+a[i+2]*a[i+2])/12742000}p.needsUpdate=true;return g}
 const RCELL=900;
 function realCells(C){
  if(C.cells)return C.cells;const cells=new Map(),get=(x,y)=>{const k=Math.floor(x/RCELL)+','+Math.floor(y/RCELL);if(!cells.has(k))cells.set(k,{k,ix:Math.floor(x/RCELL),iy:Math.floor(y/RCELL),lots:[],roads:[],water:[],parks:[],trees:[]});return cells.get(k)};
@@ -2678,11 +2709,12 @@ function realCells(C){
  return C.cells=cells;
 }
 function realGround(C,cell){const gb=new GB(),toL=p=>[p[0]-cell.cx,p[1]-cell.cy];
- for(const p of cell.parks)groundPoly(gb,p.map(r=>r.map(toL)),.06,ROADCOL.park);
- for(const p of cell.water)groundPoly(gb,p.map(r=>r.map(toL)),.09,ROADCOL.water);
- for(const r of cell.roads.slice().sort((a,b)=>a.w-b.w))ribbon(gb,r.p.map(toL),r.w,r.w<=3?.14:r.w>=14?.22:.18,r.w<=3?ROADCOL.path:r.w>=14?ROADCOL.major:ROADCOL.minor);
- for(const r of cell.roads)if(r.w>=9){const P=r.p.map(toL);for(let k=0;k<P.length-1;k++)markRoad(gb,P[k],P[k+1],r.w,r.w>=14?'ave':'st',C.id==='nyc',r.w>=14?.26:.21)}
- return gb.tris?new THREE.Mesh(gb.geo(),MATS.flat):null}
+ for(const r of cell.roads)if(r.w>=6)ribbon(gb,r.p.map(toL),r.w+4.2,.02,ROADCOL.walk);
+ for(const p of cell.parks)groundPoly(gb,p.map(r=>r.map(toL)),.035,ROADCOL.park);
+ for(const p of cell.water)groundPoly(gb,p.map(r=>r.map(toL)),.06,ROADCOL.water);
+ for(const r of cell.roads.slice().sort((a,b)=>a.w-b.w))ribbon(gb,r.p.map(toL),r.w,r.w<=3?.09:r.w>=14?.21:.15,r.w<=3?ROADCOL.path:r.w>=14?ROADCOL.major:ROADCOL.minor);
+ for(const r of cell.roads)if(r.w>=9){const P=r.p.map(toL);for(let k=0;k<P.length-1;k++)markRoad(gb,P[k],P[k+1],r.w,r.w>=14?'ave':'st',C.id==='nyc',r.w>=14?.27:.19)}
+ return gb.tris?new THREE.Mesh(hugSphere(gb.geo()),MATS.flat):null}
 // ---------- buildings at a level of detail ----------
 function lotsOf(L){return L.kind==='proc'?L.ch.lots:L.cell.lots}
 function toLocalOf(L){if(L.kind!=='real')return p=>p;const cx=L.cell.cx,cy=L.cell.cy;return p=>[p[0]-cx,p[1]-cy]}
