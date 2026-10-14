@@ -2646,8 +2646,9 @@ function furnitureMeshes(list,toLocal,lod){const out=[];if(!list||!list.length)r
 const CARC=['#c8463a','#2f6fa8','#e8e4d8','#2b2e33','#9aa3ab','#3a7d5c'].map(h=>new THREE.Color(h));
 function propsMesh(list,toLocal,kind){if(!list.length)return null;const im=new THREE.InstancedMesh(propGeo()[kind],MATS.tree,list.length),dm=new THREE.Object3D();
  list.forEach((a,i)=>{const p=toLocal(a);dm.position.set(p[0],.1,-p[1]);dm.rotation.set(0,a[2],0);dm.scale.setScalar(1);dm.updateMatrix();im.setMatrixAt(i,dm.matrix);if(kind==='car')im.setColorAt(i,CARC[a[3]%CARC.length])});if(im.instanceColor)im.instanceColor.needsUpdate=true;im.castShadow=true;return im}
+const TREEMAT=new THREE.MeshLambertMaterial({vertexColors:true});
 function treesMesh(trees,toLocal){
- if(!trees.length)return null;const im=new THREE.InstancedMesh(TREE_GEO,MATS.tree,trees.length),dm=new THREE.Object3D();
+ if(!trees.length)return null;const im=new THREE.InstancedMesh(TREE_GEO,TREEMAT,trees.length),dm=new THREE.Object3D();
  const tc=new THREE.Color();trees.forEach((tr,i)=>{const p=toLocal(tr),h=hash2(Math.round(p[0]),Math.round(p[1]),3),h2=hash2(Math.round(p[1]),Math.round(p[0]),5);dm.position.set(p[0],0,-p[1]);const s=(tr[2]||1)*(.75+h*.6);dm.scale.set(s*(.9+h2*.25),s*(.85+h*.4),s*(.9+h2*.25));dm.rotation.y=i;dm.updateMatrix();im.setMatrixAt(i,dm.matrix);tc.setHSL(.24+h2*.08,.32+h*.18,.62+h*.28);im.setColorAt(i,tc)});return im;
 }
 // ---------- ground (roads, pavements, parks, water): built once per chunk ----------
