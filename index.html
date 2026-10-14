@@ -1056,6 +1056,10 @@ async function loadCity(id){
     // a raised part must rest on something that covers its whole footprint and reaches its underside; otherwise it goes down to the street
     if(base&&covered(L,base)){L.ccx=base.ccx!=null?base.ccx:base.cx;L.ccy=base.ccx!=null?base.ccy:base.cy;if(base.h<L.mh)L.mh=Math.max(0,base.h-.3)}
     else{L.mh=0;if(base){L.ccx=base.ccx!=null?base.ccx:base.cx;L.ccy=base.ccx!=null?base.ccy:base.cy}}}}
+  // public parks and green spaces become bare land that players can buy (and mine)
+  for(let k=0;k<C.parks.length;k++){const ring=C.parks[k][0];if(!ring||ring.length<3)continue;const ar=Math.abs(polyArea(ring));if(ar<300)continue;let cx=0,cy=0;for(const q of ring){cx+=q[0];cy+=q[1]}cx/=ring.length;cy/=ring.length;
+   const L=mkLot(id,C.lots.length,ring,1,d.lat0+cy/ky,d.lon0+cx/kx,nearName(cx,cy)||streetName(E.lang,k%2,k,false),false,.9,R,E,null,null,false);
+   L.h=0;L.floors=1;L.cx=cx;L.cy=cy;L.mh=0;L.gen=1;L.park=true;L.hidden=false;L.init={st:'plot'};C.lots.push(L)}
   // spatial buckets for picking & competition
   C.bucket={};for(const L of C.lots){const k=Math.floor(L.cx/300)+','+Math.floor(L.cy/300);(C.bucket[k]||(C.bucket[k]=[])).push(L)}
   // coverage is static (REAL_COVER_STATIC): loading real data never changes or discards generated chunks
@@ -6783,11 +6787,11 @@ function geoAt(la,lo){const ci=Math.floor(la*160),cj=Math.floor(lo*160),W={};let
  const rich=clamp(.25+Math.pow(n,1.25)*1.45*pb,.25,2.2);
  const ex=IDS.filter(k=>k!==type).map(k=>[k,W[k]/t*(.5+hash2(ci,cj,IDS.indexOf(k)+20))]).sort((a,b)=>b[1]-a[1]).slice(0,2).filter(e=>e[1]>.04).map(([k,w])=>({type:k,share:+Math.min(.35,w*1.6).toFixed(2)}));
  return{type,rich,extra:ex,grade:clamp((rich-.25)/1.6,0,1)}}
-function deposit(lot){const g=geoAt(lot.lat,lot.lon),size=clamp((lot.area||800)/900,.5,3);return{type:g.type,rich:+g.rich.toFixed(2),extra:g.extra,grade:g.grade,size,reserve:Math.round(RES[g.type].rate*g.rich*size*700)}}
+function deposit(lot){const g=geoAt(lot.lat,lot.lon),size=clamp((lot.area||800)/900,.5,8);return{type:g.type,rich:+g.rich.toFixed(2),extra:g.extra,grade:g.grade,size,reserve:Math.round(RES[g.type].rate*g.rich*size*700)}}
 window.geoAt=geoAt;
 // richer ground costs more
 const landMult=g=>.6+1.25*g;
-if(typeof plotValue==='function'){const _pv=plotValue;plotValue=function(E,lot){const v=_pv(E,lot);try{return Math.round(v*landMult(geoAt(lot.lat,lot.lon).grade)/1000)*1000}catch(e){return v}}}
+if(typeof plotValue==='function'){const _pv=plotValue;plotValue=function(E,lot){let v=_pv(E,lot);if(lot.park)v*=.15*Math.min(1,Math.sqrt(20000/Math.max(1,lot.area)));try{return Math.round(v*landMult(geoAt(lot.lat,lot.lon).grade)/1000)*1000}catch(e){return v}}}
 function mineCost(dp){return Math.round(RES[dp.type].cost*Math.sqrt(dp.size)/1000)*1000}
 function mineRate(m){return RES[m.type].rate*m.rich*Math.sqrt(m.size)}
 // ---------- sim hooks ----------
@@ -6888,9 +6892,9 @@ function buildSite(p,lot,L){const m=p.mine,r=RES[m.type],ring=localRing(L,lot),g
   const pm=new THREE.Mesh(pit.geo,MAT);pm.renderOrder=5;pm.receiveShadow=true;grp.add(pm);
   let fx=0,fy=0;for(const q of pit.floorRing){fx+=q[0];fy+=q[1]}fx/=pit.floorRing.length;fy/=pit.floorRing.length;
   if(r.kind==='oil'){const pj=pumpjack();pj.scale.setScalar(1.7);pj.position.set(cx-3,0,-cy);pj.renderOrder=6;grp.add(pj);anims.push(pj);const tank=new THREE.Mesh(geo(g=>{ilathe(g,6,0,[[2,0],[2,4],[0,4.1]],C('#c9cfd4'),12);ilathe(g,6,5,[[2,0],[2,4],[0,4.1]],C('#c9cfd4'),12)}),MAT);tank.position.set(cx,0,-cy);grp.add(tank)}
-  else if(r.kind==='mine'){const hf=headframe();hf.position.set(fx,pit.floorY,-fy);grp.add(hf)}
-  else{const ex=excavator();ex.scale.setScalar(1.5);ex.position.set(fx,pit.floorY,-fy);grp.add(ex);anims.push(ex)}
-  const tr=truck();const e0=ring[0];tr.position.set(e0[0]+(cx-e0[0])*.08,.3,-(e0[1]+(cy-e0[1])*.08));tr.rotation.y=Math.atan2(cx-e0[0],cy-e0[1]);grp.add(tr)}
+  else if(r.kind==='mine'){const hf=headframe();hf.scale.setScalar(clamp(Math.sqrt(lot.area||800)/40,1,2.5));hf.position.set(fx,pit.floorY,-fy);grp.add(hf)}
+  else{const ex=excavator();ex.scale.setScalar(clamp(Math.sqrt(lot.area||800)/22,1.5,4));ex.position.set(fx,pit.floorY,-fy);grp.add(ex);anims.push(ex)}
+  const tr=truck();tr.scale.setScalar(clamp(Math.sqrt(lot.area||800)/30,1,3));const e0=ring[0];tr.position.set(e0[0]+(cx-e0[0])*.08,.3,-(e0[1]+(cy-e0[1])*.08));tr.rotation.y=Math.atan2(cx-e0[0],cy-e0[1]);grp.add(tr)}
  grp.traverse(o=>{if(o.isMesh){o.castShadow=!o.userData.mask;if(!o.renderOrder)o.renderOrder=6}});grp.userData.anims=anims;return grp}
 function syncSites(){if(!G)return;const want=new Set();
  for(const p of G.props){if(!p.mine)continue;want.add(p.key);const lot=lotByKey(p.key);if(!lot)continue;const L=liveFor(lot);if(!L||!L.grp||L.kind==='lm'||(L.lod!=null&&L.lod<1))continue;
@@ -6901,7 +6905,7 @@ function syncSites(){if(!G)return;const want=new Set();
 setInterval(()=>{try{syncSites()}catch(e){console.warn(e)}},800);
 (function anim(){requestAnimationFrame(anim);const t=performance.now()/1000;for(const S of SITES.values())for(const a of S.g.userData.anims||[])a.userData.anim&&a.userData.anim(t)})();
 // ---------- UI: the exchange ----------
-let SEL='stone',TAB='market',QTY=10,ASK=null;
+let RSEL='stone',TAB='market',QTY=10,ASK=null;
 function spark(k,w,h){const H=R().hist[k];if(H.length<2)return`<svg width="${w}" height="${h}"></svg>`;const ps=H.slice(-40).map(x=>x.p),mn=Math.min(...ps),mx=Math.max(...ps),rg=mx-mn||mx*.01||1;
  const pts=ps.map((p,i)=>`${(i/(ps.length-1)*w).toFixed(1)},${(h-2-(p-mn)/rg*(h-4)).toFixed(1)}`).join(' ');const up=chg(k)>=0;return`<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${up?'#5fd38a':'#ff6b5b'}" stroke-width="1.6" stroke-linejoin="round"/></svg>`}
 function chg(k){const H=R().hist[k];if(H.length<2)return 0;const now=price(k),old=(H.find(x=>x.d>=G.day-7)||H[0]).p;return now/old-1}
@@ -6913,7 +6917,7 @@ function chart(k){const H=R().hist[k].slice(-160),W=560,Hh=220,pad=34;if(H.lengt
  return`<svg class="rx-chart" viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" role="img" aria-label="${RES[k].n} price history">${grid}<polygon points="${pad},${Hh-22} ${line} ${W-8},${Hh-22}" fill="${c}" opacity=".08"/><polyline points="${line}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/><circle cx="${X(H.length-1)}" cy="${Y(ps[ps.length-1])}" r="3.5" fill="${c}"/><text x="${pad}" y="${Hh-6}">${d1-d0} days ago</text><text x="${W-8}" y="${Hh-6}" text-anchor="end">Today</text></svg>`}
 const dp=k=>RES[k].b>=1000?0:RES[k].b>=50?0:1;
 const money2=(v,k)=>'$'+(v>=1000?Math.round(v).toLocaleString():v.toFixed(2));
-function mRes(){const X=R(),k=SEL,r=RES[k],p=price(k),c=chg(k),own=X.hold[k];if(ASK==null)ASK=+(p*1.05).toFixed(2);
+function mRes(){const X=R(),k=RSEL,r=RES[k],p=price(k),c=chg(k),own=X.hold[k];if(ASK==null)ASK=+(p*1.05).toFixed(2);
  const tabs=[['market','Market'],['warehouse','Warehouse'],['mines','My mines']];let body='';
  if(TAB==='market'){
   const list=IDS.map(id=>{const pc=chg(id);return`<button class="rx-row ${id===k?'on':''}" data-res="sel" data-k="${id}">${icon(id,26)}<span class="rx-nm"><b>${RES[id].n}</b><small>per ${RES[id].u}</small></span>${spark(id,64,22)}<span class="rx-pr"><b class="mono">${money2(price(id),id)}</b><small class="${pc>=0?'up':'down'}">${pc>=0?'▲':'▼'} ${Math.abs(pc*100).toFixed(1)}%</small></span></button>`}).join('');
@@ -6934,24 +6938,24 @@ function mRes(){const X=R(),k=SEL,r=RES[k],p=price(k),c=chg(k),own=X.hold[k];if(
   '<div class="rx-empty">No mines yet. Buy a bare plot of land (they glow when for sale), then open it to see what is in the ground.</div>'}
  return`<div class="mhead"><p class="eyebrow">Live market${ON.on?' · shared with all players':''}</p><h2 class="h">Resource exchange</h2></div><nav class="tabs">${tabs.map(([t,n])=>`<button data-res="tab" data-t="${t}" class="${TAB===t?'on':''}">${n}</button>`).join('')}</nav><div class="mbody">${body}</div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
 const _rm=renderModal;renderModal=function(){const m=ui.modal;if(m&&m.kind==='resmkt'){$('#modal').hidden=false;const el=$('#modal .modal');el.classList.add('rx-modal');el.innerHTML=mRes();return}const el=$('#modal .modal');if(el)el.classList.remove('rx-modal');return _rm()};
-function openX(k,t){if(k)SEL=k;if(t)TAB=t;ASK=null;ui.modal={kind:'resmkt'};renderModal()}
+function openX(k,t){if(k)RSEL=k;if(t)TAB=t;ASK=null;ui.modal={kind:'resmkt'};renderModal()}
 window.openExchange=openX;
 document.addEventListener('click',e=>{const t=e.target.closest('[data-res]');if(!t||t.disabled||!G)return;const a=t.dataset.res,k=t.dataset.k;
  const q=()=>{const v=parseFloat(($('#rxq')||{}).value);if(v>=0)QTY=v};
  if(a==='open')openX(k||null,'market');
  else if(a==='tab'){TAB=t.dataset.t;renderModal()}
- else if(a==='sel'){SEL=k;ASK=null;if(t.dataset.t)TAB=t.dataset.t;renderModal()}
- else if(a==='q'){q();const st=RES[SEL].b>=1000?1:RES[SEL].b>=100?5:10;QTY=Math.max(0,QTY+(t.dataset.d==='+'?st:-st));renderModal()}
- else if(a==='buy'){q();const c=buy(SEL,QTY);if(c<0)toast('Not enough cash','warn');else if(c>0)toast(`Bought ${QTY} ${RES[SEL].u} ${RES[SEL].n.toLowerCase()} for ${fmt(c)}`,'good');renderModal();renderTop()}
- else if(a==='sell'){q();const v=sell(SEL,QTY);if(v>0)toast(`Sold for ${fmt(v)}`,'good');renderModal();renderTop()}
+ else if(a==='sel'){RSEL=k;ASK=null;if(t.dataset.t)TAB=t.dataset.t;renderModal()}
+ else if(a==='q'){q();const st=RES[RSEL].b>=1000?1:RES[RSEL].b>=100?5:10;QTY=Math.max(0,QTY+(t.dataset.d==='+'?st:-st));renderModal()}
+ else if(a==='buy'){q();const c=buy(RSEL,QTY);if(c<0)toast('Not enough cash','warn');else if(c>0)toast(`Bought ${QTY} ${RES[RSEL].u} ${RES[RSEL].n.toLowerCase()} for ${fmt(c)}`,'good');renderModal();renderTop()}
+ else if(a==='sell'){q();const v=sell(RSEL,QTY);if(v>0)toast(`Sold for ${fmt(v)}`,'good');renderModal();renderTop()}
  else if(a==='sellall'){const v=sell(k,R().hold[k]);if(v>0)toast(`Sold for ${fmt(v)}`,'good');renderModal();renderTop()}
- else if(a==='list'){q();const X=R(),ask=parseFloat(($('#rxask')||{}).value),n=Math.min(QTY,X.hold[SEL]);if(!(ask>0)||n<=0)return;X.hold[SEL]-=n;X.list.push({res:SEL,qty:n,ask});ASK=ask;toast(`Listed ${n} ${RES[SEL].u} at ${money2(ask,SEL)}`,'good');save();renderModal()}
+ else if(a==='list'){q();const X=R(),ask=parseFloat(($('#rxask')||{}).value),n=Math.min(QTY,X.hold[RSEL]);if(!(ask>0)||n<=0)return;X.hold[RSEL]-=n;X.list.push({res:RSEL,qty:n,ask});ASK=ask;toast(`Listed ${n} ${RES[RSEL].u} at ${money2(ask,RSEL)}`,'good');save();renderModal()}
  else if(a==='unlist'){const X=R(),L=X.list[+t.dataset.i];if(L){X.hold[L.res]+=L.qty;X.list.splice(+t.dataset.i,1);save();renderModal()}}
  else if(a==='mine'){const lot=lotByKey(t.dataset.key),p=lot&&propAtKey(lot.key);if(!p||p.mine)return;const d=deposit(lot),c=mineCost(d);if(G.cash<c)return;G.cash-=c;const kn=RES[d.type].kind;p.mine=Object.assign(d,{ext:0,cost:c,start:G.day,label:RES[d.type].n+(kn==='oil'?' well':kn==='forest'?' logging':kn==='mine'?' mine':' quarry')});try{refreshPins(true)}catch(e){}
   news(`Ground broken: your ${RES[d.type].n.toLowerCase()} site is digging`,'good');toast('Extraction started. Output goes to your warehouse daily.','good');try{rebuildLotsAround(lot);for(const L of LIVE.values())if(L.grp)setGlow(L)}catch(e){}syncSites();renderLeft();renderTop();save()}});
 document.addEventListener('input',e=>{const t=e.target;if(!t||!G||!ui.modal||ui.modal.kind!=='resmkt')return;
- if(t.id==='rxask'){const v=parseFloat(t.value);if(v>0)ASK=v;return}if(t.id!=='rxq')return;const v=parseFloat(t.value);QTY=v>=0?v:0;const X=R(),own=X.hold[SEL],bq=quoteBuy(SEL,QTY),sq=quoteSell(SEL,Math.min(QTY,own)),b=$('[data-res=buy]'),s2=$('[data-res=sell]'),l=$('[data-res=list]');
- if(b){b.textContent='Buy · '+fmt(bq);b.disabled=G.cash<bq||QTY<=0}if(s2){s2.textContent='Sell · '+fmt(sq);s2.disabled=own<=0||QTY<=0}if(l)l.textContent='List '+Math.min(QTY,own).toLocaleString(undefined,{maximumFractionDigits:2})+' '+RES[SEL].u});
+ if(t.id==='rxask'){const v=parseFloat(t.value);if(v>0)ASK=v;return}if(t.id!=='rxq')return;const v=parseFloat(t.value);QTY=v>=0?v:0;const X=R(),own=X.hold[RSEL],bq=quoteBuy(RSEL,QTY),sq=quoteSell(RSEL,Math.min(QTY,own)),b=$('[data-res=buy]'),s2=$('[data-res=sell]'),l=$('[data-res=list]');
+ if(b){b.textContent='Buy · '+fmt(bq);b.disabled=G.cash<bq||QTY<=0}if(s2){s2.textContent='Sell · '+fmt(sq);s2.disabled=own<=0||QTY<=0}if(l)l.textContent='List '+Math.min(QTY,own).toLocaleString(undefined,{maximumFractionDigits:2})+' '+RES[RSEL].u});
 // top-bar button
 function addBtn(){const icons=document.querySelector('#bar .hb-icons');if(!icons||document.getElementById('rxbtn'))return;const b=document.createElement('button');b.id='rxbtn';b.className='hb-ic';b.dataset.res='open';b.title='Resource exchange';b.setAttribute('aria-label','Resource exchange');
  b.innerHTML='<span class="hb-svg"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M3 20h18v2H3zM4 17l4.5-6 3.5 3.5L17 7l3 3V4h-6l2.3 2.3-4.3 5.2L8.5 8 2.4 16z"/></svg></span>';icons.insertBefore(b,icons.lastChild)}
@@ -6971,6 +6975,22 @@ function groundLot(){let best=null,bd=1e18;const ray=raycaster.ray;
 if(typeof pickLot==='function'){const _pk=pickLot;pickLot=function(x,y){const b=_pk(x,y);let g=null;try{g=groundLot()}catch(e){}if(!g)return b;if(!b)return g.lot;
   // a plot in front of a building wins; a building in front of a plot wins
   try{const ms=[];for(const L of LIVE.values())for(const m of L.meshes)ms.push(m);for(const v of LMLIVE.values())ms.push(v.mesh);const hs=raycaster.intersectObjects(ms,false);if(hs.length&&hs[0].distance<g.d)return b}catch(e){}return g.lot}}
+// ---------- parks in generated towns are bare land too ----------
+function addParkLots(ch){if(!ch||ch._pk||!ch.parks)return ch;ch._pk=1;const mx=(ch.cx+.5)*CHUNK,my=(ch.cy+.5)*CHUNK;
+ ch.parks.forEach((poly,n)=>{if(!poly||poly.length<3)return;const ar=Math.abs(polyArea(poly));if(ar<300)return;let cx=0,cy=0;for(const q of poly){cx+=q[0];cy+=q[1]}cx/=poly.length;cy/=poly.length;
+  const[la,lo]=unmerc(mx+cx/ch.kc,my+cy/ch.kc);let st='Park Road',bd=1e18;for(const l of ch.lots){if(!l.street||l.park)continue;const d=(l.lat-la)**2+(l.lon-lo)**2;if(d<bd){bd=d;st=l.street}}
+  const sid='pk'+n,L={zone:ch.zone,sid,key:ch.zone+'#'+sid,i:hashStr(sid)%100003,poly,h:0,floors:1,area:Math.round(ar),sqm:Math.round(clamp(ar*.42,25,320)),lat:la,lon:lo,street:st,num:1+(n*37)%180,art:false,loc:.85,park:true,init:{st:'plot'}};
+  ch.byId[sid]=L;ch.lots.push(L)});return ch}
+if(typeof genChunk==='function'){const _gch=genChunk;genChunk=function(){return addParkLots(_gch.apply(this,arguments))}}
+try{for(const ch of CHUNKS.values())addParkLots(ch)}catch(e){}
+// digging clears the trees standing on the plot
+function cutTrees(lot){if(lot._cut)return;lot._cut=1;const R=lot.poly;let n=0;
+ if(String(lot.zone)[0]==='c'){const ch=CHUNKS.get(String(lot.zone).slice(1));if(ch){const b=ch.trees.length;ch.trees=ch.trees.filter(t=>!pipXY(R,t[0],t[1]));n=b-ch.trees.length}}
+ else{const C=CITYDATA[lot.zone];if(C&&C.trees){const out=t=>!pipXY(R,t[0],t[1]);const b=C.trees.length;C.trees=C.trees.filter(out);n=b-C.trees.length;if(C.cells)for(const c of C.cells.values())c.trees=c.trees.filter(out)}}
+ if(n)try{rebuildLotsAround(lot)}catch(e){}}
+setInterval(()=>{if(!G)return;for(const p of G.props){if(!p.mine)continue;const lot=lotByKey(p.key);if(lot&&!lot._cut)cutTrees(lot)}},1500);
+// the selection fill would wash a dug pit out in yellow: keep just the outline feel by hiding it on active digs
+if(typeof drawSel==='function'){const _ds=drawSel;drawSel=function(){_ds.apply(this,arguments);try{const l=ui.selLot,p=l&&G&&propAtKey(l.key);if(p&&p.mine&&typeof SEL!=='undefined'&&SEL)SEL.visible=false}catch(e){}}}
 // ---------- resource heatmap ----------
 let HEAT=false;try{HEAT=localStorage.getItem('ancap.heat')==='1'}catch(e){}
 const RAMP=[[0,[.16,.33,.75]],[.35,[.15,.7,.62]],[.6,[.55,.86,.25]],[.8,[1,.8,.15]],[1,[1,.32,.18]]];
