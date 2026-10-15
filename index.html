@@ -570,6 +570,7 @@ body{font-family:var(--f-body);font-size:14px;line-height:1.45;font-feature-sett
 .fr-lb{border-top:1px solid var(--rule)}
 #front .fr-foot{text-shadow:none;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;color:var(--muted);margin-top:22px}
 @media (max-width:700px){#front .fr-wrap{padding:28px 18px}#front .fr-logo{font-size:clamp(56px,19vw,96px)}.fr-shade{background:rgba(0,0,0,.78)}}
+#gl{transition:filter .6s ease}body.vivid #gl{filter:saturate(1.24) contrast(1.06) brightness(1.03)}
 </style>
 <div id="app">
  <canvas id="gl" aria-label="3D map of the Earth"></canvas>
@@ -1073,7 +1074,9 @@ async function loadCity(id){
    // famous big parks (Central Park, Hyde Park, Bois de Boulogne...) stay public
    if(inParkZ(d.lat0+cy/ky,d.lon0+cx/kx))continue;
    const L=mkLot(id,C.lots.length,ring,1,d.lat0+cy/ky,d.lon0+cx/kx,nearName(cx,cy)||streetName(E.lang,k%2,k,false),false,.9,R,E,null,null,false);
-   L.h=0;L.floors=1;L.cx=cx;L.cy=cy;L.mh=0;L.gen=1;L.park=true;L.hidden=false;L.init={st:'plot'};C.lots.push(L)}
+   L.h=0;L.floors=1;L.cx=cx;L.cy=cy;L.mh=0;L.gen=1;L.park=true;L.hidden=false;L.init={st:'plot'};C.lots.push(L);
+   if(typeof splitPark==='function'){const cs=splitPark(L,(x,y)=>[d.lat0+y/ky,d.lon0+x/kx],'g'+(C.lots.length-1),true);if(cs){L.hidden=true;L.split=true;(C._cells||(C._cells=[])).push(...cs)}}}
+  if(C._cells){C.byK=C.byK||{};for(const c of C._cells){C.lots.push(c);C.byK[c.key.split('#')[1]]=c}C._cells=null}
   // spatial buckets for picking & competition
   C.bucket={};for(const L of C.lots){const k=Math.floor(L.cx/300)+','+Math.floor(L.cy/300);(C.bucket[k]||(C.bucket[k]=[])).push(L)}
   // coverage is static (REAL_COVER_STATIC): loading real data never changes or discards generated chunks
@@ -1312,7 +1315,7 @@ function lotByKey(key){
  const [zone,i]=key.split('#');
  if(zone==='lm')return LMLOTS[+i]||null;
  if(zone[0]==='c'){const[cx,cy]=zone.slice(1).split(':').map(Number);const ch=CHUNKS.get(cx+':'+cy)||genChunk(cx,cy);return ch?(ch.byId[i]||(/^\d+$/.test(i)?ch.lots[+i]:null)||null):null}
- const C=CITYDATA[zone];return C&&C.ready?C.lots[+i]:null;
+ const C=CITYDATA[zone];return C&&C.ready?(/^\d+$/.test(i)?C.lots[+i]:(C.byK&&C.byK[i])||null):null;
 }
 function lotState(lot){if(typeof netOther==='function'){const c=netOther(lot.key);if(c&&!(G&&G.ov[lot.key]&&G.ov[lot.key].st==='player'))return{st:'taken',name:(c.name?c.name+' · ':'')+netCompany(c.owner),net:1}}return G&&G.ov[lot.key]||lot.init}
 function setLotState(lot,st){G.ov[lot.key]=st}
@@ -1721,13 +1724,14 @@ const atmo=new THREE.Mesh(new THREE.SphereGeometry(R_E*1.028,96,64),new THREE.Sh
 WR.add(atmo);
 
 // ---------- lights: sun follows the camera at globe scale, sits high in the local sky at street scale ----------
-const AMB=new THREE.AmbientLight('#b8c4d6',.62);scene.add(AMB);
+let VIVID=true;try{VIVID=localStorage.getItem('ancap.vivid')!=='0'}catch(e){}
+const AMB=new THREE.AmbientLight('#c6d2e4',.62);scene.add(AMB);
 const HEMI=new THREE.HemisphereLight('#bcd4f0','#6e6250',.0);scene.add(HEMI);
-const sun=new THREE.DirectionalLight('#fff4e0',.82);WR.add(sun);WR.add(sun.target);
+const sun=new THREE.DirectionalLight('#ffefd2',.82);WR.add(sun);WR.add(sun.target);
 sun.shadow.mapSize.set(MAXTEX>=16384?4096:2048,MAXTEX>=16384?4096:2048);sun.shadow.bias=-.0004;sun.shadow.normalBias=.6;
 const VIS={phase:.12,period:600,cycle:true};
 try{if(localStorage.getItem('groundfloor.cycle')==='0')VIS.cycle=false}catch(e){}
-const DAYC={sun:new THREE.Color('#fff4e0'),sunDusk:new THREE.Color('#ffa868'),moon:new THREE.Color('#9fb4e6'),amb:new THREE.Color('#b8c4d6'),ambDusk:new THREE.Color('#c9a29a'),ambNight:new THREE.Color('#4c5c8a'),
+const DAYC={sun:new THREE.Color('#ffecc8'),sunDusk:new THREE.Color('#ffa868'),moon:new THREE.Color('#9fb4e6'),amb:new THREE.Color('#b8c4d6'),ambDusk:new THREE.Color('#c9a29a'),ambNight:new THREE.Color('#4c5c8a'),
  skyLow:new THREE.Color('#c8dcec'),skyLowDusk:new THREE.Color('#f3b88c'),skyLowNight:new THREE.Color('#162036'),skyMid:new THREE.Color('#5d8fbd'),skyMidDusk:new THREE.Color('#6d6aa6'),skyMidNight:new THREE.Color('#080c18'),lampOff:new THREE.Color('#9aa3ab'),lampOn:new THREE.Color('#ffe2a0')};
 // phase 0 = sunrise, .62 = sunset; the rest is night. Days are long, nights short.
 function dayParams(){if(!VIS.cycle)return{el:.95,az:.6,night:0,dusk:0};const p=VIS.phase;let el;
@@ -1754,8 +1758,8 @@ function updateLights(){
  const a=T.dot(X),b=T.dot(Y);T.addScaledVector(X,Math.round(a/tx)*tx-a).addScaledVector(Y,Math.round(b/tx)*tx-b);
  sun.target.position.copy(T);sun.position.copy(T).addScaledVector(d,4000);
  // street scale: strong warm sun + cool sky fill from above + low ambient, so shade is dark but never black
- const st=1-k;HEMI.position.copy(U);HEMI.color.set('#bcd4f0').lerp(DAYC.skyLowDusk,dusk*.6).lerp(DAYC.ambNight,night);HEMI.groundColor.set('#6e6250').lerp(new THREE.Color('#1c2236'),night);
- HEMI.intensity=st*(.34-.1*dusk-.18*night);AMB.intensity*=1-.62*st;sun.intensity*=1+.05*st*(1-night);
+ const st=1-k;HEMI.position.copy(U);HEMI.color.set('#b6d6ff').lerp(DAYC.skyLowDusk,dusk*.6).lerp(DAYC.ambNight,night);HEMI.groundColor.set('#7d8a52').lerp(new THREE.Color('#1c2236'),night);
+ HEMI.intensity=st*(.44-.12*dusk-.24*night);AMB.intensity*=1-.6*st;sun.intensity*=1+.22*st*(1-night);document.body.classList.toggle('vivid',VIVID&&st>.5&&night<.5);
  SKYSHEEN.value.copy(SKY_MID).lerp(SKY_LOW,.55);
 }
 
@@ -1823,9 +1827,9 @@ function buildPatch(spec){
  x.fillStyle='#3b93c9';x.fillRect(0,0,N,N);
  x.strokeStyle='rgba(120,200,232,.5)';x.lineWidth=Math.max(1.5,Math.min(6,600*s));x.lineJoin='round';
  for(const T of tiles)for(const p of T.land)if(hit(p.bb)){poly(p);x.stroke()}
- x.fillStyle='#86b765';for(const T of tiles)for(const p of T.land)if(hit(p.bb)){poly(p);x.fill('evenodd')}
+ x.fillStyle='#7cbb57';for(const T of tiles)for(const p of T.land)if(hit(p.bb)){poly(p);x.fill('evenodd')}
  x.fillStyle='#4aa2d4';for(const T of tiles)for(const p of T.lakes)if(hit(p.bb)){poly(p);x.fill('evenodd')}
- x.fillStyle='rgba(214,210,198,.92)';for(const T of tiles)for(const p of T.urban)if(hit(p.bb)){poly(p);x.fill('evenodd')}
+ x.fillStyle='rgba(222,212,190,.92)';for(const T of tiles)for(const p of T.urban)if(hit(p.bb)){poly(p);x.fill('evenodd')}
  // Natural Earth rivers are too coarse inside cities with real water data, so mask those areas out
  x.save();x.beginPath();x.rect(0,0,N,N);for(const id in REAL){const R=REAL[id];if(distM(R.lat0,R.lon0,spec.lat,spec.lon)>r+20000)continue;const Q=(cx,cy)=>P(R.lon0+cx/R.kx,R.lat0+cy/R.ky);if(R.covp){for(let i=0;i<R.covp.length;i+=2){const[a,b]=Q(R.covp[i],R.covp[i+1]);i?x.lineTo(a,b):x.moveTo(a,b)}x.closePath()}for(const b of R.cover){const[a1,b1]=Q(b[0],b[1]),[a2,b2]=Q(b[2],b[3]);x.moveTo(a1,b1);x.lineTo(a1,b2);x.lineTo(a2,b2);x.lineTo(a2,b1);x.closePath()}}x.clip('evenodd');
  x.lineCap='round';x.lineJoin='round';x.strokeStyle='#4aa2d4';
@@ -1836,7 +1840,7 @@ function buildPatch(spec){
  for(const id in CITYDATA){const C=CITYDATA[id];if(!C.ready)continue;if(distM(C.lat0,C.lon0,spec.lat,spec.lon)>r+20000)continue;
   const Q=(cx,cy)=>P(C.lon0+cx/C.kx,C.lat0+cy/C.ky);
   const fill=(ps,col)=>{x.fillStyle=col;for(const p of ps){x.beginPath();for(const rg of p){rg.forEach((q,i)=>{const[a,b]=Q(q[0],q[1]);i?x.lineTo(a,b):x.moveTo(a,b)});x.closePath()}x.fill('evenodd')}};
-  fill(C.parks,'#8fc06a');fill(C.water,'#4f98c9')}
+  fill(C.parks,'#72b84e');fill(C.water,'#3f90d8')}
  // soft edge
  x.globalCompositeOperation='destination-in';const gr=x.createRadialGradient(N/2,N/2,N*.36,N/2,N/2,N*.5);gr.addColorStop(0,'rgba(0,0,0,1)');gr.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=gr;x.fillRect(0,0,N,N);x.globalCompositeOperation='source-over';
  const tex=new THREE.CanvasTexture(cv);tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
@@ -2387,7 +2391,7 @@ function buildOne(gb,ring0,y0,h,lot,style,lod,statusCol){
  let ring=ring0;if(ringArea(ring)<0)ring=ring.slice().reverse();
  const s1=hash2(lot.i,lot.zone.length,9),s2=hash2(lot.i,31,lot.zone.length),s3=hash2(lot.i,7,3),s4=hash2(lot.i,13,17);
  const area0=Math.abs(ringArea(ring)),floors=Math.max(1,Math.round(h/3.3)),A=archFor(style,floors,area0,s1);
- const wall=new THREE.Color(pickA(A.walls,s2)).offsetHSL((s3-.5)*.025,(s2-.5)*.08,(s4-.5)*.09);
+ const wall=new THREE.Color(pickA(A.walls,s2)).offsetHSL((s3-.5)*.025,(s2-.5)*.08+.07,(s4-.5)*.09+.012);
  const roofBase=A.roofCol?new THREE.Color(pickA(A.roofCol,s3)):new THREE.Color('#6d7176').lerp(wall,.18);
  const roof=statusCol||roofBase,up=pickA(A.up,s3);
  const sh=lod>=2&&(A.roof==='flat'||A.roof==='podium')?shapeFor(lot,ring,s4):{r:ring,hole:null};
@@ -2639,7 +2643,7 @@ function lmGlowAll(){for(const L of LANDMARKS){const v=LMLIVE.get(L.id);if(v)lmG
 // ===================== ANCAP LIFE · STREAMING (frustum-based, 4 levels of detail) =====================
 const MATS={flat:(()=>{const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});m.onBeforeCompile=groundShader;m.customProgramCacheKey=()=>'ground2';return m})(),tree:new THREE.MeshLambertMaterial({vertexColors:true})};
 const LIVE=new Map();
-const ROADCOL={major:new THREE.Color('#464b54'),minor:new THREE.Color('#50555e'),path:new THREE.Color('#e3dac0'),walk:new THREE.Color('#dcd8cd'),park:new THREE.Color('#8fc06a'),dirt:new THREE.Color('#c9b48a'),water:new THREE.Color('#4f98c9'),line:new THREE.Color('#e9cf73')};
+const ROADCOL={major:new THREE.Color('#464b54'),minor:new THREE.Color('#50555e'),path:new THREE.Color('#e3dac0'),walk:new THREE.Color('#dcd8cd'),park:new THREE.Color('#72b84e'),dirt:new THREE.Color('#d2b98a'),water:new THREE.Color('#3f90d8'),line:new THREE.Color('#e9cf73')};
 function roofColorFor(lot){const st=lotState(lot);if(st.st==='build')return new THREE.Color('#d4a347');return null}
 // status is shown as a soft coloured glow around the building (ground halo, rising haze, bright crown), never by repainting the roof
 const GLOWC={player:new THREE.Color('#ffffff'),lease:new THREE.Color('#ffde00'),sale:new THREE.Color('#2fd3e6'),rival:new THREE.Color('#ff4b3e'),other:new THREE.Color('#c86bff')};
@@ -2731,7 +2735,7 @@ function fieldGround(gb,f){
 }
 const YARDC=[FC('#8fc06a'),FC('#9cc874'),FC('#86b862')];
 // ---------- roads: asphalt, raised kerbs and pavements, lane markings and zebra crossings ----------
-const PAVE=[FC('#d3cfc4'),FC('#dad4c6'),FC('#d9d4c8')],CURB=FC('#a9a69e'),MARKW=FC('#f2f0ea'),MARKY=FC('#e9c43b'),ASPH=FC('#4a4f58'),ASPH2=FC('#565b64');
+const PAVE=[FC('#dacdb0'),FC('#ded1b5'),FC('#d8cbaf')],CURB=FC('#b5a78c'),MARKW=FC('#f6f3ea'),MARKY=FC('#f0c63a'),ASPH=FC('#42464e'),ASPH2=FC('#4c5058');
 function ribbonFlat(gb,a,b,w,y,col){const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<.01)return;const nx=-dy/L*w/2,ny=dx/L*w/2;gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]+nx,y,-(b[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],UPN,col,col,col);gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],[a[0]-nx,y,-(a[1]-ny)],UPN,col,col,col)}
 function markRoad(gb,a,b,w,c,amer,y){
  const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<14)return;const ux=dx/L,uy=dy/L,nx=-uy,ny=ux;
@@ -3529,8 +3533,8 @@ function buildShell(rm,s,lv){
  // outer walls follow every edge of the footprint
  const E=rm.edges,nE=E.length,cvx=i=>{const p=E[(i-1+nE)%nE],q=E[i];return p.d[0]*q.d[1]-p.d[1]*q.d[0]>1e-3};
  for(let i=0;i<nE;i++){const e=E[i],e0=cvx(i)?-T:0,e1=e.len+(cvx((i+1)%nE)?T:0),W_=(a,b,y0,y1,c,tp)=>{if(b-a>.005)ebox(g,e.a,e.d,e.n,a,b,0,T,y0,y1,c||wall,tp||cap)},B_=(a,b,o0,o1,y0,y1,c)=>{if(b-a>.005)ebox(g,e.a,e.d,e.n,a,b,o0,o1,y0,y1,c)};
-  e.win=[];
-  if(e.front){
+  e.win=[];e.door=null;
+  if(e.front&&!rm.homeFront){
    if(lv===0){const ds=[(rm.door[0]-e.a[0])/e.d[0],(rm.door[2]-e.a[0])/e.d[0]].sort((a,b)=>a-b),inD=ds[1]>e0&&ds[0]<e1,segs=inD?[[e0,Math.max(e0,ds[0])],[Math.min(e1,ds[1]),e1]]:[[e0,e1]];
     for(const[a,b]of segs){W_(a,b,0,.55);B_(a,b,T-.02,T+.06,.53,.58,CREAM)}
     const nm=Math.max(1,Math.round(e.len/2.2));for(let k=0;k<=nm;k++){const sm=e.len*k/nm;if(inD&&sm>ds[0]-.15&&sm<ds[1]+.15)continue;B_(sm-.05,sm+.05,0,T,.55,H,dark)}
@@ -3538,9 +3542,12 @@ function buildShell(rm,s,lv){
     B_(e0,e1,0,T,H-.25,H,dark)}
    else{W_(e0,e1,0,.9);if(lv>0){const nm=Math.max(1,Math.round(e.len/2.2));for(let k=0;k<=nm;k++){const sm=e.len*k/nm;B_(sm-.05,sm+.05,0,T,.9,H,dark)}B_(e0,e1,0,T,H-.25,H,dark)}}
    continue}
-  if(e.ext&&lv>=0&&e.len>2.2){const n=Math.floor((e.len-.8)/2.6);for(let k=0;k<n;k++){const c=e.len/n*(k+.5);e.win.push([c-.55,c+.55])}}
+  if((e.ext||(e.front&&rm.homeFront))&&lv>=0&&e.len>2.2){const n=Math.floor((e.len-.8)/2.6);for(let k=0;k<n;k++){const c=e.len/n*(k+.5);e.win.push([c-.55,c+.55])}}
+  // a house front: a proper front door in the wall, with the windows kept clear of it
+  if(e.front&&rm.homeFront&&lv===0&&Math.abs(e.d[0])>.9){const ds=[(rm.door[0]+.25-e.a[0])/e.d[0],(rm.door[2]-.25-e.a[0])/e.d[0]].sort((a,b)=>a-b);if(ds[1]>e0&&ds[0]<e1){e.door=ds;e.win=e.win.filter(w=>w[1]<ds[0]-.25||w[0]>ds[1]+.25)}}
   const sill=1.1,head=2.3;let cur=e0;
-  for(const[a,b]of e.win){W_(cur,a,0,H);W_(a,b,0,sill);W_(a,b,head,H);
+  const ops=e.win.map(w=>[w[0],w[1],0]);if(e.door)ops.push([e.door[0],e.door[1],1]);ops.sort((p,q)=>p[0]-q[0]);
+  for(const[a,b,isDoor]of ops){if(isDoor){W_(cur,a,0,H);W_(a,b,2.25,H);B_(a,b,T*.35,T*.65,0,2.22,IC('#6b3f26'));B_(a-.07,a,-.02,T+.03,0,2.3,frc);B_(b,b+.07,-.02,T+.03,0,2.3,frc);B_(a-.07,b+.07,-.02,T+.03,2.22,2.3,frc);B_(b-.18,b-.12,T+.03,T+.06,1.0,1.06,CHROME);B_(a,b,-.05,T+.05,0,.04,IC('#8a8f96'));cur=b;continue}W_(cur,a,0,H);W_(a,b,0,sill);W_(a,b,head,H);
    B_(a,b,T*.46,T*.54,sill,head,IC('#bcdde8'));                                   // pane
    B_(a-.05,a,T-.02,T+.03,sill,head,frc);B_(b,b+.05,T-.02,T+.03,sill,head,frc);B_(a-.05,b+.05,T-.02,T+.03,head,head+.05,frc); // inner frame
    B_(a-.05,a,-.03,.02,sill,head,dark);B_(b,b+.05,-.03,.02,sill,head,dark);B_(a-.05,b+.05,-.03,.02,head,head+.05,dark);   // outer frame
@@ -3941,7 +3948,7 @@ const footLabel=l=>l>1.25?'Prime high street':l>1?'Busy street':l>.75?'Steady si
 const dshort=d=>dayName(d);
 const altLabel=a=>a>=1e6?Math.round(a/1e3).toLocaleString('en-US')+' km':a>=1e4?Math.round(a/1e3)+' km':a>=1e3?(a/1e3).toFixed(1)+' km':Math.round(a)+' m';
 
-const ui={selLot:null,selKey:null,site:null,tab:'overview',speed:1,busy:false,modal:null,show:{lease:1,sale:1,rival:0},confirm:null,wiz:null,floors:null,street:false};
+const ui={selLot:null,selKey:null,site:null,tab:'overview',speed:1,busy:false,modal:null,show:{lease:1,sale:1,rival:0,rooms:1,plot:1},confirm:null,wiz:null,floors:null,street:false};
 const SKEY0='groundfloor.save.v2';let SKEY=SKEY0;
 function save(){if(!G)return;G.cam={lat:CAM.lat,lon:CAM.lon,dist:CAM.dist,heading:CAM.heading};G.ts=Date.now();try{localStorage.setItem(SKEY,JSON.stringify(G))}catch(e){}cloudQueue()}
 function fixSave(g){if(g&&g.v===2){for(const k in SUP)if(!g.mkt[k])g.mkt[k]={m:1,h:[]};return g}return null}
@@ -4095,7 +4102,7 @@ function renderTop(){
  const sb=$('#shopsbtn');sb.hidden=!G.sites.length&&!G.props.length;sb.textContent=G.sites.length?`My shops (${G.sites.length})`:'My property';
  $('#mapctl').hidden=!!ui.interior||!ui.started;$('#northbtn').style.transform=`rotate(${-CAM.heading}rad)`;
  const lg=$('#legend');lg.hidden=!ui.street||!!ui.interior;
- if(ui.street){const lh=[['lease','For lease','#ffde00'],['sale','For sale','#2fd3e6'],['rival','Competitors','#ff4b3e']].map(([k,t,c])=>`<button data-act="legend" data-id="${k}" class="${ui.show[k]?'on':''}" aria-pressed="${!!ui.show[k]}"><i style="background:${c}"></i>${t}</button>`).join('');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
+ if(ui.street){const lh=[['lease','For lease','#ffde00'],['sale','For sale','#2fd3e6'],['rooms','Rooms to rent','#ff7ac8'],['plot','Build land','#4fd36a'],['rival','Competitors','#ff4b3e']].map(([k,t,c])=>`<button data-act="legend" data-id="${k}" class="${ui.show[k]?'on':''}" aria-pressed="${!!ui.show[k]}"><i style="background:${c}"></i>${t}</button>`).join('');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
  const hint=$('#hint'),showHint=ui.started&&ui.street&&!ui.interior&&!ui.selLot&&!G.sites.length&&!ui.modal&&!G.tut;hint.hidden=!showHint;
  if(showHint){const hh=`Buildings glowing <b style="color:#ffde00">yellow</b> have a shop for lease. Click one to see the rent.`;if(hint._h!==hh){hint._h=hh;hint.innerHTML=hh}}
  renderShops();
@@ -4343,7 +4350,7 @@ function mMenu(){return`<div class="mhead"><p class="eyebrow">${esc(G.company||'
  <div class="btnrow"><button class="btn ghost" data-act="goals">Goals</button><button class="btn ghost" data-act="market">Supplier market</button><button class="btn ghost" data-act="bank">Bank &amp; loans</button></div>
  <h3 class="eyebrow">Company</h3><div class="renrow"><input id="corename" type="text" maxlength="40" value="${esc(G.company||'')}" aria-label="Company name"><button class="btn sm" data-act="renameco">Rename</button></div><button class="btn ghost wide" data-act="nextmodal">What should I do next?</button><button class="btn ghost wide" data-act="board">Leaderboard</button>
  <h3 class="eyebrow">Account</h3><div class="renrow"><span class="fine" style="flex:1;margin:0;align-self:center">${authed()?`Signed in as <b>${esc(dispName())}</b>${AUTH.cloud==='off'?' · saving on this device only':' · saved to your account'}`:'Not signed in'}</span><button class="btn sm ghost" data-act="signout">${authed()?'Sign out':'Sign in'}</button></div>
- <h3 class="eyebrow">Settings</h3><label class="tog"><input type="checkbox" data-change="shadows" ${QUAL.shadows?'checked':''}> Sun shadows (turn off if the game feels slow)</label><label class="tog"><input type="checkbox" data-change="cycle" ${VIS.cycle?'checked':''}> Day and night (a full day lasts 10 minutes)</label><label class="tog"><input type="checkbox" data-change="traffic" ${TRAFFIC_ON?'checked':''}> Traffic</label>
+ <h3 class="eyebrow">Settings</h3><label class="tog"><input type="checkbox" data-change="shadows" ${QUAL.shadows?'checked':''}> Sun shadows (turn off if the game feels slow)</label><label class="tog"><input type="checkbox" data-change="vivid" ${VIVID?'checked':''}> Vivid colours (warmer light and richer colour at street level)</label><label class="tog"><input type="checkbox" data-change="cycle" ${VIS.cycle?'checked':''}> Day and night (a full day lasts 10 minutes)</label><label class="tog"><input type="checkbox" data-change="traffic" ${TRAFFIC_ON?'checked':''}> Traffic</label>
  <h3 class="eyebrow">Controls</h3><p class="fine">Drag to move · right-drag (or Shift-drag) to turn and tilt · scroll to zoom · The world runs on a shared clock for every player. Inside a shop, drag to look around and click kit to move it.</p><p class="fine">Real-city streets and buildings: map data © OpenStreetMap contributors, available under the Open Database License (openstreetmap.org/copyright).</p>
  <p class="fine">Saves automatically after every day. Map data: Natural Earth (public domain); London, New York and Paris streets and buildings © OpenStreetMap contributors.</p>
  <div class="box danger"><button class="btn ghost" data-act="newgame">${ui.confirm==='new'?'Yes, delete and start over':'Start a new game'}</button></div></div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
@@ -4453,7 +4460,7 @@ document.addEventListener('click',e=>{
   case 'newgame2':ui.confirm=null;ui.modal=null;$('#modal').hidden=true;if(typeof tutH!=='undefined')tutH='';try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();showFront();break;
  }
 });
-document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='shadows'){QUAL.shadows=t.checked;try{localStorage.setItem('groundfloor.shadows',QUAL.shadows?'1':'0')}catch(_){}return}if(t.dataset.change==='cycle'){VIS.cycle=t.checked;try{localStorage.setItem('groundfloor.cycle',VIS.cycle?'1':'0')}catch(_){}return}if(t.dataset.change==='traffic'){TRAFFIC_ON=t.checked;return}const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='shadows'){QUAL.shadows=t.checked;try{localStorage.setItem('groundfloor.shadows',QUAL.shadows?'1':'0')}catch(_){}return}if(t.dataset.change==='vivid'){VIVID=t.checked;try{localStorage.setItem('ancap.vivid',VIVID?'1':'0')}catch(_){}return}if(t.dataset.change==='cycle'){VIS.cycle=t.checked;try{localStorage.setItem('groundfloor.cycle',VIS.cycle?'1':'0')}catch(_){}return}if(t.dataset.change==='traffic'){TRAFFIC_ON=t.checked;return}const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;
  if(t.dataset.change==='price'){const v=parseFloat(t.value);if(v>0)s.prices[t.dataset.id]=Math.round(v*100)/100;renderSite()}
  if(t.dataset.change==='auto')s.auto=t.checked});
 document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;
@@ -8455,6 +8462,551 @@ html body .btn.ac-red{background:linear-gradient(180deg,#ff8a7d,#e5484d)!importa
 html body #bar .hb-icons{gap:2px!important}
 body:has(#modal:not([hidden])) .fl-lvl,body:has(#modal:not([hidden])) .fl-obj{visibility:hidden}
 `;document.head.appendChild(st);
+})();
+
+</script>
+<script>
+// ANCAP LIFE · PANELS LAYER
+// Every menu panel can be dragged by its top edge. When a panel opens it finds a spot where it doesn't cover
+// another open panel (the player can still drag panels over each other on purpose; those stay where they are put).
+(function(){
+const LIST=[['#modal .modal',90],['#right',80],['#left',70],['#invp',60],['#mppanel',55],['#elp',52],['#ibar',40],['#flhud',30]];
+const PRIO=new Map(LIST.map(([s,p])=>[s,p]));
+const moved=new WeakSet(),wasVis=new WeakMap();
+const TOP=()=>{const b=document.getElementById('bar');return b?Math.max(52,b.getBoundingClientRect().bottom+6):56};
+const isVis=el=>{if(!el||el.hidden)return false;const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden')return false;const r=el.getBoundingClientRect();return r.width>4&&r.height>4};
+const els=()=>LIST.map(([s])=>[s,document.querySelector(s)]).filter(([,e])=>e);
+const ov=(a,b)=>Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))*Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top));
+const isModal=el=>el.classList.contains('modal');
+function setPos(el,x,y){
+ if(isModal(el)){const r=el.getBoundingClientRect(),dx=(+el.dataset.dx||0)+x-r.left,dy=(+el.dataset.dy||0)+y-r.top;el.dataset.dx=dx;el.dataset.dy=dy;el.style.setProperty('transform',`translate(${dx}px,${dy}px)`,'important');return}
+ const r=el.getBoundingClientRect();
+ for(const[k,v]of[['left',x+'px'],['top',y+'px'],['right','auto'],['bottom','auto'],['height',r.height+'px'],['width',r.width+'px'],['margin','0'],['transform','none']])el.style.setProperty(k,v,'important');
+}
+function resetPos(el){if(isModal(el)){el.dataset.dx=0;el.dataset.dy=0;el.style.removeProperty('transform');return}for(const k of['left','top','right','bottom','height','width','margin','transform'])el.style.removeProperty(k)}
+// move el somewhere it overlaps the other open panels as little as possible, as close to where it wanted to be
+function place(el,sel){
+ if(moved.has(el)||!isVis(el))return;
+ resetPos(el);const r=el.getBoundingClientRect(),others=els().filter(([s,o])=>o!==el&&isVis(o)).map(([,o])=>o.getBoundingClientRect());
+ if(!others.some(o=>ov(r,o)>40))return;
+ const W=innerWidth,H=innerHeight,top=TOP(),w=r.width,h=Math.min(r.height,H-top-8);let best=null;
+ for(let y=top;y<=Math.max(top,H-h-8);y+=16)for(let x=8;x<=Math.max(8,W-w-8);x+=16){const c={left:x,top:y,right:x+w,bottom:y+h};let o=0;for(const q of others)o+=ov(c,q);const d=Math.hypot(x-r.left,y-r.top),sc=o*10+d;if(!best||sc<best.sc)best={sc,x,y,o}}
+ if(best&&best.o<others.reduce((a,q)=>a+ov(r,q),0))setPos(el,best.x,best.y);
+}
+function onShow(sel,el){
+ // a newly opened panel pushes lower-priority ones out of its way; otherwise it finds its own space
+ const p=PRIO.get(sel)||0,r=el.getBoundingClientRect();
+ for(const[s2,o]of els()){if(o===el||!isVis(o)||moved.has(o))continue;if((PRIO.get(s2)||0)<p&&ov(r,o.getBoundingClientRect())>40){place(o,s2)}}
+ place(el,sel);
+}
+function scan(){
+ for(const[s,el]of els()){const v=isVis(el),was=wasVis.get(el)||false;if(v&&!was){wasVis.set(el,true);requestAnimationFrame(()=>onShow(s,el))}else if(!v&&was){wasVis.set(el,false);if(isModal(el)){resetPos(el)}}}
+}
+setInterval(scan,250);addEventListener('resize',()=>{for(const[,el]of els()){if(!isVis(el))continue;const r=el.getBoundingClientRect();if(r.right>innerWidth||r.bottom>innerHeight||r.left<0||r.top<0){moved.delete(el);resetPos(el)}}});
+// ---- dragging by the top edge ----
+const GRIP=34,ACTIVE='button,a,input,select,textarea,label,[data-act],[data-change],.psl,.tabs';
+function panelAt(t){for(const[s,el]of els()){if(el.contains(t)&&isVis(el))return[s,el]}return null}
+let drag=null;
+document.addEventListener('pointerdown',e=>{if(e.button!==0)return;const hit=panelAt(e.target);if(!hit)return;const[,el]=hit;if(e.target.closest(ACTIVE))return;
+ const r=el.getBoundingClientRect();if(e.clientY-r.top>GRIP)return;
+ drag={el,ox:e.clientX-r.left,oy:e.clientY-r.top,sx:e.clientX,sy:e.clientY,on:false};e.preventDefault()},true);
+addEventListener('pointermove',e=>{
+ if(!drag){const hit=panelAt(e.target);if(hit){const el=hit[1],r=el.getBoundingClientRect(),g=e.clientY-r.top<=GRIP&&!e.target.closest(ACTIVE);if(g!==el._grip){el._grip=g;el.style.cursor=g?'grab':''}}return}
+ if(!drag.on&&Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)<4)return;drag.on=true;document.body.classList.add('pdrag');
+ const el=drag.el,r=el.getBoundingClientRect(),x=Math.max(-r.width+60,Math.min(innerWidth-60,e.clientX-drag.ox)),y=Math.max(TOP()-4,Math.min(innerHeight-30,e.clientY-drag.oy));setPos(el,x,y);moved.add(el)});
+addEventListener('pointerup',()=>{if(drag&&drag.on){document.body.classList.remove('pdrag');const el=drag.el;el._grip=null;el.style.cursor=''}drag=null});
+// double-click the top edge to snap a panel back to its normal place
+document.addEventListener('dblclick',e=>{const hit=panelAt(e.target);if(!hit)return;const[s,el]=hit,r=el.getBoundingClientRect();if(e.clientY-r.top>GRIP||e.target.closest(ACTIVE))return;moved.delete(el);resetPos(el);onShow(s,el)});
+const st=document.createElement('style');st.textContent=`
+body.pdrag,body.pdrag *{cursor:grabbing!important;user-select:none!important}
+#left,#right,#invp,#mppanel,#elp{transition:none}
+#left::after,#right::after,#invp::after,#mppanel::after,#elp::after{content:'';position:absolute;top:7px;left:50%;width:38px;height:4px;margin-left:-19px;border-radius:3px;background:rgba(255,255,255,.16);pointer-events:none;display:block!important}
+#modal .modal .mhead{cursor:grab}`;
+document.head.appendChild(st);
+window.panelPlace=sel=>{const el=document.querySelector(sel);if(el)onShow(sel,el)};
+})();
+
+</script>
+<script>
+// ANCAP LIFE · ESTATE LAYER
+// Homes (houses, mansions, apartment blocks), building on empty land, rooms to rent for a business, and the landlord game:
+// rooms with rent sliders, furnishing, heaters and a heat map, and hand-written tenants with their own 3D figure.
+(function(){
+// ---------- tenant library: every name, personality and pro/con is written by hand (no generation at runtime) ----------
+const ES_COUNTRIES={
+ GB:{n:'United Kingdom',m:['Oliver','Harry','George','Jack','Callum','Liam','Rhys','Tom','Ewan','Sam'],f:['Olivia','Amelia','Isla','Grace','Freya','Megan','Chloe','Ruby','Niamh','Holly'],s:['Smith','Jones','Taylor','Davies','Evans','Walker','Wright','Hughes','Clarke','Bennett','Foster','Hartley']},
+ US:{n:'United States',m:['James','Tyler','Marcus','Jordan','Brandon','Kevin','Derek','Austin','Caleb','Ethan'],f:['Ashley','Madison','Brianna','Kayla','Jasmine','Taylor','Morgan','Sierra','Hailey','Destiny'],s:['Johnson','Williams','Brown','Miller','Davis','Garcia','Rodriguez','Wilson','Anderson','Thompson','Moore','Jackson']},
+ FR:{n:'France',m:['Lucas','Hugo','Louis','Théo','Mathis','Antoine','Julien','Bastien'],f:['Emma','Léa','Chloé','Manon','Camille','Inès','Juliette','Margaux'],s:['Martin','Bernard','Dubois','Thomas','Robert','Petit','Durand','Leroy','Moreau','Fournier']},
+ DE:{n:'Germany',m:['Lukas','Jonas','Felix','Leon','Maximilian','Paul','Tobias','Niklas'],f:['Mia','Hannah','Lena','Lea','Sophie','Anna','Laura','Johanna'],s:['Müller','Schmidt','Schneider','Fischer','Weber','Meyer','Wagner','Becker','Hoffmann','Koch']},
+ IT:{n:'Italy',m:['Francesco','Alessandro','Matteo','Lorenzo','Davide','Marco','Luca','Andrea'],f:['Giulia','Sofia','Aurora','Chiara','Francesca','Martina','Elena','Alessia'],s:['Rossi','Russo','Ferrari','Esposito','Bianchi','Romano','Colombo','Ricci','Marino','Greco']},
+ ES:{n:'Spain',m:['Pablo','Hugo','Álvaro','Javier','Sergio','Diego','Adrián','Carlos'],f:['Lucía','María','Paula','Carmen','Marta','Elena','Sara','Alba'],s:['García','Fernández','López','Martínez','Sánchez','Pérez','Gómez','Ruiz','Díaz','Moreno']},
+ IE:{n:'Ireland',m:['Conor','Seán','Cian','Darragh','Oisín','Fionn','Patrick','Eoin'],f:['Aoife','Saoirse','Ciara','Róisín','Siobhán','Orla','Clodagh','Sinéad'],s:["O'Brien","Murphy","Kelly","Walsh","Byrne","Ryan","O'Connor","Doyle","McCarthy","Gallagher"]},
+ PL:{n:'Poland',m:['Jakub','Kacper','Szymon','Mateusz','Bartek','Piotr','Tomasz','Michał'],f:['Zuzanna','Julia','Maja','Natalia','Kasia','Agnieszka','Ola','Weronika'],s:['Nowak','Kowalski','Wiśniewski','Wójcik','Kamiński','Lewandowski','Zieliński','Szymański']},
+ NG:{n:'Nigeria',m:['Chinedu','Emeka','Tunde','Segun','Ifeanyi','Femi','Obinna','Kelechi'],f:['Ngozi','Chiamaka','Funmi','Adaeze','Zainab','Yetunde','Amaka','Folake'],s:['Okafor','Adeyemi','Balogun','Eze','Okonkwo','Adebayo','Nwosu','Olawale','Bello','Obi']},
+ GH:{n:'Ghana',m:['Kwame','Kofi','Kwabena','Yaw','Kojo','Nana'],f:['Ama','Akosua','Abena','Efua','Adwoa','Yaa'],s:['Mensah','Owusu','Boateng','Asante','Osei','Appiah','Agyeman','Darko']},
+ IN:{n:'India',m:['Arjun','Rohan','Vikram','Aditya','Rahul','Karan','Siddharth','Nikhil'],f:['Priya','Ananya','Kavya','Diya','Neha','Pooja','Ishita','Riya'],s:['Sharma','Patel','Singh','Kumar','Gupta','Reddy','Iyer','Nair','Mehta','Desai']},
+ JP:{n:'Japan',m:['Haruto','Yuto','Sota','Riku','Kenji','Takumi','Daiki','Ren'],f:['Yui','Hina','Aoi','Sakura','Mio','Rin','Yuna','Haruka'],s:['Sato','Suzuki','Takahashi','Tanaka','Watanabe','Ito','Yamamoto','Nakamura','Kobayashi','Kato']},
+ KR:{n:'South Korea',m:['Min-jun','Seo-jun','Ji-ho','Hyun-woo','Joon-young','Dong-hyun'],f:['Seo-yeon','Ji-woo','Min-seo','Ha-eun','Soo-ah','Ye-jin'],s:['Kim','Lee','Park','Choi','Jung','Kang','Cho','Yoon']},
+ CN:{n:'China',m:['Wei','Hao','Jun','Lei','Chen','Yang','Bo','Tao'],f:['Mei','Xin','Li','Yan','Jing','Hui','Lan','Ying'],s:['Wang','Li','Zhang','Liu','Chen','Yang','Huang','Zhao','Wu','Zhou']},
+ BR:{n:'Brazil',m:['Gabriel','Rafael','Thiago','Bruno','Mateus','Felipe','Gustavo','Leandro'],f:['Ana','Beatriz','Larissa','Camila','Fernanda','Juliana','Letícia','Gabriela'],s:['Silva','Santos','Oliveira','Souza','Lima','Pereira','Costa','Ferreira','Almeida','Carvalho']},
+ MX:{n:'Mexico',m:['Santiago','Mateo','Emiliano','Diego','Alejandro','Luis','Rodrigo','Iker'],f:['Valentina','Ximena','Regina','Fernanda','Daniela','Mariana','Guadalupe','Renata'],s:['Hernández','González','Ramírez','Flores','Torres','Vargas','Castillo','Mendoza','Reyes','Cruz']},
+ TR:{n:'Turkey',m:['Emre','Mehmet','Burak','Can','Oğuz','Kerem','Murat','Serkan'],f:['Elif','Zeynep','Ayşe','Defne','Ece','Merve','Selin','Buse'],s:['Yılmaz','Kaya','Demir','Şahin','Çelik','Yıldız','Aydın','Öztürk','Arslan','Doğan']},
+ EG:{n:'Egypt',m:['Omar','Youssef','Ahmed','Karim','Mostafa','Tarek','Hassan','Amr'],f:['Nour','Salma','Mariam','Yasmin','Hana','Laila','Farida','Dina'],s:['Mohamed','Hassan','Ibrahim','Mahmoud','Fathy','Saleh','Mansour','Khalil']},
+ NL:{n:'Netherlands',m:['Daan','Sem','Bram','Thijs','Ruben','Jesse','Lars','Milan'],f:['Fenna','Sanne','Lotte','Anouk','Femke','Isa','Noor','Lieke'],s:['de Jong','Jansen','de Vries','van Dijk','Bakker','Visser','Smit','Meijer','de Boer','Mulder']},
+ SE:{n:'Sweden',m:['Erik','Oscar','Axel','Hugo','Elias','Nils','Viktor','Linus'],f:['Ebba','Alva','Saga','Elsa','Wilma','Freja','Maja','Linnea'],s:['Andersson','Johansson','Karlsson','Nilsson','Eriksson','Larsson','Olsson','Persson']},
+ PT:{n:'Portugal',m:['João','Tiago','Rui','Duarte','Miguel','Nuno','Gonçalo','Rodrigo'],f:['Inês','Beatriz','Mariana','Leonor','Matilde','Carolina','Rita','Joana'],s:['Silva','Santos','Ferreira','Pereira','Oliveira','Costa','Rodrigues','Martins','Sousa','Gomes']},
+ PH:{n:'Philippines',m:['Jose','Mark','John Paul','Christian','Angelo','Paolo'],f:['Maria','Angel','Kristine','Jasmine','Princess','Bea'],s:['Santos','Reyes','Cruz','Bautista','Ocampo','Garcia','Mendoza','Villanueva']},
+};
+// small flags drawn as SVG (simplified, recognisable at 22px)
+function esFlag(c,w){w=w||22;const h=Math.round(w*.68),T=(a,b,cc,v)=>v?`<rect width="${w/3}" height="${h}" fill="${a}"/><rect x="${w/3}" width="${w/3}" height="${h}" fill="${b}"/><rect x="${w*2/3}" width="${w/3+.5}" height="${h}" fill="${cc}"/>`:`<rect width="${w}" height="${h/3}" fill="${a}"/><rect y="${h/3}" width="${w}" height="${h/3}" fill="${b}"/><rect y="${h*2/3}" width="${w}" height="${h/3+.5}" fill="${cc}"/>`;
+ const F={GB:`<rect width="${w}" height="${h}" fill="#1f3f8f"/><path d="M0 0L${w} ${h}M${w} 0L0 ${h}" stroke="#fff" stroke-width="${h*.22}"/><path d="M0 0L${w} ${h}M${w} 0L0 ${h}" stroke="#c8102e" stroke-width="${h*.08}"/><path d="M${w/2} 0V${h}M0 ${h/2}H${w}" stroke="#fff" stroke-width="${h*.34}"/><path d="M${w/2} 0V${h}M0 ${h/2}H${w}" stroke="#c8102e" stroke-width="${h*.2}"/>`,
+  US:`<rect width="${w}" height="${h}" fill="#fff"/>${[0,2,4,6].map(i=>`<rect y="${i*h/7}" width="${w}" height="${h/7}" fill="#b22234"/>`).join('')}<rect width="${w*.45}" height="${h*.54}" fill="#3c3b6e"/>`,
+  FR:T('#0055a4','#fff','#ef4135',1),DE:T('#000','#dd0000','#ffce00'),IT:T('#009246','#fff','#ce2b37',1),IE:T('#169b62','#fff','#ff883e',1),NG:T('#008751','#fff','#008751',1),NL:T('#ae1c28','#fff','#21468b'),
+  ES:`<rect width="${w}" height="${h}" fill="#aa151b"/><rect y="${h/4}" width="${w}" height="${h/2}" fill="#f1bf00"/>`,PL:`<rect width="${w}" height="${h/2}" fill="#fff"/><rect y="${h/2}" width="${w}" height="${h/2}" fill="#dc143c"/>`,
+  GH:T('#ce1126','#fcd116','#006b3f')+`<circle cx="${w/2}" cy="${h/2}" r="${h*.13}" fill="#000"/>`,IN:T('#ff9933','#fff','#138808')+`<circle cx="${w/2}" cy="${h/2}" r="${h*.12}" fill="none" stroke="#000080" stroke-width="1"/>`,
+  JP:`<rect width="${w}" height="${h}" fill="#fff"/><circle cx="${w/2}" cy="${h/2}" r="${h*.3}" fill="#bc002d"/>`,KR:`<rect width="${w}" height="${h}" fill="#fff"/><circle cx="${w/2}" cy="${h/2}" r="${h*.26}" fill="#cd2e3a"/><path d="M${w/2-h*.26} ${h/2}A${h*.26} ${h*.26} 0 0 0 ${w/2+h*.26} ${h/2}Z" fill="#0047a0"/>`,
+  CN:`<rect width="${w}" height="${h}" fill="#de2910"/><circle cx="${w*.2}" cy="${h*.3}" r="${h*.13}" fill="#ffde00"/>`,BR:`<rect width="${w}" height="${h}" fill="#009c3b"/><path d="M${w/2} ${h*.12}L${w*.9} ${h/2}L${w/2} ${h*.88}L${w*.1} ${h/2}Z" fill="#ffdf00"/><circle cx="${w/2}" cy="${h/2}" r="${h*.2}" fill="#002776"/>`,
+  MX:T('#006847','#fff','#ce1126',1)+`<circle cx="${w/2}" cy="${h/2}" r="${h*.1}" fill="#8a5a2b"/>`,TR:`<rect width="${w}" height="${h}" fill="#e30a17"/><circle cx="${w*.4}" cy="${h/2}" r="${h*.24}" fill="#fff"/><circle cx="${w*.45}" cy="${h/2}" r="${h*.19}" fill="#e30a17"/>`,
+  EG:T('#ce1126','#fff','#000')+`<circle cx="${w/2}" cy="${h/2}" r="${h*.09}" fill="#c09300"/>`,SE:`<rect width="${w}" height="${h}" fill="#006aa7"/><path d="M${w*.36} 0V${h}M0 ${h/2}H${w}" stroke="#fecc00" stroke-width="${h*.2}"/>`,
+  PT:`<rect width="${w}" height="${h}" fill="#ff0000"/><rect width="${w*.4}" height="${h}" fill="#006600"/><circle cx="${w*.4}" cy="${h/2}" r="${h*.17}" fill="#ffff00"/>`,
+  PH:`<rect width="${w}" height="${h/2}" fill="#0038a8"/><rect y="${h/2}" width="${w}" height="${h/2}" fill="#ce1126"/><path d="M0 0L${w*.45} ${h/2}L0 ${h}Z" fill="#fff"/><circle cx="${w*.14}" cy="${h/2}" r="${h*.08}" fill="#fcd116"/>`};
+ return`<svg class="es-flag" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-label="${(ES_COUNTRIES[c]||{}).n||''} flag">${F[c]||F.GB}</svg>`}
+// personalities. fx keys: pay (1 reliable, -1 sometimes late), noise (makes neighbours unhappy), warm/cool (shift the comfortable temperature),
+// tol (how much above market they'll pay), stay (1 stays for years, -1 restless), tidy (1 leaves it spotless, -1 damage when leaving),
+// social/loner (likes or dislikes a full floor), heat (how much temperature matters), base (general mood), furn (cares about furnishing)
+const ES_TYPES=[
+ {t:'Night-shift nurse',b:'{n} works nights on a hospital ward and sleeps through the day. Barely makes a sound, but likes the room warm when getting in at 7 in the morning.',pros:['Very quiet','Always pays on time'],cons:['Wants it warm (21 to 24°C)'],fx:{pay:1,warm:2,heat:1.3}},
+ {t:'Final-year medical student',b:'{n} lives in the library and comes home only to sleep. Tidy, polite and broke until graduation.',pros:['Keeps the room spotless','Rarely home'],cons:['Tight budget'],fx:{tidy:1,tol:-.12}},
+ {t:'Startup founder',b:'{n} is building "the Uber of laundry" from the bedroom desk. Takes calls at all hours and orders a lot of deliveries.',pros:['Will pay above market for a good room'],cons:['Works from home, so heating matters','Calls late at night'],fx:{tol:.25,heat:1.5,noise:1}},
+ {t:'Retired schoolteacher',b:'{n} taught maths for 34 years and now spends the days gardening and doing crosswords. Wants somewhere settled and warm.',pros:['Stays for years','Never late with rent'],cons:['Feels the cold'],fx:{pay:1,stay:1,warm:2}},
+ {t:'Touring musician',b:'{n} plays bass in a band that is "about to break through". Away half the month, practises the other half.',pros:['Often away on tour'],cons:['Loud when home','Sometimes late with rent'],fx:{noise:1,pay:-1,heat:.6}},
+ {t:'Junior accountant',b:'{n} just started at a big firm in town. Wears the same grey suit every day and has a spreadsheet for everything.',pros:['Pays on the dot','Quiet'],cons:['Picky about the room'],fx:{pay:1,base:-4,tol:.08}},
+ {t:'Exchange student',b:'{n} is here for one academic year to study economics and see as much of the country as possible.',pros:['Friendly, gets on with everyone'],cons:['Leaves after the year','Tight budget'],fx:{social:1,stay:-1,tol:-.1}},
+ {t:'Long-haul pilot',b:'{n} flies to Singapore and back twice a week. When home, mostly sleeps off the jet lag.',pros:['Hardly ever there','Pays well'],cons:['Wants proper blackout and warmth'],fx:{tol:.2,warm:1,heat:.7}},
+ {t:'Freelance illustrator',b:'{n} draws children\'s books at a desk by the window and drinks a frankly worrying amount of tea.',pros:['Quiet and creative','Looks after the place'],cons:['Works from home all day','Wants a window'],fx:{tidy:1,heat:1.6,light:1}},
+ {t:'Gym personal trainer',b:'{n} is up at 5am for clients and in bed by 9pm. Likes the room cool and the fridge full of chicken.',pros:['Out most of the day','Reliable'],cons:['Wants it cool (17 to 20°C)'],fx:{pay:1,cool:2}},
+ {t:'Chef at a busy restaurant',b:'{n} gets home after midnight smelling of garlic and wants nothing but a shower and sleep.',pros:['Out all evening','Easy-going'],cons:['Comes home very late'],fx:{noise:.4,base:3}},
+ {t:'PhD researcher',b:'{n} is three years into a thesis on medieval trade routes and four years from finishing it.',pros:['Stays for years','Very quiet'],cons:['Small stipend, small budget'],fx:{stay:1,tol:-.15}},
+ {t:'Recently divorced dad',b:'{n} needs a place close to the kids\' school for the weekends they visit. Keen to make it feel like home.',pros:['Wants to stay long term','Looks after the place'],cons:['Cares a lot about furnishing'],fx:{stay:1,tidy:1,furn:1.5}},
+ {t:'Party animal',b:'{n} works in sales, plays in a five-a-side team and has friends round most weekends.',pros:['Pays above market','Great fun'],cons:['Noisy','Might damage things'],fx:{tol:.15,noise:1.5,tidy:-1}},
+ {t:'Quiet bookworm',b:'{n} works at the local library and reads in the evenings with a cup of cocoa. Asks for nothing.',pros:['Silent','Easy to please'],cons:['Small budget'],fx:{base:6,tol:-.08}},
+ {t:'Software engineer',b:'{n} works remotely for a company in another time zone and has three monitors on one desk.',pros:['High income','Pays reliably'],cons:['Home all day, wants a warm, bright room'],fx:{pay:1,tol:.22,heat:1.6,light:1}},
+ {t:'Delivery rider',b:'{n} rides for three apps at once, all day, every day, saving up to start a business.',pros:['Out all day','Never complains'],cons:['Very tight budget'],fx:{base:5,tol:-.18}},
+ {t:'Aspiring actor',b:'{n} goes to auditions in the day and waits tables at night. Rehearses lines out loud in the shower.',pros:['Charming','Social'],cons:['Income comes and goes','Sometimes late with rent'],fx:{social:1,pay:-1,noise:.5}},
+ {t:'Dog owner',b:'{n} comes as a pair with Biscuit, a very good boy. Walks him three times a day, rain or shine.',pros:['Stays long term','Responsible'],cons:['The dog may scratch the floors'],fx:{stay:1,tidy:-1,base:2}},
+ {t:'Cat lover',b:'{n} has two cats, Miso and Pickle, and a lot of cat-themed mugs. Works in a bank.',pros:['Pays on time','Homely'],cons:['Wants it warm for the cats'],fx:{pay:1,warm:1}},
+ {t:'Minimalist',b:'{n} owns 100 things and counts them. Wants an empty white room and nothing else.',pros:['Never damages anything','Low upkeep'],cons:['Hates clutter, cares about the room'],fx:{tidy:1,furn:.4,base:-2}},
+ {t:'Influencer',b:'{n} has 80,000 followers and a ring light. Every corner of the room will be on camera at some point.',pros:['Pays extra for a nice room'],cons:['Very picky about furnishing and light'],fx:{tol:.3,furn:2,light:1.5,base:-5}},
+ {t:'Construction foreman',b:'{n} runs a crew on a big site across town. Up at dawn, home tired, in bed early.',pros:['Out all day','Pays reliably'],cons:['Wants it cool to sleep'],fx:{pay:1,cool:1}},
+ {t:'Elderly widow',b:'{n} moved to be nearer the grandchildren and wants a warm, peaceful room with a view of the street.',pros:['Stays for years','Completely reliable'],cons:['Feels the cold badly'],fx:{pay:1,stay:1,warm:3,heat:1.4}},
+ {t:'Backpacker',b:'{n} is travelling the world for a year and staying a few months here to work in a bar.',pros:['Easy-going','Social'],cons:['Will move on soon'],fx:{stay:-1,base:4,social:1}},
+ {t:'Bodybuilder',b:'{n} trains twice a day and drops weights in the bedroom. Neighbours notice.',pros:['Pays on time'],cons:['Noisy','Wants it cool'],fx:{pay:1,noise:1,cool:2}},
+ {t:'Insomniac poet',b:'{n} writes through the night by candlelight and sleeps until noon. Sensitive to noise and cold.',pros:['Quiet'],cons:['Gets upset by noisy neighbours','Feels the cold'],fx:{loner:1,warm:2,heat:1.2}},
+ {t:'Cyclist and climber',b:'{n} keeps two bikes and a crash mat in the room and spends every weekend in the mountains.',pros:['Away at weekends','Easy-going'],cons:['Bikes scuff the walls'],fx:{tidy:-1,base:3,cool:1}},
+ {t:'Bank teller',b:'{n} has worked at the same branch for 11 years and has never once been late for anything.',pros:['Never late with rent','Stays for years'],cons:['Expects things fixed quickly'],fx:{pay:1,stay:1,base:-3}},
+ {t:'Law student',b:'{n} is studying for the bar exam and needs absolute quiet. Very polite, very stressed.',pros:['Tidy','Pays reliably'],cons:['Hates noisy neighbours'],fx:{tidy:1,pay:1,loner:1.5}},
+ {t:'Tattoo artist',b:'{n} runs a busy studio downtown and keeps a sketchbook of designs on every surface.',pros:['Pays above market','Social'],cons:['Late nights'],fx:{tol:.12,social:1,noise:.5}},
+ {t:'Hospital porter',b:'{n} works long shifts pushing beds and wheelchairs around a hospital and loves a quiet evening in.',pros:['Very reliable','Easy to please'],cons:['Small budget'],fx:{pay:1,base:4,tol:-.1}},
+ {t:'Gamer and streamer',b:'{n} streams video games eight hours a day and shouts at the screen when losing.',pros:['Always pays (sponsors)'],cons:['Noisy','Home all day, needs heat'],fx:{pay:1,noise:1,heat:1.5}},
+ {t:'Gardener',b:'{n} grows tomatoes on every windowsill and has strong views about sunlight.',pros:['Looks after the place','Stays long term'],cons:['Wants a room with a window'],fx:{tidy:1,stay:1,light:1.5}},
+ {t:'New nurse from abroad',b:'{n} just arrived to start a nursing job and is building a new life far from family.',pros:['Very reliable','Grateful for a good landlord'],cons:['Feels the cold here'],fx:{pay:1,base:3,warm:2}},
+ {t:'Uni rugby player',b:'{n} is enormous, friendly and eats six meals a day. The team comes round after matches.',pros:['Great with the neighbours'],cons:['Loud after matches','Might break things'],fx:{social:1.5,noise:1,tidy:-1}},
+ {t:'Translator',b:'{n} speaks five languages and translates contracts from home in total silence.',pros:['Silent','Pays on time'],cons:['Home all day, cares about heat'],fx:{pay:1,heat:1.4}},
+ {t:'Cleaner',b:'{n} cleans offices at night and keeps the room immaculate out of habit.',pros:['Leaves it spotless','Easy to please'],cons:['Tight budget'],fx:{tidy:1,base:3,tol:-.12}},
+ {t:'Wealthy heir',b:'{n} has never had a job and never needed one. Will pay over the odds for the best room in the house.',pros:['Pays far above market'],cons:['Very picky','Throws parties'],fx:{tol:.45,base:-6,noise:.8,furn:1.5}},
+ {t:'Taxi driver',b:'{n} drives the night shift and knows every street in the city. Chatty, kind and always cold.',pros:['Out all night','Friendly'],cons:['Likes it warm'],fx:{social:1,warm:2}},
+ {t:'Marine biologist',b:'{n} is on a two-year research contract at the aquarium and spends weekends diving.',pros:['Stays for the contract','Tidy'],cons:['Picky about damp and cold'],fx:{tidy:1,stay:1,heat:1.2}},
+ {t:'Comedian',b:'{n} performs stand-up five nights a week and tests new material on whoever is in the kitchen.',pros:['Social, cheers everyone up'],cons:['Irregular income'],fx:{social:1.5,pay:-1,base:3}},
+];
+
+const $q=s=>document.querySelector(s);
+const ES=()=>G.estates||(G.estates=[]);
+const rngOf=seed=>{let s=(seed>>>0)||1;return()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296}};
+const pickR=(r,a)=>a[Math.floor(r()*a.length)%a.length];
+const RI=()=>Math.max(.25,Math.min(3,((typeof infl==='function'?infl():1))));
+
+// =====================================================================================================
+// 1. HOMES: small and medium houses in towns and the countryside; mansions and (more) apartment blocks in cities
+// =====================================================================================================
+const RES_N={small:'Small house',medium:'Medium house',mansion:'Mansion',apt:'Apartment block'};
+const RES_D={small:'A modest family home. Room for a couple of lodgers.',medium:'A roomy terraced or detached house with several bedrooms.',mansion:'A grand townhouse with big, high-ceilinged rooms. Tenants pay a premium to live here.',apt:'A block of flats over several floors. Lots of rooms, lots of tenants.'};
+function isCityLot(lot){try{return coreness(lot.lat,lot.lon)>.3}catch(e){return false}}
+function resOf(lot){
+ if(!lot)return null;if(lot._res!==undefined)return lot._res;let r=null;
+ if(!lot.hidden&&!lot.landmark&&!lot.civic&&!lot.park&&!lot.kind&&!lot.landcell&&lot.zone&&lot.zone!=='lm'){
+  const h=hash2(lot.i|0,lot.zone.length,51),f=lot.floors||1,a=lot.area||0;
+  if(lot.house)r=a<120?'small':'medium';
+  else if(isCityLot(lot)){if(f>=4&&h<.3)r='apt';else if(f<=3&&a>=240&&h>.86)r='mansion'}
+  else{if(f<=2&&h<.38)r=a<110?'small':'medium';else if(f>=3&&h<.14)r='apt'}}
+ lot._res=r;if(r){const t=hash2(lot.i|0,77,lot.zone.length+3);lot._rest=r==='apt'?(t<.2?'sale':t<.65?'rooms':'occ'):(t<.42?'sale':t<.64?'rooms':'occ')}
+ return r}
+// homes only take over buildings that were simply occupied or for sale, so shops to lease and rival businesses are untouched
+const _ls=lotState;lotState=function(lot){const s=_ls(lot);if(!s||!lot)return s;if(s.st!=='occ'&&s.st!=='sale')return s;if(G&&G.ov&&G.ov[lot.key])return s;const r=resOf(lot);if(!r)return s;return lot._rs||(lot._rs={st:lot._rest,res:r})};
+GLOWC.rooms=new THREE.Color('#ff7ac8');
+const _gcf=glowColorFor;glowColorFor=function(lot){const c=_gcf(lot);if(c)return c;const st=lotState(lot);if(st&&st.st==='rooms'&&ui.show.rooms)return GLOWC.rooms;return null};
+const resLevels=lot=>{const r=resOf(lot)||'medium',f=lotFloors(lot)||1;return Math.max(1,Math.min(r==='small'?2:3,f))};
+const estRoomsGuess=lot=>{const r=resOf(lot)||'medium',w=r==='mansion'?5:r==='small'?3.4:3.8,side=Math.sqrt(lot.sqm/.42*.8),per=side>=7.2?Math.max(1,2*Math.round(side/w)-2):Math.max(1,Math.round(side/w)-1);return per*resLevels(lot)};
+const KIND_M={small:.92,medium:1,mansion:1.55,apt:1.05};
+function housePrice(lot){const E=econAt(lot.lat,lot.lon),r=resOf(lot);return Math.round(bldgValue(E,lot,lotFloors(lot))*(r==='mansion'?1.6:r==='small'?.85:1)/1000)*1000}
+function roomOffer(lot){const E=econAt(lot.lat,lot.lon),base=_grent(E,lot),sqm=clamp(Math.round(lot.sqm*.45),28,60);return{sqm,rent:Math.max(150,Math.round(base*sqm/Math.max(25,lot.sqm)*.85))}}
+
+// renting a room to run a small business from: the wizard and the site use the room's size and rent
+const _grent=groundRent;groundRent=function(E,lot){const w=ui.wiz;if(w&&w.room&&lot&&w.key===lot.key)return w.room.rent;return _grent(E,lot)};
+function withSqm(lot,sqm,fn){const o=lot.sqm;lot.sqm=sqm;try{return fn()}finally{lot.sqm=o}}
+const _mw=mWizard;mWizard=function(){const w=ui.wiz;if(!w||!w.room)return _mw();const lot=lotByKey(w.key);if(!lot)return _mw();return withSqm(lot,w.room.sqm,_mw).replace('What will this business be?','What will you run from this room?').replace('>Sign lease<','>Rent the room<')};
+const _ds=doSign;doSign=function(){const w=ui.wiz;if(!w||!w.room)return _ds();const lot=lotByKey(w.key);if(!lot)return _ds();const room=w.room,n0=G.sites.length;withSqm(lot,room.sqm,_ds);if(G.sites.length>n0){const s=G.sites[G.sites.length-1];s.room={sqm:room.sqm,rent:room.rent};save()}};
+const _ss=siteSqm;siteSqm=function(s,lot){return s&&s.room?s.room.sqm:_ss(s,lot)};
+const _ei=enterInterior;enterInterior=function(s){if(s&&s.room){const lot=siteLot(s);if(lot)return withSqm(lot,s.room.sqm,()=>_ei(s))}return _ei(s)};
+
+// =====================================================================================================
+// 2. EMPTY LAND: big green spaces become a grid of buildable plots; click one to put up a building in the local style
+// =====================================================================================================
+const CELL=24;
+function splitPark(L,toLL,tag){
+ try{if(!G)return null;if(propAtKey(L.key)||(G.ov&&G.ov[L.key]))return null}catch(e){return null}
+ if((L.area||0)<1100)return null;const P=L.poly;let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const q of P){x0=Math.min(x0,q[0]);y0=Math.min(y0,q[1]);x1=Math.max(x1,q[0]);y1=Math.max(y1,q[1])}
+ const gx=Math.floor(x0/CELL),gy=Math.floor(y0/CELL),out=[];
+ for(let i=gx;i*CELL<x1;i++)for(let j=gy;j*CELL<y1;j++){
+  const Q=clipHP(clipHP(clipHP(clipHP(P,1,0,i*CELL),-1,0,-(i+1)*CELL),0,1,j*CELL),0,-1,-(j+1)*CELL);if(Q.length<3)continue;const a=Math.abs(ringArea(Q));if(a<140)continue;
+  let cx=0,cy=0;for(const q of Q){cx+=q[0];cy+=q[1]}cx/=Q.length;cy/=Q.length;const[la,lo]=toLL(cx,cy),key=L.zone+'#'+tag+'.'+(i-gx)+'.'+(j-gy);
+  const c=Object.assign({},L);for(const k of['_tri','_gr','_lr','_res','_rs','_rest','ccx','ccy'])delete c[k];
+  Object.assign(c,{poly:Q,key,sid:tag+'.'+(i-gx)+'.'+(j-gy),i:hashStr(key)%100003,area:Math.round(a),sqm:Math.round(clamp(a*.42,25,320)),lat:la,lon:lo,cx,cy,init:{st:'plot'},hidden:false,split:false,landcell:true,num:L.num});
+  out.push(c)}
+ return out.length>1?out:null}
+window.splitPark=splitPark;
+// parks in generated towns go through the same split
+function splitChunkParks(ch){if(!ch||ch._split||!ch.lots)return ch;ch._split=1;const mx=(ch.cx+.5)*CHUNK,my=(ch.cy+.5)*CHUNK,add=[];
+ for(const L of ch.lots){if(!L.park||L.hidden||L.landcell||!L.sid)continue;const cs=splitPark(L,(x,y)=>unmerc(mx+x/ch.kc,my+y/ch.kc),L.sid);if(cs){L.hidden=true;L.split=true;for(const c of cs){add.push(c);ch.byId[c.sid]=c}}}
+ ch.lots.push(...add);return ch}
+if(typeof genChunk==='function'){const _g=genChunk;genChunk=function(){return splitChunkParks(_g.apply(this,arguments))}}
+try{for(const ch of CHUNKS.values())splitChunkParks(ch)}catch(e){}
+
+const TIERS=[['small','Small',2],['medium','Medium',5],['big','Big',12],['sky','Skyscraper',40]];
+function tierFloors(lot,k){const mf=maxFloors(lot);if(k==='sky')return mf>=25?Math.min(mf,Math.max(30,Math.round(mf*.85))):0;const f=TIERS.find(t=>t[0]===k)[2];return f<=mf?f:0}
+function tierCost(lot,f){const E=econAt(lot.lat,lot.lon),land=plotValue(E,lot),build=Math.round(lot.area*.8*f*buildCostSqm(E)*1.15/1000)*1000;return{land,build,total:land+build,down:Math.round(land*.4+build*.4),days:buildDays(f)}}
+function tierIcon(k){const h={small:16,medium:28,big:44,sky:62}[k],w={small:30,medium:26,big:24,sky:16}[k];let win='';for(let y=70-h+6;y<66;y+=7)for(let x=40-w/2+4;x<40+w/2-4;x+=6)win+=`<rect x="${x}" y="${y}" width="3" height="3.5" fill="rgba(255,240,190,.75)"/>`;
+ return`<svg viewBox="0 0 80 74" width="56" height="52" aria-hidden="true"><rect x="6" y="70" width="68" height="3" rx="1.5" fill="#4fd36a" opacity=".7"/><rect x="${40-w/2}" y="${70-h}" width="${w}" height="${h}" rx="2" fill="#cfd5dc"/>${k==='small'?`<path d="M${40-w/2-3} ${70-h} L40 ${70-h-10} L${40+w/2+3} ${70-h} Z" fill="#c4553c"/>`:''}${win}</svg>`}
+function buildBox(lot){
+ const E=econAt(lot.lat,lot.lon),mf=maxFloors(lot);
+ const cards=TIERS.map(([k,n])=>{const f=tierFloors(lot,k);if(!f)return`<div class="es-tier off">${tierIcon(k)}<b>${n}</b><small>${k==='sky'?'Not allowed here':'Too tall for this zone'}</small></div>`;
+  const c=tierCost(lot,f),can=G.cash>=c.total,loan=!can&&G.cash>=c.down;
+  return`<div class="es-tier">${tierIcon(k)}<b>${n}</b><small>${f} storeys · ${c.days} days</small><span class="mono">${big(c.total)}</span><button class="btn sm" data-act="esbuild" data-f="${f}" data-mort="0" ${can?'':'disabled'}>Build</button>${loan?`<button class="ghost sm" data-act="esbuild" data-f="${f}" data-mort="1">Loan · ${big(c.down)} down</button>`:''}</div>`}).join('');
+ return`<div class="box es-build"><p class="eyebrow">Build here</p><p class="muted" style="margin:0 0 10px">Empty land. Pick a size and the builders start straight away, in the same style as the rest of ${esc(E.place)}. Prices include the land. Zoning allows up to ${mf} storeys.</p><div class="es-tiers">${cards}</div></div>`}
+
+// green land grid you can see from the street, with the price of the plot under your cursor
+const LAND={m:new Map(),dirty:true,hov:null,hm:null,last:0};
+const FILLM=new THREE.MeshBasicMaterial({color:'#46d46c',transparent:true,opacity:.2,depthWrite:false,side:THREE.DoubleSide});
+const LINEM=new THREE.LineBasicMaterial({color:'#7cf59a',transparent:true,opacity:.8,depthWrite:false});
+const HOVM=new THREE.MeshBasicMaterial({color:'#b6ffc8',transparent:true,opacity:.36,depthWrite:false,side:THREE.DoubleSide});
+function landFill(R,y,P){let tris;try{tris=THREE.ShapeUtils.triangulateShape(R.map(p=>new THREE.Vector2(p[0],p[1])),[])}catch(e){return}for(const t of tris)for(const k of t){const q=R[k];P.push(q[0],y,-q[1])}}
+function landMeshes(L){const tl=toLocalOf(L),P=[],Ln=[];
+ for(const lot of lotsOf(L)){if(lot.hidden)continue;const st=lotState(lot);if(!st||st.st!=='plot')continue;const R=lot.poly.map(tl);if(R.length<3)continue;landFill(R,.46,P);for(let i=0;i<R.length;i++){const a=R[i],b=R[(i+1)%R.length];Ln.push(a[0],.5,-a[1],b[0],.5,-b[1])}}
+ if(!P.length)return null;const g1=new THREE.BufferGeometry();g1.setAttribute('position',new THREE.Float32BufferAttribute(P,3));const g2=new THREE.BufferGeometry();g2.setAttribute('position',new THREE.Float32BufferAttribute(Ln,3));
+ const f=new THREE.Mesh(g1,FILLM),l=new THREE.LineSegments(g2,LINEM);f.renderOrder=5;l.renderOrder=6;const grp=new THREE.Group();grp.add(f,l);return grp}
+function landTick(){
+ const on=!!(G&&ui.started&&ui.street&&!ui.interior&&ui.show.plot);
+ for(const[L,v]of[...LAND.m]){const live=[...LIVE.values()].includes(L);if(!on||!live||v.grp.parent!==L.grp||LAND.dirty||v.ver!==(L.meshes&&L.meshes[0]&&L.meshes[0].uuid)){if(v.grp.parent)v.grp.parent.remove(v.grp);v.grp.traverse(o=>{if(o.geometry)o.geometry.dispose()});LAND.m.delete(L)}}
+ if(!on){landHover(null);return}
+ for(const L of LIVE.values()){if(L.kind==='empty'||!L.grp||L.lod<1||LAND.m.has(L))continue;const grp=landMeshes(L);if(!grp){LAND.m.set(L,{grp:new THREE.Group(),ver:L.meshes&&L.meshes[0]&&L.meshes[0].uuid});continue}L.grp.add(grp);LAND.m.set(L,{grp,ver:L.meshes&&L.meshes[0]&&L.meshes[0].uuid})}
+ LAND.dirty=false}
+setInterval(()=>{try{landTick()}catch(e){console.warn(e)}},400);
+const _sls=setLotState;setLotState=function(lot,st){_sls(lot,st);LAND.dirty=true;if(lot)lot._rs=null};
+if(typeof recolorAll==='function'){const _rc=recolorAll;recolorAll=function(){LAND.dirty=true;return _rc.apply(this,arguments)}}
+const tip=document.createElement('div');tip.id='landtip';tip.hidden=true;document.body.appendChild(tip);
+function landHover(hit,x,y){
+ if(LAND.hm){if(LAND.hm.parent)LAND.hm.parent.remove(LAND.hm);LAND.hm.geometry.dispose();LAND.hm=null}
+ if(!hit){tip.hidden=true;LAND.hov=null;return}
+ const{lot,L}=hit;LAND.hov=lot;const P=[];landFill(lot.poly.map(toLocalOf(L)),.52,P);const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));LAND.hm=new THREE.Mesh(g,HOVM);LAND.hm.renderOrder=7;L.grp.add(LAND.hm);
+ const E=econAt(lot.lat,lot.lon);tip.innerHTML=`<b>${big(plotValue(E,lot))}</b><small>${lot.area} m² · click to build</small>`;tip.hidden=false;tip.style.left=(x+14)+'px';tip.style.top=(y+12)+'px'}
+let hovT=0;
+document.addEventListener('pointermove',e=>{
+ if(!(G&&ui.started&&ui.street&&!ui.interior&&ui.show.plot)||e.target.id!=='gl'||e.buttons){if(LAND.hov||!tip.hidden)landHover(null);return}
+ const now=performance.now();if(now-hovT<110){if(!tip.hidden){tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+12)+'px'}return}hovT=now;
+ try{raycaster.setFromCamera({x:e.clientX/innerWidth*2-1,y:-(e.clientY/innerHeight)*2+1},camera);const g=groundLot();
+  if(g&&lotState(g.lot).st==='plot'){let L=null;for(const l of LIVE.values())if(l.kind!=='empty'&&lotsOf(l).includes(g.lot)){L=l;break}if(L){if(LAND.hov!==g.lot)landHover({lot:g.lot,L},e.clientX,e.clientY);else{tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+12)+'px'}return}}
+  landHover(null)}catch(err){}},{passive:true});
+
+// =====================================================================================================
+// 3. LOT PANELS for homes and land
+// =====================================================================================================
+function resPanel(lot,st){
+ const E=econAt(lot.lat,lot.lon),r=resOf(lot),lv=resLevels(lot),rooms=estRoomsGuess(lot),mk=marketRentAt(lot,14,'tenant');
+ let act='';
+ if(st==='sale'){const v=housePrice(lot),dp=Math.round(v*.3);act=`<div class="box"><div class="price"><span class="mono">${big(v)}</span><small>asking price</small></div><p class="muted">Buy it and become a landlord: about ${rooms} rooms to let at around ${money(mk)}/month each. Or run your own business from it.</p><div class="btnrow"><button class="btn" data-act="esbuy" data-mort="0" ${G.cash<v?'disabled':''}>Buy outright</button><button class="btn ghost" data-act="esbuy" data-mort="1" ${G.cash<dp?'disabled':''}>Mortgage · ${big(dp)} down</button></div>${G.cash<dp?`<p class="warn">The 30% deposit is ${big(dp)}.</p>`:''}</div>`}
+ else if(st==='rooms'){const o=roomOffer(lot);act=`<div class="box"><div class="price"><span class="mono">${money(o.rent)}</span><small>per month for a ${o.sqm} m² room</small></div><p class="muted">The owner doesn't sell, but rents out rooms. Take one and run a small business from it. Two months' deposit (${money(o.rent*2)}) now.</p><button class="btn wide" data-act="esroom" ${G.cash<o.rent*2?'disabled':''}>Rent a room for a business</button></div>`}
+ else act=`<div class="box"><p class="muted">People live here. It isn't for sale and there are no rooms free right now.</p></div>`;
+ return`<div class="pad"><button class="ghost sm close" data-act="desel" aria-label="Close">✕</button><p class="eyebrow">${esc(E.place)}, ${esc(E.country)}</p><h2 class="h">${lot.num} ${esc(lot.street)}</h2><span class="pill es-kind">${RES_N[r]}</span>
+ <dl class="kv"><dt>Home</dt><dd>${esc(RES_D[r])}</dd><dt>Size</dt><dd class="mono">${lot.sqm} m² a floor · ${lv} floor${lv>1?'s':''} · about ${rooms} rooms</dd><dt>Local room rent</dt><dd class="mono">≈${money(mk)}/month (14 m²)</dd></dl>${act}</div>`}
+function ownedHomeBox(lot,p){const r=resOf(lot)||'medium',E2=ES().find(e=>e.key===lot.key);
+ if(E2){const let_=Object.values(E2.rooms).filter(x=>x.tenant).length,tot=Object.keys(E2.rooms).length||'?';return`<div class="box mine es-own"><p><b>Landlord · ${esc(E2.name)}</b><br>${let_} of ${tot} rooms let · ${money(estIncome(E2))}/day in rent</p><button class="btn" data-act="esopen" data-id="${E2.id}">Manage rooms</button></div>`}
+ return`<div class="box mine es-own"><p><b>Your ${RES_N[r].toLowerCase()}</b><br>Turn it into rented rooms: about ${estRoomsGuess(lot)} rooms, each with its own tenant. Furnish them, heat them and set the rent.</p><button class="btn" data-act="esstart">Become a landlord</button></div>`}
+const _lp=lotPanel;lotPanel=function(lot){
+ const p=propAtKey(lot.key),st=lotState(lot).st,r=resOf(lot);
+ if(st==='plot'&&!p){const h=_lp(lot),k=h.indexOf('<div class="box">');return k<0?h+buildBox(lot):h.slice(0,k)+buildBox(lot)+h.slice(k)}
+ if(r&&p&&!(p.build&&!p.built)&&!siteAtKey(lot.key)){const h=_lp(lot),k=h.indexOf('<div class="box');return k<0?h+ownedHomeBox(lot,p):h.slice(0,k)+ownedHomeBox(lot,p)+h.slice(k)}
+ if(r&&!p&&(st==='sale'||st==='rooms'||st==='occ'))return resPanel(lot,st);
+ return _lp(lot)};
+
+// =====================================================================================================
+// 4. LANDLORD: rooms, tenants, heat
+// =====================================================================================================
+Object.defineProperty(BIZ,'landlord',{value:{n:'Landlord',cat:'home',equip:[{id:'heater',n:'Heater',c:350}],roles:[],groups:{back:'Rooms',front:'Hall'},ownerCap:{back:0,front:0},products:[],blurb:'Rooms to let.'},enumerable:false,configurable:true});
+FLOORS.landlord=['#c99a68','#c19160'];
+IMODELS.heater={w:.9,d:.14,zone:'wall',b(g){ibox(g,0,.035,.44,.03,.14,.72,WHITE2);for(let i=0;i<9;i++)ibox(g,-.38+i*.095,.0,.032,.02,.16,.7,IC('#e6e6e1'));ibox(g,.44,.03,.02,.02,.06,.2,CHROME);ibox(g,-.44,.03,.02,.02,.06,.2,CHROME);ibox(g,.44,.0,.026,.026,.64,.71,IC('#d23c2c'))}};
+const heaterCost=E=>Math.round(clamp(350*((E.rent||30)/30),150,700)/10)*10;
+const furnCost=(E,a)=>Math.round(clamp(a*60*((E.rent||30)/30),450,5000)/10)*10;
+function marketRentAt(lot,area,furn){const E=econAt(lot.lat,lot.lon);return Math.round(E.rent*1.1*area*(KIND_M[resOf(lot)]||1)*(furn==='landlord'?1.15:.92)*RI())}
+function marketRent(E,area,furn){return Math.round((E.rent||30)*1.1*area*(KIND_M[E.kind]||1)*(furn==='landlord'?1.15:.92)*RI())}
+const lvName=l=>l===0?'Ground floor':l===1?'1st floor':l===2?'2nd floor':l+'th floor';
+function estIncome(E){let s=0;for(const k in E.rooms){const R=E.rooms[k];if(R.tenant)s+=R.rent/30}return s}
+function countryCode(E){const n=(E.country||'').toLowerCase();for(const c in ES_COUNTRIES)if(ES_COUNTRIES[c].n.toLowerCase()===n)return c;if(/kingdom|england|scotland|wales/.test(n))return'GB';if(/united states|usa/.test(n))return'US';return null}
+// a tenant: name, flag, personality, pros and cons, a look for their 3D figure, and how much they'll pay
+function mkTenant(E,market,seed){
+ const r=rngOf(seed),home=countryCode(E),codes=Object.keys(ES_COUNTRIES),cc=home&&r()<.5?home:pickR(r,codes),C=ES_COUNTRIES[cc],tp=ES_TYPES[Math.floor(r()*ES_TYPES.length)];
+ const fem=r()<.5,first=pickR(r,fem?C.f:C.m),last=pickR(r,C.s),name=first+' '+last;
+ const old=/Retired|Elderly|widow/i.test(tp.t),young=/student|Backpacker|Uni |Exchange/i.test(tp.t),age=old?62+Math.floor(r()*20):young?19+Math.floor(r()*7):23+Math.floor(r()*30);
+ const look={shirt:pickR(r,['#c8463a','#2f6fa8','#3bb273','#f2c230','#7b5ea7','#e07a2c','#2b2e33','#e8e4d8','#d84a8a','#4f7a62']),skin:pickR(r,SKINS),hair:old?pickR(r,['#9a9da3','#d8d8d8','#c9b28a']):pickR(r,HAIRS),pants:pickR(r,PANTS),hs:Math.floor(r()*3),g:fem?.9:.1,wt:+(r()*r()).toFixed(1)};
+ const fx=tp.fx,max=Math.round(market*(1+(fx.tol||0))*(.92+r()*.22));
+ return{id:'t'+seed.toString(36),seed,name,first,cc,age,type:tp.t,blurb:tp.b.replace(/\{n\}/g,first),pros:tp.pros,cons:tp.cons,fx,look,max,h:66,since:null}}
+function genApps(E,id,R,d){
+ const m=marketRent(E,d.area,R.furn),p=R.rent/m;let n=p<=1.05?3:p<=1.2?2:p<=1.38?1:0;if(n>1&&Math.random()<.25)n--;
+ const out=[];let g=0;while(out.length<n&&g++<24){const t=mkTenant(E,m,(Math.random()*4294967295)>>>0);if(t.max>=R.rent*.98)out.push(t)}
+ R.apps=out;R.appsDay=G.day+2}
+function newRoom(E,d){const R={rent:marketRent(E,d.area,'tenant'),furn:'tenant',tenant:null,apps:null,appsDay:0,vac:G.day};return R}
+// ---- temperature ----
+function outsideTemp(lat){const L=Math.abs(lat||45),mean=28-.33*L,amp=2+.1*L,doy=(((G?G.day:0)%360)+360)%360;return mean+amp*Math.cos((doy-200)/360*2*Math.PI)*((lat||45)>=0?1:-1)}
+function heatersIn(E,l,d){const out=[],[x0,z0,x1,z1]=d.rect;for(const it of E.layout||[]){if(it.id!=='heater'||(it.l||0)!==l)continue;if(it.x<x0-.3||it.x>x1+.3||it.z<z0-.3||it.z>z1+.3)continue;
+  let eff=1;for(const w of d.wins||[])if(Math.hypot(w[0]-it.x,w[1]-it.z)<1.3){eff=1.25;break}if(d.door&&Math.hypot(d.door[0]-it.x,d.door[1]-it.z)<1.1)eff*=.8;out.push({it,eff})}return out}
+function roomTemp(E,l,d){const out=outsideTemp(E.lat),base=.45*out+9.6-.9*(d.wins?d.wins.length:0)-.6*(d.ext||0)+(l>0?.6:0);let add=0;for(const h of heatersIn(E,l,d))add+=6.2*h.eff;add*=Math.min(1.3,Math.sqrt(12/Math.max(6,d.area)));return Math.round((add?Math.min(base+add,Math.max(base,25.5)):base)*10)/10}
+const comfort=t=>{const fx=t?t.fx:{};return[19+(fx.warm||0)-(fx.cool||0),23+(fx.warm||0)-(fx.cool||0)]};
+// ---- happiness: every factor is shown to the player ----
+function happyParts(E,id,R,d){const t=R.tenant,fx=t.fx,l=+id.split(':')[0],temp=roomTemp(E,l,d),[lo,hi]=comfort(t),parts=[];
+ parts.push(['Mood',58+(fx.base||0)]);
+ parts.push(['Furnishing',R.furn==='landlord'?Math.round(12*(fx.furn||1)):-Math.round(3*(fx.furn||1))]);
+ const dev=temp<lo?lo-temp:temp>hi?temp-hi:0;parts.push([temp<lo?'Too cold':temp>hi?'Too hot':'Temperature',dev?-Math.round(Math.min(34,dev*4.5*(fx.heat||1))):4]);
+ parts.push(['Room size',Math.round(clamp((d.area-12)*.8,-8,10))]);
+ parts.push(['Daylight',d.wins&&d.wins.length?Math.round(2+2*(fx.light||0)):-Math.round(6*(fx.light||1))]);
+ const q=R.rent/t.max;parts.push(['Rent',q>1?-Math.round(55*(q-1)+6):q<.85?Math.round((.85-q)*40):0]);
+ const others=[];for(const k in E.rooms){const o=E.rooms[k].tenant;if(o&&o!==t&&+k.split(':')[0]===l)others.push(o)}
+ const noise=others.reduce((a,o)=>a+(o.fx.noise||0),0);let nb=-noise*5*(fx.loner?1.6:1)*(fx.noise?.4:1);if(fx.social)nb+=Math.min(6,others.length*2)*fx.social;if(fx.loner&&others.length>=3)nb-=4*fx.loner;parts.push(['Neighbours',Math.round(nb)]);
+ return{parts,temp,lo,hi,target:clamp(parts.reduce((a,p)=>a+p[1],0),0,100)}}
+// ---- the daily round: rent in, moods move, people leave, applicants come ----
+function estDay(){
+ if(!G||!G.estates)return;for(const E of G.estates){if(!E.defs)continue;let inc=0;
+  for(const id in E.rooms){const R=E.rooms[id],k=+id.split(':')[1],d=E.defs.find(x=>x.k===k);if(!d)continue;
+   if(R.tenant){const t=R.tenant,hp=happyParts(E,id,R,d);t.h=Math.round((t.h+(hp.target-t.h)*.3)*10)/10;
+    if(!(t.fx.pay<0&&Math.random()<.07))inc+=R.rent/30;else t.late=(t.late||0)+1;
+    let leave=t.h<22?.3:t.h<35?.12:t.h<45?.025:0;if(t.fx.stay>0)leave*=.5;if(t.fx.stay<0)leave+=.02;
+    if(Math.random()<leave){const worst=hp.parts.filter(p=>p[0]!=='Mood').sort((a,b)=>a[1]-b[1])[0];const why=worst&&worst[1]<0?worst[0].toLowerCase():'wanted a change';
+     const dmg=t.fx.tidy<0?Math.round(R.rent*.4):0;if(dmg)G.cash-=dmg;
+     R.tenant=null;R.vac=G.day;R.apps=null;R.appsDay=0;news(`${t.name} moved out of room ${k+1} at ${E.name} (${why})${dmg?', leaving '+money(dmg)+' of damage':''}`,'warn');toast(`${t.first} moved out of room ${k+1}: ${why}`,'warn')}}
+   else if(!R.apps||G.day>=R.appsDay)genApps(E,id,R,d)}
+  G.cash+=inc;E.last=inc;(E.hist||(E.hist=[])).push(Math.round(inc));if(E.hist.length>30)E.hist.shift()}
+ if(ESP.open)renderESP()}
+const _sd=simDay;simDay=function(){const r=_sd.apply(this,arguments);try{estDay()}catch(e){console.warn(e)}return r};
+
+// ---- interior: rooms laid out along a corridor, inside the building's real shape ----
+let EST_ENTER=null;
+function wallSpans(rm,horiz,c,a0,a1,gaps){ // a wall line clipped to the inside of the building, with door gaps
+ const out=[];let s=null;const ok=t=>{const x=horiz?t:c,z=horiz?c:t;if(!rmIn(rm,x,z,0))return false;for(const g of gaps)if(t>g[0]&&t<g[1])return false;return true};
+ for(let t=a0;t<=a1+1e-6;t+=.1){const v=ok(t);if(v&&s==null)s=t;if((!v||t+.1>a1)&&s!=null){const e=v?a1:t-.1;if(e-s>.15)out.push([s,e]);s=null}}return out}
+function estLayout(rm,E){
+ rm.parts=[];rm.blocks=[];rm.keep=[];rm.pz=0;rm.gap=null;rm.gapClear=null;rm.wc=null;rm.homeFront=true;rm.allLv=true;
+ const W=rm.W,D=rm.D,cw=E.kind==='mansion'?5:E.kind==='small'?3.4:3.8,dx=(rm.door[0]+rm.door[2])/2,cells=[];let corr;
+ const bands=D>=7.2?[{z0:0,z1:D/2-.7,f:1},{z0:D/2+.7,z1:D,f:0}]:[{z0:1.5,z1:D,f:0}];corr=D>=7.2?[D/2-.7,D/2+.7]:[0,1.5];
+ for(const b of bands){const n=Math.max(1,Math.round(W/cw));for(let i=0;i<n;i++){const x0=W*i/n,x1=W*(i+1)/n;cells.push({x0,x1,z0:b.z0,z1:b.z1,f:b.f,first:i===0,last:i===n-1})}}
+ // the hall (front door) and the core (stairs and bathroom) are shared; everything else is a room
+ const fronts=cells.filter(c=>c.f),backs=cells.filter(c=>!c.f),near=(L)=>L.reduce((a,c)=>!a||Math.abs((c.x0+c.x1)/2-dx)<Math.abs((a.x0+a.x1)/2-dx)?c:a,null);
+ const hall=fronts.length?near(fronts):null;if(hall)hall.hall=1;const core=near(backs);if(core&&(backs.length>1||E.lvls.length>1))core.core=1;
+ // shrink each cell until it sits fully inside the building
+ for(const c of cells){for(let k=0;k<16;k++){const r=[c.x0+.06,c.z0+(c.f?0:.06),c.x1-.06,c.z1-(c.f?.06:0)];if(rectIn(rm,r,RT-.04)){c.ok=1;break}if(c.f)c.z0+=.3;else c.z1-=.3;if(c.first)c.x0+=.25;if(c.last)c.x1-=.25;if((c.x1-c.x0)*(c.z1-c.z0)<6)break}
+  c.area=(c.x1-c.x0)*(c.z1-c.z0)}
+ const keep=cells.filter(c=>c.ok&&c.area>=6),walls=[],doors=[];
+ // corridor walls with a door into every room (the hall is open)
+ for(const b of bands){const z=b.f?b.z1:b.z0,gaps=[];for(const c of keep){if(c.f!==b.f)continue;const m=(c.x0+c.x1)/2;if(c.hall)gaps.push([c.x0+.25,c.x1-.25]);else{gaps.push([m-.45,m+.45]);doors.push({x:m,z,f:c.f,c})}}
+  for(const[s,e]of wallSpans(rm,true,z,-.2,W+.2,gaps))walls.push([s-.02,z-.05,e+.02,z+.05])}
+ // walls between neighbouring cells
+ for(let i=0;i<cells.length-1;i++){const a=cells[i],b=cells[i+1];if(a.f!==b.f)continue;const x=a.x1,z0=Math.min(a.z0,b.z0),z1=Math.max(a.z1,b.z1);for(const[s,e]of wallSpans(rm,false,x,z0,z1,[]))walls.push([x-.05,s,x+.05,e])}
+ rm.eparts=walls;rm.blocks=walls.slice();rm.edoors=doors;rm.ehall=hall&&hall.ok?hall:null;rm.ecore=core&&core.ok?core:null;rm.ecorr=corr;
+ rm.erooms=keep.filter(c=>!c.hall&&!c.core).map((c,k)=>({k,rect:[c.x0,c.z0,c.x1,c.z1],area:c.area,f:c.f,door:doors.find(d=>d.c===c)?[doors.find(d=>d.c===c).x,doors.find(d=>d.c===c).z]:null}));
+ if(rm.ecore&&E.lvls.length>1){const c=rm.ecore,dep=c.z1-c.z0;if(dep>=1.9&&c.x1-c.x0>=1.6)rm.stair=[c.x0+.12,c.z0+.15,c.x0+1.32,c.z1-.15]}
+}
+const _iro=interiorRoomOf;interiorRoomOf=function(lot,L){const rm=_iro(lot,L);if(EST_ENTER)estLayout(rm,EST_ENTER);return rm};
+const _rf=roomFaces;roomFaces=function(rm,lv){const F=_rf(rm,lv);if(rm&&rm.eparts)for(const w of rm.eparts){const lx=w[2]-w[0],lz=w[3]-w[1];if(lx>=lz)F.push({a:[w[0],w[1]],d:[1,0],n:[0,-1],len:lx,inset:0},{a:[w[0],w[3]],d:[1,0],n:[0,1],len:lx,inset:0});else F.push({a:[w[0],w[1]],d:[0,1],n:[-1,0],len:lz,inset:0},{a:[w[2],w[1]],d:[0,1],n:[1,0],len:lz,inset:0})}return F};
+const _iv=iValid;iValid=function(rm,layout,it,skip){if(!_iv(rm,layout,it,skip))return false;if(rm&&rm.eparts&&it.l){const r=iRect(it);for(const w of rm.eparts)if(iOverlap(r,w))return false}return true};
+function estSite(E){if(E._s)return E._s;const s={id:E.id,estate:E,name:E.name,key:E.key,lat:E.lat,lon:E.lon,p:{rent:E.rent,place:E.place,country:E.country,style:E.style},type:'landlord',status:'setup',tenure:'own',equip:E.equip,layout:E.layout,staff:[],ownerRole:null,inv:{},use:{},prices:{},hist:[],last:null,rep:50,lv:{},auto:false,days:3,rent:0,deposit:0,paid:0};
+ for(const l of E.lvls)if(l>0)s.lv[l]={use:'sales'};Object.defineProperty(E,'_s',{value:s,writable:true,enumerable:false,configurable:true});return s}
+const _sv=save;save=function(){try{for(const E of G.estates||[])if(E._s){E.layout=E._s.layout;E.equip=E._s.equip}}catch(e){}return _sv.apply(this,arguments)};
+function estStart(lot){
+ if(ES().some(e=>e.key===lot.key))return;const E0=econAt(lot.lat,lot.lon),r=resOf(lot)||'medium',lv=resLevels(lot),lvls=[];for(let i=0;i<lv;i++)lvls.push(i);
+ const E={id:'e'+(G.seq++),key:lot.key,name:`${lot.num} ${lot.street}`.trim(),kind:r,lat:lot.lat,lon:lot.lon,place:E0.place,country:E0.country,rent:E0.rent,style:E0.style,lvls,layout:[],equip:{heater:0},rooms:{},defs:null,made:G.day,hist:[]};
+ ES().push(E);news(`${G.company||'You'} turned ${E.name} into rented rooms`,'');save();estEnter(E)}
+function estEnter(E){
+ const lot=lotByKey(E.key);if(!lot){toast('Fly to the building first','warn');return}
+ if(!liveFor(lot)){flyTo(lot.lat,lot.lon,Math.min(CAM.dist,420),()=>setTimeout(()=>estEnter(E),900));return}
+ const s=estSite(E);s.layout=E.layout;s.equip=E.equip;ui.site=null;$q('#right').hidden=true;
+ EST_ENTER=E;try{enterInterior(s)}finally{EST_ENTER=null}
+ if(!IN||IN.site!==s)return;IN.estate=E;const rm=IN.rm;
+ E.defs=rm.erooms.map(r=>{const o=(E.defs||[]).find(x=>x.k===r.k)||{};return Object.assign(o,{k:r.k,rect:r.rect.map(v=>+v.toFixed(2)),area:+r.area.toFixed(1),door:r.door,f:r.f})});
+ for(const l of E.lvls)for(const d of E.defs){const id=l+':'+d.k;if(!E.rooms[id]){E.rooms[id]=newRoom(E,d)}}
+ for(const id of Object.keys(E.rooms)){const k=+id.split(':')[1];if(!E.defs.some(d=>d.k===k))delete E.rooms[id]}
+ estMeasure();for(const id in E.rooms){const R=E.rooms[id],d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!R.tenant&&!R.apps)genApps(E,id,R,d)}
+ ESP.open=true;ESP.sel=null;estDraw();renderESP();renderInteriorBar();save()}
+// windows and outside walls of every room, measured from the shell (they decide how cold a room gets)
+function estMeasure(){const E=IN.estate,rm=IN.rm;if(!E||!rm.edges)return;
+ for(const d of E.defs){const[x0,z0,x1,z1]=d.rect,wins=[];let ext=0;
+  for(const e of rm.edges){for(const w of e.win||[]){const c=(w[0]+w[1])/2,px=e.a[0]+e.d[0]*c+e.n[0]*(RT+.2),pz=e.a[1]+e.d[1]*c+e.n[1]*(RT+.2);if(px>=x0-.1&&px<=x1+.1&&pz>=z0-.1&&pz<=z1+.1)wins.push([+px.toFixed(2),+pz.toFixed(2)])}}
+  for(const[mx,mz]of[[(x0+x1)/2,z0],[(x0+x1)/2,z1],[x0,(z0+z1)/2],[x1,(z0+z1)/2]]){let near=false;const P=rm.poly;for(let i=0;i<P.length;i++)if(segD(mx,mz,P[i],P[(i+1)%P.length])<RT+.35){near=true;break}if(near)ext++}
+  d.wins=wins;d.ext=ext}}
+// ---- drawing the rooms ----
+const OVM={vac:new THREE.MeshBasicMaterial({color:'#3ddc84',transparent:true,opacity:.2,depthWrite:false}),sel:new THREE.MeshBasicMaterial({color:'#ffde00',transparent:true,opacity:.2,depthWrite:false}),occ:new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:.05,depthWrite:false})};
+const EDGEM=new THREE.LineBasicMaterial({color:'#9df5b8',transparent:true,opacity:.8});
+function heatColor(t){const st=[[12,'#3b6bff'],[16,'#39c4ff'],[19.5,'#43d17a'],[23,'#f2d23a'],[26,'#ff5a3c']];if(t<=st[0][0])return st[0][1];for(let i=1;i<st.length;i++)if(t<=st[i][0]){const a=new THREE.Color(st[i-1][1]),b=new THREE.Color(st[i][1]);return'#'+a.lerp(b,(t-st[i-1][0])/(st[i][0]-st[i-1][0])).getHexString()}return st[st.length-1][1]}
+function labelSprite(text,col,big_){const c=document.createElement('canvas');c.width=256;c.height=128;const x=c.getContext('2d');x.font=`800 ${big_?96:56}px system-ui,sans-serif`;x.textAlign='center';x.textBaseline='middle';x.lineWidth=10;x.strokeStyle='rgba(0,0,0,.35)';x.strokeText(text,128,66);x.fillStyle=col||'rgba(255,255,255,.92)';x.fillText(text,128,66);
+ const t=new THREE.CanvasTexture(c);const m=new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false,depthTest:false});const s=new THREE.Sprite(m);s.scale.set(1.6,.8,1);s.renderOrder=9;return s}
+function furnish(g,d,R,seed){const[x0,z0,x1,z1]=d.rect,r=rngOf(seed),far=d.f?z0:z1,sg=d.f?1:-1,w=x1-x0,cx=(x0+x1)/2;
+ const duv=IC(pickR(r,['#4f7cc9','#c8463a','#3bb273','#e8e4d8','#7b5ea7','#f2c230','#2f6fa8'])),wood=IC('#a8733f');
+ if(R.furn==='landlord'){const bx=x0+Math.min(1.1,w*.32);// bed against the far wall, wardrobe, desk, rug, lamp
+  ibox(g,bx,far+sg*1.05,.75,1.0,0,.32,IC('#6e4a2c'));ibox(g,bx,far+sg*1.05,.72,.96,.32,.5,WHITE2);ibox(g,bx,far+sg*1.25,.73,.78,.5,.6,duv);ibox(g,bx,far+sg*.32,.5,.16,.5,.62,IC('#f4f2ec'));ibox(g,bx,far+sg*.08,.78,.06,0,1.0,IC('#6e4a2c'));
+  if(w>2.6){ibox(g,x1-.35,far+sg*.32,.3,.28,0,1.9,wood);ibox(g,x1-.35,far+sg*.6,.005,.005,.9,1.1,CHROME)}
+  const dz=(d.f?z1:z0)-sg*.45;if(w>2.4){ibox(g,x1-.55,dz-sg*.2,.45,.28,.72,.76,wood);ibox(g,x1-.55,dz-sg*.2,.42,.25,0,.72,tint(wood,.8));ibox(g,x1-.55,dz+sg*.25,.2,.2,0,.46,IC('#2b2e33'))}
+  ibox(g,cx+.2,(z0+z1)/2,Math.min(.9,w*.3),.7,0,.012,IC(pickR(r,['#c9a06a','#8d4a5e','#3f6b57','#d9cfb8'])));cyl(g,x0+.25,far+sg*.25,.12,0,.05,BLACK,8);ibox(g,x0+.25,far+sg*.25,.015,.015,.05,1.4,BLACK);cyl(g,x0+.25,far+sg*.25,.16,1.4,1.62,IC('#fff3c4'),8)}
+ else{// the tenant's own stuff: a mattress, boxes, a clothes rail
+  ibox(g,x0+.8,far+sg*1.0,.7,.95,0,.22,IC('#e8e4d8'));ibox(g,x0+.8,far+sg*1.15,.68,.78,.22,.3,duv);for(let i=0;i<3;i++)ibox(g,x1-.4-i*.05,far+sg*(.35+i*.5),.25,.22,0,.4+.05*i,IC(i%2?'#c9a06a':'#b9926a'));
+  ibox(g,cx,(d.f?z1:z0)-sg*.4,.5,.03,1.55,1.58,CHROME);for(let i=0;i<5;i++)ibox(g,cx-.4+i*.2,(d.f?z1:z0)-sg*.4,.06,.18,.85,1.5,PC(i+(seed%5)))}}
+function estDraw(){
+ if(!IN||!IN.estate)return;const E=IN.estate,rm=IN.rm,lv=IN.lv||0;
+ if(IN.eg){IN.grp.remove(IN.eg);IN.eg.traverse(o=>{if(o.geometry&&!o.userData.shared)o.geometry.dispose();if(o.material&&o.material.map)o.material.map.dispose()})}
+ const grp=new THREE.Group(),g=new GB(),wall=IC('#f2ece2'),cap=IC('#fbfaf7'),frc=IC('#f4f2ec'),leaf=IC('#8a5a36');
+ for(const w of rm.eparts)icube(g,w[0],0,w[1],w[2],2.85,w[3],wall,cap);
+ for(const d of rm.edoors){const x=d.x;icube(g,x-.45,2.1,d.z-.05,x+.45,2.85,d.z+.05,wall,cap);icube(g,x-.43,0,d.z-.025,x+.43,2.08,d.z+.025,leaf);for(const sx of[-1,1])icube(g,x+sx*.47-.03,0,d.z-.07,x+sx*.47+.03,2.14,d.z+.07,frc);icube(g,x-.5,2.08,d.z-.07,x+.5,2.14,d.z+.07,frc);icube(g,x+.3,1.0,d.z-.06,x+.36,1.04,d.z+.06,CHROME)}
+ // shared bathroom in the core
+ if(rm.ecore){const c=rm.ecore,bx=rm.stair?c.x0+1.5:c.x0+.2;for(let x=bx;x<c.x1-.01;x+=.3)for(let z=c.z0;z<c.z1-.01;z+=.3)icube(g,x,0,z,Math.min(c.x1,x+.3),.006,Math.min(c.z1,z+.3),IC(((Math.round(x/.3)+Math.round(z/.3))&1)?'#e9eef0':'#d3dce1'));
+  if(c.x1-bx>1.2){const tz=c.f?c.z0:c.z1,sg=c.f?1:-1;ibox(g,c.x1-.45,tz+sg*.11,.19,.09,.38,.82,WHITE2);ilathe(g,c.x1-.45,tz+sg*.45,[[.13,0],[.16,.22],[.2,.38],[.19,.4],[0,.39]],WHITE2,12);ibox(g,bx+.35,tz+sg*.3,.25,.2,.8,.88,WHITE2);ibox(g,bx+.35,tz+sg*.03,.27,.012,1.2,1.75,IC('#cfe3ea'));
+   if(c.z1-c.z0>2.2)ibox(g,c.x1-.5,(c.z0+c.z1)/2,.42,.42,0,.08,IC('#e4ecf0'))}}
+ const ids=Object.keys(E.rooms).filter(id=>+id.split(':')[0]===lv);
+ for(const id of ids){const R=E.rooms[id],d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!d)continue;if(R.tenant||R.furn==='landlord')furnish(g,d,R.tenant?R:Object.assign({},R),(R.tenant?R.tenant.seed:hashStr(id))>>>0)}
+ const m=new THREE.Mesh(g.geo(),BMAT);m.castShadow=true;m.receiveShadow=true;grp.add(m);
+ // room overlays: green when free, yellow when selected, coloured by temperature in heat view
+ for(const id of ids){const R=E.rooms[id],d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!d)continue;const[x0,z0,x1,z1]=d.rect,w=x1-x0-.12,dd=z1-z0-.12,cx=(x0+x1)/2,cz=(z0+z1)/2;
+  let mat;if(ESP.heat){const t=roomTemp(E,lv,d);mat=new THREE.MeshBasicMaterial({color:heatColor(t),transparent:true,opacity:.34,depthWrite:false})}else mat=ESP.sel===id?OVM.sel:R.tenant?OVM.occ:OVM.vac;
+  const h=ESP.heat?.06:2.7,box=new THREE.Mesh(new THREE.BoxGeometry(w,h,dd),mat);box.position.set(cx,h/2+.02,cz);box.renderOrder=4;box.userData.room=id;grp.add(box);
+  if(!R.tenant||ESP.sel===id||ESP.heat){const e=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w,ESP.heat?.06:2.7,dd)),ESP.sel===id?new THREE.LineBasicMaterial({color:'#ffe866'}):EDGEM);e.position.copy(box.position);e.renderOrder=5;grp.add(e)}
+  if(ESP.heat){const s=labelSprite(roomTemp(E,lv,d).toFixed(0)+'°',heatColor(roomTemp(E,lv,d)));s.position.set(cx,1.4,cz);grp.add(s)}
+  else if(!R.tenant){const s=labelSprite('$',null,true);s.scale.set(1.3,.65,1);s.position.set(cx,2.25,cz);grp.add(s)}}
+ // the tenants themselves, standing in their rooms
+ IN.etenants=[];for(const id of ids){const R=E.rooms[id];if(!R.tenant)continue;const d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!d)continue;const[x0,z0,x1,z1]=d.rect,p=makePerson(R.tenant.look);p.position.set(x0+(x1-x0)*.62,0,(z0+z1)/2+(d.f?.3:-.3));p.rotation.y=d.f?Math.PI:0;grp.add(p);IN.etenants.push({m:p,ph:(R.tenant.seed%100)/16})}
+ IN.eg=grp;IN.grp.add(grp)}
+const _rl=rebuildLevel;rebuildLevel=function(){_rl.apply(this,arguments);if(IN&&IN.estate){estMeasure();estDraw();renderESP()}};
+const _rbi=rebuildItems;rebuildItems=function(){_rbi.apply(this,arguments);if(IN&&IN.estate&&IN.eg){estDraw();if(ESP.open)renderESP()}};
+const _it=interiorTick;interiorTick=function(dt,now){_it(dt,now);if(IN&&IN.etenants){const T=now/1000;for(const p of IN.etenants)posePerson(p.m,'idle',T+p.ph)}};
+const _ir=interiorRefresh;interiorRefresh=function(){if(IN&&IN.site&&IN.site.estate){renderInteriorBar();estDraw();return}return _ir()};
+const _ex=exitInterior;exitInterior=function(q){const was=IN&&IN.estate;_ex(q);if(was){ESP.open=false;ESP.sel=null;renderESP()}};
+const _ic=interiorClick;interiorClick=function(x,y){if(!IN||!IN.site||!IN.site.estate||IN.placing)return _ic(x,y);
+ raycaster.setFromCamera({x:x/innerWidth*2-1,y:-(y/innerHeight)*2+1},camera);const hit=raycaster.intersectObjects(IN.items,false)[0];if(hit){startPlacing(null,hit.object.userData.idx);return true}
+ const h=roomHit(x,y);if(h){const E=IN.estate,lv=IN.lv||0;for(const id in E.rooms){if(+id.split(':')[0]!==lv)continue;const d=E.defs.find(z=>z.k===+id.split(':')[1]);if(!d)continue;const[x0,z0,x1,z1]=d.rect;if(h[0]>=x0&&h[0]<=x1&&h[1]>=z0&&h[1]<=z1){ESP.sel=id;ESP.open=true;estDraw();renderESP();return true}}}
+ return true};
+const _rib=renderInteriorBar;renderInteriorBar=function(){if(!IN||!IN.site||!IN.site.estate||IN.placing)return _rib();const el=$q('#ibar');if(!el)return;el.hidden=false;const E=IN.estate,s=IN.site;
+ const let_=Object.values(E.rooms).filter(r=>r.tenant).length,tot=Object.keys(E.rooms).length,st=storageOf(s).find(o=>o.e.id==='heater');
+ const chips=E.lvls.length>1?`<div class="ib-row" style="margin-bottom:8px;align-items:center"><span class="ib-k">Floors</span>${E.lvls.slice().reverse().map(l=>`<button class="${l===IN.lv?'btn':'ghost'} sm" data-act="eslv" data-id="${l}">${lvName(l)}</button>`).join('')}</div>`:'';
+ el.innerHTML=`${chips}<div class="ib-main"><span class="ib-t">${esc(E.name)} · ${let_}/${tot} rooms let · ${money(estIncome(E))}/day</span><span class="ib-k">Click a room to set its rent, furnish it, heat it or pick a tenant · outside it's ${outsideTemp(E.lat).toFixed(0)}°C</span></div>
+ <div class="ib-row"><button class="${ESP.heat?'btn':'ghost'} sm" data-act="esheat">Heat map</button><button class="ghost sm" data-act="esheater">Buy heater · ${money(heaterCost(E))}</button>${st?`<button class="btn sm" data-act="esplace">Place heater (${st.n})</button>`:''}<button class="ghost sm" data-act="espanel">Rooms</button><button class="ghost sm" data-act="iexit">Step outside</button></div>`};
+
+// ---- the landlord panel ----
+const ESP={open:false,sel:null,heat:false};
+const panel=document.createElement('aside');panel.id='elp';panel.className='panel';panel.hidden=true;document.body.appendChild(panel);
+const PH={r:null,sc:null,cam:null,mat:null,cache:new Map()};
+function tenantPhoto(t){const key=JSON.stringify(t.look);if(PH.cache.has(key))return PH.cache.get(key);let url='';
+ try{if(!PH.r){const c=document.createElement('canvas');c.width=200;c.height=240;PH.r=new THREE.WebGLRenderer({canvas:c,alpha:true,antialias:true,preserveDrawingBuffer:true});PH.r.setPixelRatio(1);PH.r.setSize(200,240,false);PH.sc=new THREE.Scene();PH.sc.add(new THREE.AmbientLight('#ffffff',.58));const dl=new THREE.DirectionalLight('#fff1dc',.95);dl.position.set(1.4,2.2,2.6);PH.sc.add(dl);PH.cam=new THREE.PerspectiveCamera(26,200/240,.1,20);PH.mat=new THREE.MeshLambertMaterial({vertexColors:true})}
+  const m=makePerson(t.look);m.traverse(o=>{if(o.isMesh)o.material=PH.mat});m.rotation.y=.42;posePerson(m,'idle',0);PH.sc.add(m);PH.cam.position.set(.15,1.42,2.35);PH.cam.lookAt(0,1.27,0);PH.r.setClearColor(0,0);PH.r.render(PH.sc,PH.cam);url=PH.r.domElement.toDataURL('image/png');PH.sc.remove(m)}catch(e){url=''}
+ PH.cache.set(key,url);return url}
+function photoHTML(t,big_){const u=tenantPhoto(t);return`<div class="es-photo${big_?' big':''}"><svg viewBox="0 0 200 240" aria-hidden="true">${pFlagBg()}</svg>${u?`<img src="${u}" alt="">`:personSVG('staff',t.seed||1).replace(/<svg[^>]*>/,'<svg viewBox="0 0 200 240" class="es-svgp">')}</div>`}
+function tenantCard(t,act){return`<div class="es-card">${photoHTML(t)}<div class="es-info"><div class="es-nm">${esFlag(t.cc)}<b>${esc(t.name)}</b><small>${t.age} · ${esc(ES_COUNTRIES[t.cc].n)}</small></div><p class="es-type">${esc(t.type)}</p><p class="es-blurb">${esc(t.blurb)}</p>
+ <ul class="es-pc">${t.pros.map(p=>`<li class="up">+ ${esc(p)}</li>`).join('')}${t.cons.map(p=>`<li class="down">− ${esc(p)}</li>`).join('')}</ul>${act||''}</div></div>`}
+function rentSlider(E,id,R,d){const m=marketRent(E,d.area,R.furn),lo=Math.round(m*.4),hi=Math.round(m*2.2),v=R.rent,q=v/m,cap=R.tenant?R.tenant.max:null;
+ const vd=R.tenant?(v>cap?['red','Over their limit',`${R.tenant.first} will pay at most ${money(cap)}. Above that they start looking for somewhere else.`]:v>cap*.9?['orange','Near their limit',`${R.tenant.first} will pay up to ${money(cap)}. You're close to it.`]:['green','Happy to pay',`${R.tenant.first} will pay up to ${money(cap)}. Lower rent makes them happier.`])
+  :q<=1.05?['green','Fair','Priced like other rooms nearby. Plenty of people will apply.']:q<=1.3?['orange','Pricey','Fewer people apply. Some will still pay it.']:['red','Too expensive','Hardly anyone will apply at this rent.'];
+ const pos=v=>((v-lo)/(hi-lo)*100).toFixed(1),trk=`linear-gradient(90deg,#3fbf6f 0%,#3fbf6f ${pos(m*1.05)}%,#f5a524 ${pos(m*1.05)}%,#f5a524 ${pos(m*1.3)}%,#e5484d ${pos(m*1.3)}%,#e5484d 100%)`;
+ return`<div class="psl es-rent" data-room="${id}"><div class="psl-top"><span class="mono es-rv">${money(v)}<small>/month</small></span><span class="psl-v ${vd[0]}"><i></i>${vd[1]}</span></div><div class="psl-wrap"><input type="range" class="esl-r" data-room="${id}" min="${lo}" max="${hi}" step="5" value="${v}" style="--trk:${trk}" aria-label="Rent for this room"><span class="psl-mk" style="left:${pos(m)}%" title="Local rent ${money(m)}"></span></div><div class="psl-scale"><span>${money(lo)}</span><span>local ${money(m)}</span><span>${money(hi)}</span></div><p class="psl-tip">${vd[2]}</p></div>`}
+function renderESP(){
+ const E=IN&&IN.estate;if(!ESP.open||!E){panel.hidden=true;return}panel.hidden=false;const top=panel.scrollTop;
+ const lv=IN.lv||0,tot=Object.keys(E.rooms).length,let_=Object.values(E.rooms).filter(r=>r.tenant).length,hs=Object.values(E.rooms).filter(r=>r.tenant).map(r=>r.tenant.h),avg=hs.length?hs.reduce((a,b)=>a+b,0)/hs.length:0;
+ let body='';
+ if(ESP.sel&&E.rooms[ESP.sel]){const id=ESP.sel,R=E.rooms[id],l=+id.split(':')[0],k=+id.split(':')[1],d=E.defs.find(x=>x.k===k),temp=roomTemp(E,l,d),hn=heatersIn(E,l,d),[clo,chi]=comfort(R.tenant),fc=furnCost(E,d.area);
+  body+=`<button class="link es-back" data-act="esback">← All rooms</button><h3 class="es-h">Room ${k+1} <small>${lvName(l)} · ${d.area.toFixed(0)} m² · ${d.wins&&d.wins.length?d.wins.length+' window'+(d.wins.length>1?'s':''):'no window'}</small></h3>
+  <div class="es-temp" style="--hc:${heatColor(temp)}"><b>${temp.toFixed(1)}°C</b><span>${temp<clo?'Cold':temp>chi?'Warm':'Comfortable'} · comfy is ${clo} to ${chi}°C${R.tenant?' for '+esc(R.tenant.first):''}</span></div>
+  <p class="fine">${hn.length?`${hn.length} heater${hn.length>1?'s':''} in here.${hn.some(h=>h.eff>1)?' One sits under a window, which works best.':' Put heaters under windows for the best effect.'}`:'No heaters. Outside walls and windows make a room colder.'} <button class="link" data-act="esheater" data-room="${id}">Add a heater (${money(heaterCost(E))})</button></p>
+  <p class="eyebrow" style="margin-top:12px">Furnishing</p><div class="seg es-seg"><button class="${R.furn==='landlord'?'on':''}" data-act="esfurn" data-v="landlord" data-room="${id}">Furnish it yourself${R.furn==='landlord'?'':' · '+money(fc)}</button><button class="${R.furn!=='landlord'?'on':''}" data-act="esfurn" data-v="tenant" data-room="${id}">Tenant brings their own</button></div>
+  <p class="fine">${R.furn==='landlord'?'Furnished rooms make tenants happier and they\'ll pay about 15% more.':'Cheaper for you, but tenants pay less and are a little less happy.'}</p>
+  <p class="eyebrow" style="margin-top:12px">Rent</p>${rentSlider(E,id,R,d)}`;
+  if(R.tenant){const t=R.tenant,hp=happyParts(E,id,R,d);body+=`<p class="eyebrow" style="margin-top:12px">Tenant</p>${tenantCard(t,'')}<div class="es-happy"><div class="es-hb"><i style="width:${t.h}%;background:${t.h>=60?'#3fbf6f':t.h>=40?'#f5a524':'#e5484d'}"></i></div><b>${Math.round(t.h)}% happy</b>${t.h<40?'<span class="down"> · thinking of leaving</span>':''}</div>
+   <ul class="es-parts">${hp.parts.filter(p=>p[0]!=='Mood').map(p=>`<li><span>${esc(p[0])}</span><b class="${p[1]>0?'up':p[1]<0?'down':''}">${p[1]>0?'+':''}${p[1]}</b></li>`).join('')}</ul>
+   <button class="ghost sm" data-act="esevict" data-room="${id}">${ui.confirm==='ev'+id?'Yes, ask them to leave':'Ask them to leave'}</button>`}
+  else{const apps=R.apps||[];body+=`<p class="eyebrow" style="margin-top:12px">Applicants</p>${apps.length?apps.map((t,i)=>tenantCard(t,`<div class="es-offer"><span>Will pay up to <b class="mono">${money(t.max)}</b>/mo</span><button class="btn sm" data-act="esaccept" data-room="${id}" data-i="${i}">Accept</button></div>`)).join(''):`<p class="muted">${R.rent>marketRent(E,d.area,R.furn)*1.3?'Nobody has applied: the rent is too high. Lower it and people will start applying.':'No applicants right now. New people apply every couple of days.'}</p>`}<p class="fine">New applicants ${Math.max(0,(R.appsDay||G.day)-G.day)?'in '+Math.max(0,R.appsDay-G.day)+' day'+(R.appsDay-G.day>1?'s':''):'tomorrow'}.</p>`}}
+ else{body+=`<div class="es-stats"><div><b>${let_}/${tot}</b><small>rooms let</small></div><div><b>${money(estIncome(E))}</b><small>rent a day</small></div><div><b>${hs.length?Math.round(avg)+'%':'—'}</b><small>happiness</small></div></div>
+  ${E.lvls.map(l=>{const ids=Object.keys(E.rooms).filter(id=>+id.split(':')[0]===l).sort((a,b)=>+a.split(':')[1]-+b.split(':')[1]);return`<p class="eyebrow" style="margin-top:12px">${lvName(l)}</p><div class="es-list">${ids.map(id=>{const R=E.rooms[id],k=+id.split(':')[1],d=E.defs.find(x=>x.k===k),t=roomTemp(E,l,d);
+   return`<button class="es-row" data-act="essel" data-room="${id}">${R.tenant?`<span class="es-av">${photoHTML(R.tenant)}</span>`:'<span class="es-av free">$</span>'}<span class="es-rt"><b>Room ${k+1}${R.tenant?' · '+esc(R.tenant.name):''}</b><small>${d.area.toFixed(0)} m² · ${money(R.rent)}/mo · <i style="color:${heatColor(t)}">${t.toFixed(0)}°C</i>${R.tenant?` · ${Math.round(R.tenant.h)}% happy`:(R.apps&&R.apps.length?` · ${R.apps.length} applicant${R.apps.length>1?'s':''}`:' · vacant')}</small></span></button>`}).join('')}</div>`}).join('')}`}
+ panel.innerHTML=`<div class="pad"><button class="ghost sm close" data-act="esclose" aria-label="Close">✕</button><p class="eyebrow">Landlord · ${esc(E.place)}</p><h2 class="h">${esc(E.name)}</h2><span class="pill es-kind">${RES_N[E.kind]||'Home'}</span>${body}</div>`;panel.scrollTop=top}
+
+// live rent slider
+document.addEventListener('input',e=>{const t=e.target;if(!t.classList||!t.classList.contains('esl-r')||!IN||!IN.estate)return;const E=IN.estate,R=E.rooms[t.dataset.room];if(!R)return;R.rent=+t.value;const box=t.closest('.es-rent');const rv=box&&box.querySelector('.es-rv');if(rv)rv.innerHTML=`${money(R.rent)}<small>/month</small>`});
+document.addEventListener('change',e=>{const t=e.target;if(!t.classList||!t.classList.contains('esl-r')||!IN||!IN.estate)return;const E=IN.estate,id=t.dataset.room,R=E.rooms[id];if(!R)return;const d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!R.tenant)genApps(E,id,R,d);renderESP();renderInteriorBar();save()});
+
+// actions
+document.addEventListener('click',e=>{const t=e.target.closest('[data-act]');if(!t)return;const a=t.dataset.act;if(!/^es/.test(a))return;
+ const lot=ui.selLot,E=IN&&IN.estate,id=t.dataset.room;
+ switch(a){
+  case 'esbuild':{if(!lot)break;const f=+t.dataset.f,mort=t.dataset.mort==='1',c=tierCost(lot,f);if(G.cash<(mort?c.down:c.total)){toast('Not enough cash','warn');break}buyLot(lot,mort,true);if(!propAtKey(lot.key))break;ui.floors=f;startBuild(c.build,mort);toast(`${f}-storey building under way. Ready in ${c.days} days.`,'good');break}
+  case 'esbuy':{if(!lot)break;const mort=t.dataset.mort==='1',v=housePrice(lot);buyLot(lot,mort,false,v);renderLeft();break}
+  case 'esroom':{if(!lot)break;ui.wiz={key:lot.key,mode:'lease',type:null,room:roomOffer(lot)};openModal('wizard');break}
+  case 'esstart':{if(!lot)break;estStart(lot);break}
+  case 'esopen':{const X=ES().find(x=>x.id===t.dataset.id);if(X)estEnter(X);break}
+  case 'esclose':ESP.open=false;ESP.sel=null;renderESP();if(IN&&IN.estate)estDraw();break;
+  case 'espanel':ESP.open=true;ESP.sel=null;renderESP();break;
+  case 'esback':ESP.sel=null;renderESP();estDraw();break;
+  case 'essel':ESP.sel=id;renderESP();estDraw();break;
+  case 'eslv':{const l=+t.dataset.id;setLevel(l);ESP.sel=null;renderInteriorBar();renderESP();break}
+  case 'esheat':ESP.heat=!ESP.heat;estDraw();renderInteriorBar();break;
+  case 'esheater':{if(!E)break;const c=heaterCost(E);if(G.cash<c){toast('Not enough cash','warn');break}G.cash-=c;E.equip.heater=(E.equip.heater||0)+1;IN.site.equip=E.equip;renderTop();startPlacing('heater',null);toast('Put the heater against a wall. Under a window works best.','');break}
+  case 'esplace':startPlacing('heater',null);break;
+  case 'esfurn':{if(!E)break;const R=E.rooms[id],v=t.dataset.v,d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!R||R.furn===v)break;if(v==='landlord'){const c=furnCost(E,d.area);if(G.cash<c){toast('Not enough cash to furnish it','warn');break}G.cash-=c;R.rent=Math.round(R.rent*1.15/5)*5;toast(`Room ${+id.split(':')[1]+1} furnished`,'good')}else{G.cash+=Math.round(furnCost(E,d.area)*.3);R.rent=Math.round(R.rent/1.15/5)*5;toast('Furniture sold for 30% of what it cost','')}R.furn=v;if(!R.tenant)genApps(E,id,R,d);estDraw();renderESP();renderTop();save();break}
+  case 'esaccept':{if(!E)break;const R=E.rooms[id],tn=R&&R.apps&&R.apps[+t.dataset.i];if(!tn)break;tn.since=G.day;tn.h=68;R.tenant=tn;R.apps=null;toast(`${tn.first} moves into room ${+id.split(':')[1]+1}`,'good');news(`${tn.name} rented a room at ${E.name}`,'');estDraw();renderESP();renderInteriorBar();save();break}
+  case 'esevict':{if(!E)break;if(ui.confirm!=='ev'+id){ui.confirm='ev'+id;renderESP();break}ui.confirm=null;const R=E.rooms[id];if(R&&R.tenant){toast(`${R.tenant.first} has moved out`,'');R.tenant=null;R.vac=G.day;R.apps=null;const d=E.defs.find(x=>x.k===+id.split(':')[1]);genApps(E,id,R,d)}estDraw();renderESP();renderInteriorBar();save();break}
+ }});
+
+const css=document.createElement('style');css.textContent=`
+#landtip{position:fixed;z-index:30;pointer-events:none;padding:7px 10px;border-radius:8px;background:rgba(20,22,26,.86);border:1px solid rgba(124,245,154,.45);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:#eafff0;font:600 13px/1.25 var(--f-body,system-ui);box-shadow:0 8px 22px rgba(0,0,0,.35)}
+#landtip b{display:block;font-size:15px;color:#9dffb5}#landtip small{color:rgba(234,255,240,.7);font-weight:500}
+.es-tiers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.es-tier{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 8px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);text-align:center}
+.es-tier b{font-size:13.5px}.es-tier small{color:var(--hb-mut,#9a9da5);font-size:11.5px}.es-tier .mono{font-weight:700;font-size:14px;margin:2px 0 4px}.es-tier.off{opacity:.45}.es-tier .btn,.es-tier .ghost{width:100%}
+.pill.es-kind{display:inline-block;margin:2px 0 8px;padding:3px 9px;border-radius:999px;background:rgba(255,122,200,.14);color:#ff9ad3;font:600 11.5px/1.2 var(--f-body,system-ui)}
+#elp{position:fixed;z-index:21;top:62px;right:14px;bottom:52px;width:min(390px,calc(100vw - 28px));overflow:auto;overscroll-behavior:contain}
+#elp .close{position:absolute;top:12px;right:12px}
+.es-h{font:700 17px/1.2 var(--f-body,system-ui);margin:6px 0 8px}.es-h small{display:block;font-weight:500;font-size:12px;color:var(--hb-mut,#9a9da5);margin-top:3px}
+.es-temp{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--hc) 16%,transparent);border:1px solid color-mix(in srgb,var(--hc) 45%,transparent)}.es-temp b{font-size:20px;color:var(--hc)}.es-temp span{font-size:12.5px;color:#d9dbe0}
+.es-seg{display:flex;gap:6px}.es-seg button{flex:1;padding:9px 8px!important;line-height:1.25!important;white-space:normal}.es-seg button.on{background:rgba(255,222,0,.16)!important;border-color:rgba(255,222,0,.5)!important;color:#ffe866!important}
+.es-rv{font-size:20px;font-weight:700}.es-rv small{font-size:12px;color:var(--hb-mut,#9a9da5);font-weight:500;margin-left:3px}
+.esl-r{-webkit-appearance:none;appearance:none;width:100%;height:10px;margin:0;border-radius:6px!important;background:var(--trk);outline:none;cursor:pointer;box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
+.esl-r::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:linear-gradient(180deg,#fff,#dcdcdc);border:2px solid #1b1c20;box-shadow:0 2px 8px rgba(0,0,0,.55);cursor:grab}
+.esl-r::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:linear-gradient(180deg,#fff,#dcdcdc);border:2px solid #1b1c20;cursor:grab}.esl-r::-moz-range-track{height:10px;border-radius:6px;background:var(--trk)}
+.es-card{display:grid;grid-template-columns:108px minmax(0,1fr);gap:12px;padding:10px;margin:8px 0;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
+.es-photo{position:relative;width:108px;height:130px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.16)}.es-photo>svg,.es-photo>img{position:absolute;inset:0;width:100%;height:100%;display:block}.es-photo img{object-fit:cover}
+.es-info{min-width:0}.es-nm{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.es-nm b{font-size:14.5px}.es-nm small{color:var(--hb-mut,#9a9da5);font-size:11.5px}.es-flag{border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.4);flex:none}
+.es-type{margin:3px 0 4px;color:#ffe866;font:600 12px/1.3 var(--f-body,system-ui)}.es-blurb{margin:0 0 6px;font-size:12.5px;line-height:1.45;color:#cfd1d6}
+.es-pc{list-style:none;margin:0 0 6px;padding:0;font-size:12px;line-height:1.5}.es-pc .up{color:#6fdc98}.es-pc .down{color:#ff8a7a}
+.es-offer{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:#cfd1d6;border-top:1px solid rgba(255,255,255,.07);padding-top:7px}
+.es-happy{display:flex;align-items:center;gap:10px;margin:6px 0}.es-hb{flex:1;height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}.es-hb i{display:block;height:100%;border-radius:5px}
+.es-parts{list-style:none;padding:0;margin:4px 0 10px;display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;font-size:12.5px}.es-parts li{display:flex;justify-content:space-between;color:#cfd1d6}.es-parts .up{color:#6fdc98}.es-parts .down{color:#ff8a7a}
+.es-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}.es-stats div{padding:10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);text-align:center}.es-stats b{display:block;font-size:17px}.es-stats small{color:var(--hb-mut,#9a9da5);font-size:11.5px}
+.es-list{display:flex;flex-direction:column;gap:6px}.es-row{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);color:inherit;text-align:left;cursor:pointer}.es-row:hover{background:rgba(255,255,255,.07)}
+.es-av{flex:none;width:38px;height:46px;border-radius:6px;overflow:hidden;display:grid;place-items:center}.es-av .es-photo{width:38px;height:46px;border-radius:6px}.es-av.free{background:rgba(61,220,132,.15);color:#7cf59a;font:800 20px system-ui;border:1px solid rgba(61,220,132,.4)}
+.es-rt{min-width:0}.es-rt b{display:block;font-size:13px}.es-rt small{color:var(--hb-mut,#9a9da5);font-size:11.5px}.es-rt i{font-style:normal;font-weight:700}
+.es-back{background:none!important;border:0!important;color:#ffe866!important;padding:2px 0!important;cursor:pointer;font:600 12.5px var(--f-body,system-ui)!important}
+#elp .link{background:none!important;border:0!important;color:#ffe866!important;padding:0!important;cursor:pointer;text-decoration:underline}`;
+document.head.appendChild(css);
+window.ESTATE={resOf,estEnter,estStart,ESP,renderESP,splitPark,tenantPhoto,roomTemp,heatersIn,mkTenant};
+
 })();
 
 </script>
