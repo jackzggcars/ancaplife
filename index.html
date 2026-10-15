@@ -4615,24 +4615,32 @@ function chooseEvent(i){
 // starts when the first business is signed; a ring, an arrow and a card walk through opening and growing it
 function tutSite(){return G&&G.tut&&G.sites.find(x=>x.id===G.tut.site)}
 const TUT=[
- {t:'Your first business',p:s=>`Welcome to ${s.name}. Right now it's an empty room that costs you rent. Let's get it making money. This panel is where you run everything.`,el:()=>$('#right'),next:true},
+ {t:'Your first business',p:s=>`Welcome to ${s.name}. It's an empty room right now, and it costs you rent every day. Let's get it making money. You run everything from this panel.`,el:()=>$('#right'),next:true},
+ {t:'Look around inside',p:s=>'This is your shop floor. It matches the real building, with real walls, windows and a back room. Drag to look around and scroll to zoom. Click Next when you are ready.',el:()=>null,next:true,free:true},
  {t:'Open the Kit tab',p:s=>'You can\'t sell anything without equipment. Click the Kit tab.',el:()=>$('#right .tabs button[data-id="equip"]'),done:()=>ui.tab==='equip'},
- {t:'Buy the required kit',p:s=>{const P=IN&&IN.placing;return P?'Now move the mouse over the floor and click to put it down. Press R to rotate. Kit only works once it\'s placed.':'Items marked REQUIRED have to be bought and placed before you can open. Buy the highlighted one.'},
+ {t:'Buy the required kit',p:s=>{const P=IN&&IN.placing;if(P)return imodelOf(P.it.id).zone==='wall'?'This one hangs on a wall. Move it near any wall and it snaps flat against it, then click to fix it in place.':'Move over the floor and click to put it down. Press R to rotate. It turns green where it fits. Kit only works once it\'s placed.';return'Items marked REQUIRED have to be bought and placed before you can open. Buy the highlighted one.'},
   el:s=>{if(IN&&IN.placing)return null;const b=BIZ[s.type],e=b.equip.find(e=>e.req&&eqActive(s,e.id)<1);if(!e)return null;return $(`#right [data-act="iplace"][data-id="${e.id}"]`)||$(`#right [data-act="buyq"][data-id="${e.id}"]`)},
   tab:'equip',done:s=>BIZ[s.type].equip.filter(e=>e.req).every(e=>eqActive(s,e.id)>0)&&!(IN&&IN.placing)},
  {t:'Hire your team',p:s=>`Kit needs people. Open the Staff tab.`,el:()=>$('#right .tabs button[data-id="staff"]'),done:()=>ui.tab==='staff'},
- {t:'Hire someone',p:s=>{const b=BIZ[s.type],c=siteCaps(s);return c.st.back>0?`Now someone for the ${b.groups.front.toLowerCase()}. Or click "${b.groups.front}" under You work to do it yourself for free.`:`You work the ${b.groups.front.toLowerCase()} yourself to start. Hire someone for the ${b.groups.back.toLowerCase()}. Higher skill dots mean more output, but higher wages.`},
+ {t:'Hire someone',p:s=>{const b=BIZ[s.type],c=siteCaps(s);return c.st.back>0?`Now someone for the ${b.groups.front.toLowerCase()}. Or click "${b.groups.front}" under You work to do it yourself for free.`:`You work the ${b.groups.front.toLowerCase()} yourself to start. Hire someone for the ${b.groups.back.toLowerCase()}. More skill dots means more output, but higher wages.`},
   el:s=>{const b=BIZ[s.type],c=siteCaps(s),g=c.st.back>0?'front':'back',r=b.roles.find(r=>r.g===g);return r?$(`#right [data-act="hire"][data-role="${r.id}"]`):null},tab:'staff',
   done:s=>{const c=siteCaps(s);return c.st.back>0&&c.st.front>0}},
- {t:'Stock up',p:s=>'Open the Menu tab, where you set prices and buy supplies.',el:()=>$('#right .tabs button[data-id="menu"]'),done:()=>ui.tab==='menu'},
- {t:'Buy your first delivery',p:s=>'Auto-restock will top you up every morning, but the shelves start empty. Buy a week of each supply.',
+ {t:'Stock up',p:s=>'Open the Menu tab. This is where you buy supplies and set prices.',el:()=>$('#right .tabs button[data-id="menu"]'),done:()=>ui.tab==='menu'},
+ {t:'Buy your first delivery',p:s=>'Auto-restock tops you up every morning, but the shelves start empty. Buy a week of each supply.',
   el:s=>{const k=bizSupplies(BIZ[s.type]).find(k=>!(s.inv[k]&&s.inv[k].q>0));return k?$(`#right [data-act="stock"][data-id="${k}"][data-d="7"]`):null},tab:'menu',
   done:s=>bizSupplies(BIZ[s.type]).every(k=>s.inv[k]&&s.inv[k].q>0)},
+ {t:'Set your prices',p:s=>'Drag a price slider to change what you charge. Green means customers think it\'s fair, orange means some will walk away, and red means most will. A cheap price fills the shop but earns less on each sale.',el:()=>$('#right .psl'),tab:'menu',next:true},
  {t:'Open for business',p:s=>'Everything is ready. Go back to Overview and open the doors.',el:s=>ui.tab==='overview'?$('#right [data-act="open"]'):$('#right .tabs button[data-id="overview"]'),done:s=>s.status==='open'},
- {t:'A shared world',p:s=>'Every player is on the same clock: a new day starts every '+DAY_LEN+' seconds, and your businesses keep trading while you are away. Wait for your first day of customers.',el:()=>$('#livebox'),done:s=>!!(s.last&&s.last.open)},
- {t:'Watch the money',p:s=>s.last&&s.last.open?`Yesterday ${s.name} made ${s.last.profit>=0?'a profit of':'a loss of'} ${money(Math.abs(s.last.profit))}. Your cash is up here, with yesterday's total under it. Rent and wages come out every day, open or not.`:'Waiting for your first day of trade…',el:()=>$('#bar .money'),next:s=>!!(s.last&&s.last.open)},
- {t:'Find your bottleneck',p:s=>'The Overview tells you what\'s holding you back: customers walking out means you need more kit or staff, and stockouts mean more supplies. Fix the biggest problem first.',el:()=>$('#right .tips')||$('#right .stats')||$('#right'),tab:'overview',next:true},
- {t:'Grow your empire',p:s=>'You\'re making money. Next, turn profit into more profit: fix your bottleneck, then open a second business. Your next goal is always shown up here. Click Finish for a checklist of what to do next.',el:()=>$('#goalchip:not([hidden])')||$('#bar .money'),next:true,last:true},
+ {t:'One shared world',p:s=>'Every player is on the same clock. A new day starts every '+DAY_LEN+' seconds, and your businesses keep trading while you are away. There is no skipping time. Wait for your first day of customers.',el:()=>$('#livebox'),done:s=>!!(s.last&&s.last.open),free:true},
+ {t:'Watch the money',p:s=>s.last&&s.last.open?`Yesterday ${s.name} made ${s.last.profit>=0?'a profit of':'a loss of'} ${money(Math.abs(s.last.profit))}. Your cash is up here. Rent and wages come out every day, open or not.`:'Waiting for your first day of trade…',el:()=>$('#moneybox')||$('#bar .money'),next:s=>!!(s.last&&s.last.open),free:true},
+ {t:'Find your bottleneck',p:s=>'The Overview shows what\'s holding you back. Customers walking out means you need more kit or staff. Running out of stock means you need more supplies. Fix the biggest problem first.',el:()=>$('#right .tips')||$('#right .stats')||$('#right'),tab:'overview',next:true},
+ {t:'Your inventory',p:s=>'Everything you own is in your inventory: stock on the shelves, kit in storage and raw materials in your warehouse. Open it from the bar at the bottom any time.',el:()=>$('#ibar [data-act="invall"]'),next:true,free:true},
+ {t:'Dig for resources',p:s=>'Buy bare land and mine it for stone, wood, iron, oil and gold. The Resource exchange is a live market between players: prices only move when someone buys or sells. Turn on the Resources map layer to find rich ground.',el:()=>$('#rxbtn'),next:true,free:true},
+ {t:'The stock market',p:s=>'Every player company has shares. Buy into rivals who are growing, or sell shares in your own company to raise cash.',el:()=>$('#sxbtn'),next:true,free:true},
+ {t:'Climb the league',p:s=>'Each week you are placed in a league with other players, ranked on how much you grow. Finish near the top for rewards. The all-time leaderboard is here too.',el:()=>$('#lbbtn'),next:true,free:true},
+ {t:'Goals and achievements',p:s=>'Daily goals, weekly challenges and achievements all pay out cash. Check here when you are not sure what to do next.',el:()=>$('#hbgoals'),next:true,free:true},
+ {t:'Meet other players',p:s=>'See who is online, chat with the world and follow live activity, such as deals, openings and big trades.',el:()=>$('#mpbtn'),next:true,free:true},
+ {t:'Grow your empire',p:s=>'You\'re making money. Now turn profit into more profit: fix your bottleneck, open more floors, then a second business, and later farms, factories and data centres. Click Finish for a checklist of what to do next.',el:()=>$('#shopsbtn'),next:true,last:true,free:true},
 ];
 let tutT=0,tutH='';
 function tutStart(s){if(G.tutDone||G.tut)return;G.tut={site:s.id,step:0};tutTick(1,true)}
@@ -4647,11 +4655,11 @@ function tutTick(dt,force){
  if(ui.modal){el.hidden=true;return}
  el.hidden=false;
  let target=null,text=st.p(s),title=st.t;
- if(ui.site!==s.id||$('#right').hidden){target=$('#shopsbtn:not([hidden])');title='Back to your shop';text=`Open ${s.name} from My shops to carry on.`}
+ if(!st.free&&(ui.site!==s.id||$('#right').hidden)){target=$('#shopsbtn:not([hidden])');title='Back to your shop';text=`Open ${s.name} from My shops to carry on.`}
  else{if(st.tab&&ui.tab!==st.tab){target=$(`#right .tabs button[data-id="${st.tab}"]`);text=`Go back to the ${({equip:'Kit',staff:'Staff',menu:'Menu',overview:'Overview'})[st.tab]} tab.`}else target=st.el(s)}
  if(target&&target.offsetParent===null&&target.id!=='right')target=null;
  const canNext=st.next===true||(typeof st.next==='function'&&st.next(s));
- const html=`<p class="eyebrow">Tutorial · ${G.tut.step+1}/${TUT.length}</p><h3>${esc(title)}</h3><p>${esc(text)}</p><div class="row"><button class="skip" data-act="tutskip">Skip tutorial</button>${canNext?`<button class="btn sm" data-act="tutnext">${st.last?'Finish':'Next'}</button>`:''}</div>`;
+ const pc=Math.round((G.tut.step+1)/TUT.length*100),html=`<div class="tut-prog"><i style="width:${pc}%"></i></div><div class="tut-head"><span class="tut-badge">${G.tut.step+1}</span><p class="eyebrow">Tutorial · step ${G.tut.step+1} of ${TUT.length}</p></div><h3>${esc(title)}</h3><p>${esc(text)}</p><div class="row"><button class="skip" data-act="tutskip">Skip tutorial</button>${canNext?`<button class="btn sm" data-act="tutnext">${st.last?'Finish':'Next'}</button>`:st.done?'<span class="tut-wait">Do this to continue</span>':''}</div>`;
  const card=el.querySelector('.tut-card'),ring=el.querySelector('.tut-ring'),arrow=el.querySelector('.tut-arrow');
  if(html!==tutH){tutH=html;card.innerHTML=html}
  const W=innerWidth,H=innerHeight,cw=card.offsetWidth||340,ch=card.offsetHeight||160,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -6854,6 +6862,25 @@ html body .fl-perkbtn{width:100%;animation:none!important;padding:11px!important
 html body .fl-week{border-left:3px solid var(--hb-y)!important}
 html body .tut-card{border:1px solid rgba(255,222,0,.35)!important}html body .tut-card h3{font:700 18px/1.2 var(--f-body,system-ui)!important;letter-spacing:0!important;text-transform:none!important}
 html body .tut-arrow{filter:none!important}
+/* tutorial, glass edition */
+html body .tut-card{width:min(360px,calc(100% - 32px))!important;padding:16px 18px 14px!important;background:linear-gradient(180deg,rgba(34,36,42,.82),rgba(20,22,26,.82))!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:12px!important;box-shadow:0 18px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.07)!important;backdrop-filter:blur(18px) saturate(1.4)!important;-webkit-backdrop-filter:blur(18px) saturate(1.4)!important;overflow:hidden}
+html body .tut-card .tut-prog{position:absolute;left:0;right:0;top:0;height:3px;background:rgba(255,255,255,.07)}
+html body .tut-card .tut-prog i{display:block;height:100%;background:linear-gradient(90deg,#ffe866,#f5d200);box-shadow:0 0 10px rgba(255,222,0,.55);transition:width .4s ease}
+html body .tut-card .tut-head{display:flex;align-items:center;gap:9px;margin:2px 0 8px}
+html body .tut-card .tut-badge{display:grid;place-items:center;width:24px;height:24px;flex:none;border-radius:50%!important;background:rgba(255,222,0,.12);border:1px solid rgba(255,222,0,.38);color:#ffde00;font:700 11.5px/1 var(--f-body,system-ui);font-variant-numeric:tabular-nums}
+html body .tut-card .eyebrow{margin:0!important;color:rgba(255,222,0,.85)!important}
+html body .tut-card h3{font:700 18px/1.25 var(--f-body,system-ui)!important;color:#f4f3ef!important;margin:0 0 6px!important;text-shadow:none!important}
+html body .tut-card p{color:rgba(236,235,230,.78);font-size:13.5px;line-height:1.5;margin:0 0 12px}
+html body .tut-card .row{border-top:1px solid rgba(255,255,255,.07);padding-top:11px}
+html body .tut-card .skip{color:rgba(236,235,230,.5)!important;text-decoration:none!important;font:500 12px/1 var(--f-body,system-ui)!important;padding:6px 2px;cursor:pointer}
+html body .tut-card .skip:hover{color:#ecebe6!important}
+html body .tut-card .tut-wait{font:600 11px/1 var(--f-body,system-ui);letter-spacing:.06em;text-transform:uppercase;color:rgba(255,222,0,.7);padding:7px 10px;border-radius:999px;background:rgba(255,222,0,.07);border:1px solid rgba(255,222,0,.2);border-radius:999px!important}
+html body .tut-card .btn{padding:9px 16px!important}
+html body .tut-ring{border:1.5px solid rgba(255,222,0,.9)!important;border-radius:10px!important;box-shadow:0 0 0 9999px rgba(6,8,12,.5),0 0 0 4px rgba(255,222,0,.14),0 0 26px rgba(255,222,0,.35)!important;animation:tglass 1.8s ease-in-out infinite!important}
+@keyframes tglass{0%,100%{box-shadow:0 0 0 9999px rgba(6,8,12,.5),0 0 0 4px rgba(255,222,0,.14),0 0 22px rgba(255,222,0,.3)}50%{box-shadow:0 0 0 9999px rgba(6,8,12,.5),0 0 0 7px rgba(255,222,0,.08),0 0 32px rgba(255,222,0,.45)}}
+html body .tut-arrow{width:30px!important;height:30px!important;border:0!important;background:rgba(255,222,0,.14);border-radius:50%!important;box-shadow:inset 0 0 0 1px rgba(255,222,0,.45),0 6px 16px rgba(0,0,0,.4);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+html body .tut-arrow::after{content:'';position:absolute;left:50%;top:50%;width:9px;height:9px;border-right:2px solid #ffde00;border-bottom:2px solid #ffde00;transform:translate(-50%,-70%) rotate(45deg)}
+@media (prefers-reduced-motion:reduce){html body .tut-ring{animation:none!important}}
 
 /* ---------- fit & alignment pass ---------- */
 html body .panel .pad{padding:16px 16px 18px!important}
