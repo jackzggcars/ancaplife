@@ -4423,7 +4423,7 @@ document.addEventListener('click',e=>{
   case 'auth_forgot':authForgot();break;
   case 'reloadpage':location.reload();break;
   case 'signout':authSignOut();break;
-  case 'frnew':if(ui.confirm!=='frnew'){ui.confirm='frnew';renderFront();break}ui.confirm=null;try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();cloudQueue();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();renderFront(true);break;
+  case 'frnew':if(ui.confirm!=='frnew'){ui.confirm='frnew';renderFront();break}ui.confirm=null;try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();renderFront(true);break;
   case 'board':openModal('board');break;
   case 'nextmodal':openModal('next');break;
   case 'nextgo':{closeModal();const st=G.sites.find(x=>x.id===t.dataset.site);if(st){ui.site=st.id;ui.tab=t.dataset.tab||'overview';renderSite()}if(t.dataset.out&&ui.interior){exitInterior();renderSite()}break}
@@ -4446,7 +4446,7 @@ document.addEventListener('click',e=>{
   case 'repay':{const l=G.loans.find(x=>x.id===id);if(l&&G.cash>=l.bal){G.cash-=l.bal;G.loans=G.loans.filter(x=>x!==l);toast('Loan repaid','good')}renderModal();renderTop();break}
   case 'newgame':if(ui.confirm!=='new'){ui.confirm='new';renderModal();break}
   // fallthrough
-  case 'newgame2':ui.confirm=null;try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();cloudQueue();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();showFront();break;
+  case 'newgame2':ui.confirm=null;try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();showFront();break;
  }
 });
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='shadows'){QUAL.shadows=t.checked;try{localStorage.setItem('groundfloor.shadows',QUAL.shadows?'1':'0')}catch(_){}return}if(t.dataset.change==='cycle'){VIS.cycle=t.checked;try{localStorage.setItem('groundfloor.cycle',VIS.cycle?'1':'0')}catch(_){}return}if(t.dataset.change==='traffic'){TRAFFIC_ON=t.checked;return}const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;
@@ -4765,6 +4765,16 @@ async function cloudPush(){
  try{const r=await AUTH.db.from('saves').upsert({user_id:AUTH.user.id,data:G,updated_at:new Date().toISOString()});if(r.error)throw r.error;AUTH.cloud='ok'}
  catch(e){AUTH.cloud='off';console.warn('Cloud save failed',e);if(!AUTH.warned){AUTH.warned=true;toast('Cloud save is not set up yet, so progress is kept on this device only','warn')}}
 }
+// starting over: wipe the old run from the server too (map claims, cloud save, leaderboard numbers), so nothing is left behind
+async function resetRun(){
+ if(!authed()||!AUTH.db)return;const db=AUTH.db,uid=AUTH.user.id;clearTimeout(AUTH.timer);AUTH.timer=0;
+ if(typeof NET!=='undefined'){NET.pushed.clear();for(const[k,c]of[...NET.claims])if(c.owner===uid)NET.claims.delete(k);NET.resetN=(NET.resetN||0)+1}
+ let ok=false;try{const r=await db.rpc('reset_my_run');ok=!r.error}catch(e){}
+ if(!ok){ // the reset function is not installed yet: do the same with plain deletes (allowed by the row policies)
+  try{await db.from('claims').delete().eq('owner',uid)}catch(e){}
+  try{await db.from('saves').delete().eq('user_id',uid)}catch(e){}
+  try{await db.from('players').update({cash:0,net_worth:0,businesses:0,updated_at:new Date().toISOString()}).eq('id',uid)}catch(e){}}
+ if(typeof netDirty==='function')netDirty()}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&AUTH.timer)cloudPush()});
 addEventListener('pagehide',()=>{if(AUTH.timer)cloudPush()});
 async function authSignOut(){
@@ -4831,7 +4841,7 @@ async function netStart(){
  try{
   const db=AUTH.db;NET.on=true;NET.uid=AUTH.user.id;
   const[c,p]=await Promise.all([db.from('claims').select('*').limit(10000),db.from('players').select('*').order('net_worth',{ascending:false}).limit(100)]);
-  for(const r of c.data||[])NET.claims.set(r.lot_key,r);for(const r of p.data||[])NET.players.set(r.id,r);
+  for(const r of c.data||[])NET.claims.set(r.lot_key,r);for(const r of p.data||[])NET.players.set(r.id,r);for(const r of c.data||[])if(r.owner===NET.uid)NET.pushed.set(r.lot_key,r);try{db.rpc('prune_old_rows').then(()=>{},()=>{})}catch(e){}
   {const old=(c.data||[]).filter(r=>r.owner===NET.uid&&/^c[^#]*#\d+$/.test(r.lot_key)).map(r=>r.lot_key);if(old.length){await db.from('claims').delete().in('lot_key',old);for(const k of old)NET.claims.delete(k)}} // pre-stable-id claims; migrated saves re-claim under the new ids
   db.channel('db').on('postgres_changes',{event:'*',schema:'public',table:'claims'},e=>{if(e.eventType==='DELETE')NET.claims.delete(e.old.lot_key);else NET.claims.set(e.new.lot_key,e.new);netDirty()})
    .on('postgres_changes',{event:'*',schema:'public',table:'players'},e=>{if(e.new&&e.new.id)NET.players.set(e.new.id,e.new);renderFront()}).subscribe();
@@ -4845,13 +4855,14 @@ function netOther(key){if(!NET.on)return null;const c=NET.claims.get(key);return
 function netCompany(id){const p=NET.players.get(id);return p&&p.company||'Another player'}
 // my buildings and headline numbers go up every few seconds
 async function netSync(){
- if(!NET.on||!G||!ui.started)return;const db=NET.db,want=new Map();
+ if(!NET.on||!G||!ui.started)return;const db=NET.db,want=new Map(),r0=NET.resetN||0,stale=()=>(NET.resetN||0)!==r0;
  for(const s of G.sites){if(String(s.key).startsWith('lm#')&&!G.props.some(p=>p.key===s.key))continue;want.set(s.key,{lot_key:s.key,owner:NET.uid,kind:s.tenure==='own'?'own':'lease',biz_type:s.type,name:s.name.slice(0,40),lat:s.lat,lon:s.lon,rep:Math.round(s.rep)})}
  for(const p of G.props)if(!want.has(p.key))want.set(p.key,{lot_key:p.key,owner:NET.uid,kind:p.key.startsWith('lm#')?'landmark':p.floors>0?'own':'plot',biz_type:null,name:null,lat:p.lat,lon:p.lon,rep:0});
  try{
   await db.from('players').upsert({id:NET.uid,company:(G.company||'Free Enterprise Co.').slice(0,40),cash:Math.round(G.cash),net_worth:Math.round(netWorth()),businesses:G.sites.filter(s=>s.status==='open').length,updated_at:new Date().toISOString()});
+  if(stale()){await db.from('players').update({cash:0,net_worth:0,businesses:0}).eq('id',NET.uid);return}
   const up=[];for(const[k,r]of want){const o=NET.pushed.get(k);if(!o||o.name!==r.name||o.biz_type!==r.biz_type||o.kind!==r.kind||Math.abs(o.rep-r.rep)>3)up.push(r)}
-  if(up.length){const{error}=await db.from('claims').upsert(up);if(!error)for(const r of up)NET.pushed.set(r.lot_key,r)}
+  if(up.length){const{error}=await db.from('claims').upsert(up);if(stale()){if(!error)await db.from('claims').delete().in('lot_key',up.map(r=>r.lot_key));return}if(!error)for(const r of up)NET.pushed.set(r.lot_key,r)}
   const gone=[...NET.pushed.keys()].filter(k=>!want.has(k));if(gone.length){await db.from('claims').delete().in('lot_key',gone);for(const k of gone)NET.pushed.delete(k)}
   if(NET.ch)NET.ch.track({company:G.company||'Someone'});
  }catch(e){console.warn(e)}}
