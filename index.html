@@ -1394,10 +1394,13 @@ function dailyNeeds(s){
  for(const k in out)if(s.use[k]!=null&&s.status==='open'&&s.openDay!=null&&G.day-s.openDay>2)out[k]=s.use[k];
  return out;
 }
+// your very first business gets its first week of every supply free (one time only per game)
+function freeStockFor(s,sid){if(G.freeStockDone)return false;if(!G.freeStock){if(G.sites.length!==1||G.sites[0]!==s||(s.hist&&s.hist.length)||Object.values(s.inv||{}).some(v=>v&&v.q>0))return false;G.freeStock={site:s.id,used:{}}}return G.freeStock.site===s.id&&!G.freeStock.used[sid]}
 function buyStock(s,sid,units){
  units=Math.ceil(units);if(units<=0)return 0;const unit=supPrice(sid,s.p)*1.05;let cost=units*unit;
- if(cost>G.cash){units=Math.floor(Math.max(0,G.cash)/unit);cost=units*unit}if(units<=0)return 0;
- const inv=s.inv[sid]||(s.inv[sid]={q:0,c:unit});inv.c=(inv.q*inv.c+units*unit)/(inv.q+units);if(typeof invAdd==='function')invAdd(s,sid,units,inv);inv.q+=units;G.cash-=cost;G.mkt[sid].pressure=(G.mkt[sid].pressure||0)+cost;return cost;
+ if(freeStockFor(s,sid)){units=Math.max(units,Math.ceil((dailyNeeds(s)[sid]||1)*7));cost=0;G.freeStock.used[sid]=1;if(bizSupplies(BIZ[s.type]).every(k=>G.freeStock.used[k])){G.freeStockDone=true;G.freeStock=null}}
+ else if(cost>G.cash){units=Math.floor(Math.max(0,G.cash)/unit);cost=units*unit}if(units<=0)return 0;
+ const inv=s.inv[sid]||(s.inv[sid]={q:0,c:unit});inv.c=(inv.q*inv.c+units*unit)/(inv.q+units);if(typeof invAdd==='function')invAdd(s,sid,units,inv);inv.q+=units;G.cash-=cost;G.mkt[sid].pressure=(G.mkt[sid].pressure||0)+cost;return cost||1e-9;
 }
 function restock(s,days){const need=dailyNeeds(s);let spent=0;for(const sid of bizSupplies(BIZ[s.type])){const have=s.inv[sid]?s.inv[sid].q:0,want=(need[sid]||0)*days-have;if(want>.01)spent+=buyStock(s,sid,want)}return spent}
 function openChecks(s){
@@ -4093,7 +4096,7 @@ function renderTop(){
  $('#mapctl').hidden=!!ui.interior||!ui.started;$('#northbtn').style.transform=`rotate(${-CAM.heading}rad)`;
  const lg=$('#legend');lg.hidden=!ui.street||!!ui.interior;
  if(ui.street){const lh=[['lease','For lease','#ffde00'],['sale','For sale','#2fd3e6'],['rival','Competitors','#ff4b3e']].map(([k,t,c])=>`<button data-act="legend" data-id="${k}" class="${ui.show[k]?'on':''}" aria-pressed="${!!ui.show[k]}"><i style="background:${c}"></i>${t}</button>`).join('');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
- const hint=$('#hint'),showHint=ui.started&&ui.street&&!ui.interior&&!ui.selLot&&!G.sites.length&&!ui.modal;hint.hidden=!showHint;
+ const hint=$('#hint'),showHint=ui.started&&ui.street&&!ui.interior&&!ui.selLot&&!G.sites.length&&!ui.modal&&!G.tut;hint.hidden=!showHint;
  if(showHint){const hh=`Buildings glowing <b style="color:#ffde00">yellow</b> have a shop for lease. Click one to see the rent.`;if(hint._h!==hh){hint._h=hh;hint.innerHTML=hh}}
  renderShops();
 }
@@ -4120,7 +4123,7 @@ function worldPanel(){
  const props=G.props.length?`<h3 class="eyebrow">Your property</h3><div class="plist">${G.props.map(p=>{const L=lotByKey(p.key);return`<button class="prow" data-act="goprop" data-id="${p.id}"><span><b>${L?esc(L.num+' '+L.street):'Property'}</b><small>${p.build&&!p.built?'Under construction':p.floors?p.floors+'-storey building':'Bare plot'} · ${esc(p.place||'')}</small></span><span class="mono">${big(propValue(p))}</span></button>`}).join('')}</div>`:'';
  const rows=CITIES.slice().sort((a,b)=>(b.real?1:0)-(a.real?1:0)||a.name.localeCompare(b.name)).map(c=>`<button class="crow" data-act="flycity" data-id="${c.id}"><span class="cn">${esc(c.name)}${c.real?' <em>real 3D</em>':''}<small>${esc(c.country)}</small></span><span class="mono">$${c.rent}</span><span class="mono">$${c.wage.toFixed(2)}</span></button>`).join('');
  return`<div class="pad">
- ${!G.sites.length?`<div class="intro"><p class="eyebrow">Start here</p><h2 class="h">${money(G.cash)} and a lease to sign</h2><p>Pick a city below (or scroll into any town on Earth). Buildings glowing orange have a shop for lease: click one, choose a business, then set it up inside.</p></div>`:''}
+ ${!G.sites.length?`<div class="intro"><p class="eyebrow">Start here</p><h2 class="h">${money(G.cash)} and a lease to sign</h2><p>Pick a city below (or scroll into any town on Earth). Buildings glowing yellow have a shop for lease: click one, choose a business, then set it up inside.</p></div>`:''}
  ${port}${props}
  <h3 class="eyebrow">Go to a city</h3><div class="chead"><span>City</span><span>Rent m²/mo</span><span>Wage/h</span></div><div class="clist">${rows}</div>
  <p class="fine">Or zoom in anywhere: every urban area on the planet has streets, buildings and local prices.</p></div>`;
@@ -4270,10 +4273,10 @@ function siteStock(s,b,E){
  const need=dailyNeeds(s);
  return`<div class="box"><label class="tog"><input type="checkbox" id="auto-${s.id}" data-change="auto" ${s.auto?'checked':''}> Auto-restock every morning</label>
  <div class="stepper"><span>Keep</span><button class="ghost sm" data-act="days" data-d="-1" aria-label="Fewer days">−</button><span class="mono">${s.days} days</span><button class="ghost sm" data-act="days" data-d="1" aria-label="More days">+</button><span>of stock on hand</span></div>
- <p class="fine">Deliveries carry a 5% charge. Perishables kept beyond their shelf life spoil, so don't overbuy fresh food.</p>
+ ${bizSupplies(b).some(k=>freeStockFor(s,k))?'<p class="fine" style="color:#7be3a0">Your first week of every supply is free for your first business. Click Free first week on each one.</p>':''}<p class="fine">Deliveries carry a 5% charge. Perishables kept beyond their shelf life spoil, so don't overbuy fresh food.</p>
  <button class="btn sm" data-act="invall" style="margin-top:8px">Open inventory</button></div>
  <div class="tscroll"><table class="stock"><thead><tr><th>Supply</th><th>In stock</th><th>Lasts</th><th>Price</th><th></th></tr></thead><tbody>${bizSupplies(b).map(k=>{const S=SUP[k],inv=s.inv[k],q=inv?inv.q:0,per=need[k]||0,days=per>0?q/per:Infinity,mp=supPrice(k,E),H=G.mkt[k].h,tr=H.length>7?G.mkt[k].m/H[H.length-8]-1:0;
-  return`<tr><td><b>${typeof invMini==='function'?invMini(k):''}${esc(S.n)}</b><small>${esc(S.u)}${S.shelf?` · keeps ${S.shelf}d`:''}</small></td><td class="mono">${q<10?q.toFixed(1):Math.round(q)}</td><td class="mono ${days<1?'down':''}">${days===Infinity?'—':days<1?'<1d':days.toFixed(days<10?1:0)+'d'}</td><td class="mono">${pm(mp)}<small class="${tr>.03?'down':tr<-.03?'up':''}">${tr>=0?'▲':'▼'}${Math.abs(Math.round(tr*100))}%</small></td><td class="ia"><button class="ghost sm" data-act="stock" data-id="${k}" data-d="1">+1 day</button><button class="ghost sm" data-act="stock" data-id="${k}" data-d="7">+1 wk</button></td></tr>`}).join('')}</tbody></table></div>`;
+  return`<tr><td><b>${typeof invMini==='function'?invMini(k):''}${esc(S.n)}</b><small>${esc(S.u)}${S.shelf?` · keeps ${S.shelf}d`:''}</small></td><td class="mono">${q<10?q.toFixed(1):Math.round(q)}</td><td class="mono ${days<1?'down':''}">${days===Infinity?'—':days<1?'<1d':days.toFixed(days<10?1:0)+'d'}</td><td class="mono">${pm(mp)}<small class="${tr>.03?'down':tr<-.03?'up':''}">${tr>=0?'▲':'▼'}${Math.abs(Math.round(tr*100))}%</small></td><td class="ia">${freeStockFor(s,k)?`<button class="btn sm" data-act="stock" data-id="${k}" data-d="7">Free first week</button>`:`<button class="ghost sm" data-act="stock" data-id="${k}" data-d="1">+1 day</button><button class="ghost sm" data-act="stock" data-id="${k}" data-d="7">+1 wk</button>`}</td></tr>`}).join('')}</tbody></table></div>`;
 }
 function siteProp(s,b,E,lot){
  const prop=propAtKey(s.key);let o='';const LE=econAt(lot.lat,lot.lon);
@@ -4397,6 +4400,7 @@ document.addEventListener('click',e=>{
   case 'close':closeModal();break;
   case 'evchoice':chooseEvent(+t.dataset.i);break;
   case 'evdone':EVT_LAST=performance.now();closeModal();renderAll();if(ui.interior)interiorRefresh();save();break;
+  case 'tutpick':tutPick();break;
   case 'tutnext':if(G.tut){G.tut.step++;tutTick(1,true);save()}break;
   case 'tutskip':tutEnd(false);break;
   case 'market':openModal('market');break;
@@ -4423,7 +4427,7 @@ document.addEventListener('click',e=>{
   case 'auth_forgot':authForgot();break;
   case 'reloadpage':location.reload();break;
   case 'signout':authSignOut();break;
-  case 'frnew':if(ui.confirm!=='frnew'){ui.confirm='frnew';renderFront();break}ui.confirm=null;try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();renderFront(true);break;
+  case 'frnew':if(ui.confirm!=='frnew'){ui.confirm='frnew';renderFront();break}ui.confirm=null;ui.modal=null;$('#modal').hidden=true;if(typeof tutH!=='undefined')tutH='';try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();renderFront(true);break;
   case 'board':openModal('board');break;
   case 'nextmodal':openModal('next');break;
   case 'nextgo':{closeModal();const st=G.sites.find(x=>x.id===t.dataset.site);if(st){ui.site=st.id;ui.tab=t.dataset.tab||'overview';renderSite()}if(t.dataset.out&&ui.interior){exitInterior();renderSite()}break}
@@ -4432,7 +4436,7 @@ document.addEventListener('click',e=>{
   case 'days':s.days=clamp(s.days+ +t.dataset.d,1,21);renderSite();break;
   case 'price':s.prices[id]=Math.max(.1,Math.round((s.prices[id]+ +t.dataset.d)*100)/100);renderSite();break;
   case 'resetprice':s.prices=startPrices(BIZ[s.type],s.p);renderSite();break;
-  case 'stock':{const need=dailyNeeds(s)[id]||1;if(!buyStock(s,id,Math.max(1,need*+t.dataset.d)))toast('Not enough cash for that order','warn');renderSite();renderTop();break}
+  case 'stock':{const need=dailyNeeds(s)[id]||1,fr=freeStockFor(s,id),c=buyStock(s,id,Math.max(1,need*+t.dataset.d));if(!c)toast('Not enough cash for that order','warn');else if(fr)toast(`A week of ${SUP[id].n.toLowerCase()} delivered free`,'good');renderSite();renderTop();break}
   case 'open':if(!openChecks(s).every(x=>x.ok))break;s.status='open';weekCount('open');s.openDay=G.day;news(`${s.name} opened its doors in ${s.p.place}`,'good');renderAll();break;
   case 'closebiz':if(ui.confirm!=='close'+s.id){ui.confirm='close'+s.id;renderSite();break}closeBusiness(s);break;
   case 'buy':case 'buyplot':buyLot(ui.selLot,t.dataset.mort==='1',a==='buyplot');break;
@@ -4446,7 +4450,7 @@ document.addEventListener('click',e=>{
   case 'repay':{const l=G.loans.find(x=>x.id===id);if(l&&G.cash>=l.bal){G.cash-=l.bal;G.loans=G.loans.filter(x=>x!==l);toast('Loan repaid','good')}renderModal();renderTop();break}
   case 'newgame':if(ui.confirm!=='new'){ui.confirm='new';renderModal();break}
   // fallthrough
-  case 'newgame2':ui.confirm=null;try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();showFront();break;
+  case 'newgame2':ui.confirm=null;ui.modal=null;$('#modal').hidden=true;if(typeof tutH!=='undefined')tutH='';try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();showFront();break;
  }
 });
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='shadows'){QUAL.shadows=t.checked;try{localStorage.setItem('groundfloor.shadows',QUAL.shadows?'1':'0')}catch(_){}return}if(t.dataset.change==='cycle'){VIS.cycle=t.checked;try{localStorage.setItem('groundfloor.cycle',VIS.cycle?'1':'0')}catch(_){}return}if(t.dataset.change==='traffic'){TRAFFIC_ON=t.checked;return}const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;
@@ -4626,7 +4630,7 @@ const TUT=[
   el:s=>{const b=BIZ[s.type],c=siteCaps(s),g=c.st.back>0?'front':'back',r=b.roles.find(r=>r.g===g);return r?$(`#right [data-act="hire"][data-role="${r.id}"]`):null},tab:'staff',
   done:s=>{const c=siteCaps(s);return c.st.back>0&&c.st.front>0}},
  {t:'Stock up',p:s=>'Open the Menu tab. This is where you buy supplies and set prices.',el:()=>$('#right .tabs button[data-id="menu"]'),done:()=>ui.tab==='menu'},
- {t:'Buy your first delivery',p:s=>'Auto-restock tops you up every morning, but the shelves start empty. Buy a week of each supply.',
+ {t:'Get your first delivery',p:s=>bizSupplies(BIZ[s.type]).some(k=>freeStockFor(s,k))?'Your first week of every supply is on the house. Click Free first week on each one. After this, auto-restock tops you up every morning and you pay for it.':'The shelves start empty. Buy a week of each supply. Auto-restock then tops you up every morning.',
   el:s=>{const k=bizSupplies(BIZ[s.type]).find(k=>!(s.inv[k]&&s.inv[k].q>0));return k?$(`#right [data-act="stock"][data-id="${k}"][data-d="7"]`):null},tab:'menu',
   done:s=>bizSupplies(BIZ[s.type]).every(k=>s.inv[k]&&s.inv[k].q>0)},
  {t:'Set your prices',p:s=>'Drag a price slider to change what you charge. Green means customers think it\'s fair, orange means some will walk away, and red means most will. A cheap price fills the shop but earns less on each sale.',el:()=>$('#right .psl'),tab:'menu',next:true},
@@ -4643,11 +4647,33 @@ const TUT=[
  {t:'Grow your empire',p:s=>'You\'re making money. Now turn profit into more profit: fix your bottleneck, open more floors, then a second business, and later farms, factories and data centres. Click Finish for a checklist of what to do next.',el:()=>$('#shopsbtn'),next:true,last:true,free:true},
 ];
 let tutT=0,tutH='';
-function tutStart(s){if(G.tutDone||G.tut)return;G.tut={site:s.id,step:0};tutTick(1,true)}
+// before the first business: a short guided search for a building to lease, then the shop tutorial takes over
+const TUTF=[
+ {t:'Welcome to ANCAP LIFE',p:()=>`You start with ${money(G.cash)} and a whole planet to build on. Every other player shares this map and this clock. To make money you need a business, and for that you need a building. Let's find you one.`,el:()=>null,next:true},
+ {t:'Pick a city',p:()=>'Choose a city from this list to fly there. Cities marked real 3D are built from real map data. You can also scroll into any town on Earth yourself.',el:()=>$('#left:not([hidden]) .crow'),done:()=>ui.street},
+ {t:'Find a building for lease',p:()=>'Buildings glowing yellow have a shop for lease. Click one to see the rent. Drag to move around and scroll to zoom in. Stuck? Let us pick a good one for you.',el:()=>$('#legend:not([hidden]) button[data-id="lease"]'),
+  done:()=>!!(ui.selLot&&lotState(ui.selLot).st==='lease'),back:()=>!ui.street&&!FLIGHT?1:null,btn:['tutpick','Pick one for me']},
+ {t:'Lease it',p:()=>'Leasing is the cheapest way to start. You pay two months\' rent as a deposit, and you get it back when you leave. Click the Lease button.',el:()=>$('#left [data-act="wizard"]'),
+  done:()=>!!(ui.modal&&ui.modal.kind==='wizard'),back:()=>ui.selLot&&lotState(ui.selLot).st==='lease'?null:2},
+ {t:'Choose a business',p:()=>'Pick what this shop will be. Each card shows what it costs to start and what it could earn. Easy ones, like the Coffee Shop, are the best first business.',modal:'wizard',
+  el:()=>$('#modal .bcard[data-id="cafe"]:not([disabled])')||$('#modal .bcard:not([disabled])'),done:()=>!!(ui.wiz&&ui.wiz.type),back:()=>ui.modal&&ui.modal.kind==='wizard'?null:3},
+ {t:'Sign the lease',p:()=>'Give your business a name if you like, then sign. The deposit comes out of your cash and the shop is yours to set up.',modal:'wizard',
+  el:()=>$('#modal [data-act="sign"]'),done:()=>G.sites.length>0,back:()=>ui.modal&&ui.modal.kind==='wizard'?(ui.wiz&&ui.wiz.type?null:4):3},
+];
+// "Pick one for me": the cheapest high-street unit for lease near the camera that fits a coffee shop
+function tutPick(){
+ if(!ui.street){const c=CBY.london||CITIES.find(c=>c.real)||CITIES[0];flyTo(c.lat,c.lon,c.real?2600:3400);toast('Flying to '+c.name+'. Click Pick one for me again once the buildings appear.','');return}
+ const need=BIZ.cafe.minSqm;let best=null,bs=1e18;
+ for(const l of liveLotsInView()){if(l.kind||l.landmark||l.sqm<need||lotState(l).st!=='lease')continue;const E=econAt(l.lat,l.lon),r=groundRent(E,l);if(r*2>G.cash*.45)continue;const d=distM(CAM.lat,CAM.lon,l.lat,l.lon),sc=r+d*2;if(sc<bs){bs=sc;best=l}}
+ if(!best){toast('Nothing suitable right here. Move to a busier street, or zoom out a little and try again.','warn');return}
+ selectLot(best);flyTo(best.lat,best.lon,Math.min(CAM.dist,420))}
+function tutStart(s){if(G.tutDone||(G.tut&&G.tut.phase!=='find'))return;G.tut={site:s.id,step:0};tutH='';tutTick(1,true)}
 function tutEnd(done){if(!G)return;G.tut=null;G.tutDone=true;$('#tut').hidden=true;tutH='';save();if(done){toast('Tutorial complete. The empire is yours to build.','good');openModal('next')}}
 function tutTick(dt,force){
  tutT+=dt;if(!force&&tutT<.25)return;tutT=0;const el=$('#tut');
+ if(G&&ui.started&&!G.tut&&!G.tutDone&&!G.sites.length)G.tut={phase:'find',step:0};
  if(!G||!G.tut||!ui.started){el.hidden=true;return}
+ if(G.tut.phase==='find'){tutFind(el);return}
  const s=tutSite();if(!s){tutEnd(false);return}
  let st=TUT[G.tut.step];if(!st){tutEnd(true);return}
  // auto-advance past steps that are already satisfied
@@ -4657,20 +4683,33 @@ function tutTick(dt,force){
  let target=null,text=st.p(s),title=st.t;
  if(!st.free&&(ui.site!==s.id||$('#right').hidden)){target=$('#shopsbtn:not([hidden])');title='Back to your shop';text=`Open ${s.name} from My shops to carry on.`}
  else{if(st.tab&&ui.tab!==st.tab){target=$(`#right .tabs button[data-id="${st.tab}"]`);text=`Go back to the ${({equip:'Kit',staff:'Staff',menu:'Menu',overview:'Overview'})[st.tab]} tab.`}else target=st.el(s)}
- if(target&&target.offsetParent===null&&target.id!=='right')target=null;
  const canNext=st.next===true||(typeof st.next==='function'&&st.next(s));
- const pc=Math.round((G.tut.step+1)/TUT.length*100),html=`<div class="tut-prog"><i style="width:${pc}%"></i></div><div class="tut-head"><span class="tut-badge">${G.tut.step+1}</span><p class="eyebrow">Tutorial · step ${G.tut.step+1} of ${TUT.length}</p></div><h3>${esc(title)}</h3><p>${esc(text)}</p><div class="row"><button class="skip" data-act="tutskip">Skip tutorial</button>${canNext?`<button class="btn sm" data-act="tutnext">${st.last?'Finish':'Next'}</button>`:st.done?'<span class="tut-wait">Do this to continue</span>':''}</div>`;
+ tutDraw(el,{title,text,target,label:`Tutorial · step ${G.tut.step+1} of ${TUT.length}`,n:G.tut.step+1,pc:(G.tut.step+1)/TUT.length,next:canNext,last:st.last,wait:!!st.done})}
+function tutFind(el){
+ if(G.sites.length){const s=G.sites[0];G.tut=null;tutStart(s);return}
+ let st=TUTF[G.tut.step];if(!st){G.tut.step=0;st=TUTF[0]}
+ let guard=0;while(guard++<8){const b=st.back&&st.back();if(b!=null&&b<G.tut.step){G.tut.step=b;st=TUTF[b];continue}if(st.done&&st.done()&&G.tut.step<TUTF.length-1){G.tut.step++;st=TUTF[G.tut.step];continue}break}
+ if(ui.modal&&ui.modal.kind!==st.modal){el.hidden=true;return}
+ el.hidden=false;
+ tutDraw(el,{title:st.t,text:st.p(),target:st.el(),label:`Getting started · ${G.tut.step+1} of ${TUTF.length}`,n:G.tut.step+1,pc:(G.tut.step+1)/TUTF.length,next:st.next===true,wait:!!st.done,btn:st.btn,modal:!!st.modal})}
+// draws the card, the ring round the target and the arrow pointing at it
+function tutDraw(el,o){
+ let target=o.target;if(target&&target.offsetParent===null&&target.id!=='right')target=null;
+ el.classList.toggle('over',!!o.modal);
+ const html=`<div class="tut-prog"><i style="width:${Math.round(o.pc*100)}%"></i></div><div class="tut-head"><span class="tut-badge">${o.n}</span><p class="eyebrow">${esc(o.label)}</p></div><h3>${esc(o.title)}</h3><p>${esc(o.text)}</p><div class="row"><button class="skip" data-act="tutskip">Skip tutorial</button><span class="tut-acts">${o.btn?`<button class="ghost sm" data-act="${o.btn[0]}">${esc(o.btn[1])}</button>`:''}${o.next?`<button class="btn sm" data-act="tutnext">${o.last?'Finish':'Next'}</button>`:o.wait&&!o.btn?'<span class="tut-wait">Do this to continue</span>':''}</span></div>`;
  const card=el.querySelector('.tut-card'),ring=el.querySelector('.tut-ring'),arrow=el.querySelector('.tut-arrow');
  if(html!==tutH){tutH=html;card.innerHTML=html}
  const W=innerWidth,H=innerHeight,cw=card.offsetWidth||340,ch=card.offsetHeight||160,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
- if(!target){ring.hidden=true;arrow.hidden=true;Object.assign(card.style,{left:'24px',top:'auto',bottom:'76px',right:'auto'});return}
+ if(!target){ring.hidden=true;arrow.hidden=true;Object.assign(card.style,o.n===1&&!o.modal?{left:Math.max(16,W/2-cw/2)+'px',top:Math.max(80,H*.28)+'px',bottom:'auto',right:'auto'}:{left:'24px',top:'auto',bottom:'76px',right:'auto'});return}
  const r=target.getBoundingClientRect(),pad=6;ring.hidden=false;arrow.hidden=false;
  Object.assign(ring.style,{left:r.left-pad+'px',top:r.top-pad+'px',width:r.width+pad*2+'px',height:r.height+pad*2+'px'});
+ if(o.modal){arrow.hidden=true;Object.assign(card.style,{left:'16px',top:'auto',bottom:'76px',right:'auto'});return}
  const big=r.width>W*.3&&r.height>H*.4;let cx,cy,ax,ay,rot;
  const rp=$('#right'),inR=rp&&!rp.hidden&&rp!==target&&rp.contains(target),pr=inR?rp.getBoundingClientRect():null;
  if(inR&&!big&&r.bottom>=130){cx=Math.max(16,pr.left-cw-56);cy=cl(r.top+r.height/2-ch/2,70,H-ch-60);ax=pr.left-44;ay=r.top+r.height/2-13;rot=-90}
  else if(r.bottom<130&&!big){cx=cl(r.left+r.width/2-cw/2,16,W-cw-16);cy=r.bottom+44;ax=r.left+r.width/2-16;ay=r.bottom+12;rot=180}
- else if(r.left+r.width/2>W/2){cx=Math.max(16,(big?r.left:r.left)-cw-48);cy=cl((big?r.top+60:r.top+r.height/2-ch/2),70,H-ch-60);ax=r.left-pad-36;ay=(big?cy+40:r.top+r.height/2-13);rot=-90}
+ else if(r.top>H*.7&&!big){cx=cl(r.left+r.width/2-cw/2,16,W-cw-16);cy=r.top-ch-44;ax=r.left+r.width/2-16;ay=r.top-40;rot=0}
+ else if(r.left+r.width/2>W/2){cx=Math.max(16,r.left-cw-48);cy=cl((big?r.top+60:r.top+r.height/2-ch/2),70,H-ch-60);ax=r.left-pad-36;ay=(big?cy+40:r.top+r.height/2-13);rot=-90}
  else{cx=Math.min(W-cw-16,r.right+48);cy=cl(r.top+r.height/2-ch/2,70,H-ch-60);ax=r.right+pad+4;ay=r.top+r.height/2-13;rot=90}
  if(W<700){cx=16;cy=H-ch-70;if(rot!==180){arrow.hidden=true}}
  Object.assign(card.style,{left:cx+'px',top:cy+'px',bottom:'auto',right:'auto'});
@@ -6887,6 +6926,7 @@ html body .tut-card .skip{color:rgba(236,235,230,.5)!important;text-decoration:n
 html body .tut-card .skip:hover{color:#ecebe6!important}
 html body .tut-card .tut-wait{font:600 11px/1 var(--f-body,system-ui);letter-spacing:.06em;text-transform:uppercase;color:rgba(255,222,0,.7);padding:7px 10px;border-radius:999px;background:rgba(255,222,0,.07);border:1px solid rgba(255,222,0,.2);border-radius:999px!important}
 html body .tut-card .btn{padding:9px 16px!important}
+html body #tut.over{z-index:60}html body .tut-card .tut-acts{display:flex;gap:8px;align-items:center}html body .tut-card .ghost.sm{padding:9px 12px!important}
 html body .tut-ring{border:1.5px solid rgba(255,222,0,.9)!important;border-radius:10px!important;box-shadow:0 0 0 9999px rgba(6,8,12,.5),0 0 0 4px rgba(255,222,0,.14),0 0 26px rgba(255,222,0,.35)!important;animation:tglass 1.8s ease-in-out infinite!important}
 @keyframes tglass{0%,100%{box-shadow:0 0 0 9999px rgba(6,8,12,.5),0 0 0 4px rgba(255,222,0,.14),0 0 22px rgba(255,222,0,.3)}50%{box-shadow:0 0 0 9999px rgba(6,8,12,.5),0 0 0 7px rgba(255,222,0,.08),0 0 32px rgba(255,222,0,.45)}}
 html body .tut-arrow{width:30px!important;height:30px!important;border:0!important;background:rgba(255,222,0,.14);border-radius:50%!important;box-shadow:inset 0 0 0 1px rgba(255,222,0,.45),0 6px 16px rgba(0,0,0,.4);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
