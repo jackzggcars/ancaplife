@@ -4624,7 +4624,7 @@ async function authGo(){
   if(m==='in'){const r=await AUTH.db.auth.signInWithPassword({email,password:pw});if(r.error)throw r.error;location.reload();return}
   if(m==='up'){
    const q=await AUTH.db.rpc('username_available',{u:user});if(!q.error&&q.data===false)throw new Error('That username is taken. Try another.');
-   const r=await AUTH.db.auth.signUp({email,password:pw,options:{emailRedirectTo:authUrl(),data:{username:user,dob:dob,tos_version:TOS_VERSION,tos_accepted_at:new Date().toISOString()}}});if(r.error)throw r.error;
+   const r=await AUTH.db.auth.signUp({email,password:pw,options:{emailRedirectTo:authUrl(),data:Object.assign({username:user,dob:dob,tos_version:TOS_VERSION,tos_accepted_at:new Date().toISOString()},(()=>{try{const r=localStorage.getItem('ancap.ref');return r&&/^[0-9a-f-]{36}$/i.test(r)?{ref:r}:{}}catch(e){return{}}})())}});if(r.error)throw r.error;
    if(r.data.session){location.reload();return}
    if(r.data.user&&r.data.user.identities&&!r.data.user.identities.length)throw new Error('That email already has an account. Sign in instead.');
    authMsg('Almost there. We sent a confirmation link to '+email+'. Open it, then sign in.','ok')}
@@ -7774,6 +7774,7 @@ function ticker(){const t=document.querySelector('#front .fv-track');if(!t)retur
  if(top)items.push(`<span>Richest: ${esc(top.company)} · ${fmt(top.net_worth)}</span>`);
  if(day)items.push(`<span>Shared world · Day ${day.toLocaleString()}</span>`);
  items.push('<span>3,000 real airports</span>','<span>6 cities built from real map data</span>');
+ try{if(window.resPrice)for(const[k,sy]of[['stone','STN'],['oil','OIL'],['iron','IRN'],['copper','CU'],['gold','AU'],['diamonds','DIA']]){const v=resPrice(k);items.push(`<span class="fv-q">${sy} $${v>=100?Math.round(v).toLocaleString():v.toFixed(2)}</span>`)}}catch(e){}
  const h=items.join('');if(t._h===h)return;t._h=h;t.innerHTML=`<div class="fv-run">${h}</div><div class="fv-run" aria-hidden="true">${h}</div>`}
 setInterval(()=>{try{const f=document.getElementById('front');if(f&&!f.hidden){shell();ticker()}}catch(e){}},1000);
 // ---------- cards ----------
@@ -7995,7 +7996,7 @@ mBoard=function(){const on=onlineSet(),mine=me();let rows='';
  else{const L=league();const ms=weekEnds(),d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5);
   rows=`<p class="fine sx-lg">Biggest net-worth growth since Monday wins. Top 3 earn the 🏆 League champion badge. Ends in ${d}d ${h}h.</p>`+(L.slice(0,50).map((p,i)=>row(p,i,`<span class="mono ${growth(p)>=0?'up':'down'}">${growth(p)>=0?'+':''}${(growth(p)*100).toFixed(1)}%</span>`,on)).join('')||'<p class="muted">The league fills up as players play this week.</p>')}
  return`<div class="mhead"><p class="eyebrow">Live world · ${NET.online} online · ${dayName(G?G.day:worldDay())}</p><h2 class="h">Leaderboard</h2></div><nav class="tabs"><button data-bt="nw" class="${BT==='nw'?'on':''}">Net worth</button><button data-bt="week" class="${BT==='week'?'on':''}">Weekly league</button></nav><div class="mbody"><ol class="lb">${rows}</ol></div><div class="mfoot">${mine?`<button class="ghost" data-pf="${esc(mine)}">My profile</button>`:''}<button class="btn" data-act="close">Close</button></div>`};
-function row(p,i,val,on){const b=badgesOf(p).slice(-4).map(id=>(ACH.find(a=>a[0]===id)||[])[1]||'').join('');return`<li class="${p.id===me()?'me':''} sx-click" data-pf="${esc(p.id)}" tabindex="0"><span class="rk">${i+1}</span><b>${on.has(p.id)?'<i class="ldot" title="Online"></i> ':''}${esc(p.company)} <span class="sx-bdg">${b}</span></b><small>${p.businesses||0} open</small>${val}</li>`}
+function row(p,i,val,on){const b=badgesOf(p).slice(-4).map(id=>(ACH.find(a=>a[0]===id)||[])[1]||'').join('');return`<li class="${p.id===me()?'me':''} sx-click" data-pf="${esc(p.id)}" tabindex="0"><span class="rk">${i+1}</span><b>${window.avatarHTML?avatarHTML(p.company,p.avatar||'white',22)+' ':''}${on.has(p.id)?'<i class="ldot" title="Online"></i> ':''}${esc(p.company)} <span class="sx-bdg">${b}</span></b><small>${p.businesses||0} open</small>${val}</li>`}
 document.addEventListener('click',e=>{const t=e.target.closest('[data-bt]');if(t){BT=t.dataset.bt;renderModal();return}
  const p=e.target.closest('[data-pf]');if(p){ui.modal={kind:'profile',id:p.dataset.pf};renderModal()}});
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches&&e.target.matches('[data-pf]'))e.target.click()});
@@ -8003,7 +8004,7 @@ function mProfile(id){const mine=id===me(),p=P(id)||(mine?{company:G.company,net
  const on=onlineSet().has(id),rk=leaderboard(1000).findIndex(x=>x.id===id)+1,bad=mine?Object.keys(S().ach):badgesOf(p),g=growth(p),pr=P(id)?price(id):null,h=S().sh[id];
  let pres=null;try{const st=NET.ch.presenceState()[id];pres=st&&st[0]}catch(e){}const hq=pres&&pres.lat!=null?[pres.lat,pres.lon]:p.hq_lat!=null?[p.hq_lat,p.hq_lon]:null;
  const grid=ACH.map(([aid,ic,n,d])=>{const got=bad.includes(aid);return`<div class="sx-ach ${got?'got':''}" title="${esc(d)}"><span>${got?ic:'🔒'}</span><b>${esc(n)}</b><small>${esc(d)}</small></div>`}).join('');
- return`<div class="mhead"><p class="eyebrow">${mine?'Your profile':'Player profile'}${on?' · <i class="ldot"></i> online':''}</p><h2 class="h"><span class="sx-tk big">${esc(tick(p.company))}</span> ${esc(p.company)}</h2></div><div class="mbody">
+ return`<div class="mhead"><p class="eyebrow">${mine?'Your profile':'Player profile'}${on?' · <i class="ldot"></i> online':''}</p><h2 class="h sx-ph">${window.avatarHTML?avatarHTML(p.company,p.avatar||"white",40):""}<span>${esc(p.company)}</span><span class="sx-tk">${esc(tick(p.company))}</span></h2>${p.player_no?`<p class="fine" style="margin:4px 0 0">Player #${(+p.player_no).toLocaleString()}${(p.trophies||[]).length?" · "+(p.trophies||[]).map(t=>({diamond:"💎",gold:"🥇",silver:"🥈",bronze:"🥉"})[t.tier]||"").join(""):""}</p>`:""}</div><div class="mbody">
  <div class="sx-sum"><div><small>Rank</small><b>${rk?'#'+rk:'—'}</b></div><div><small>Net worth</small><b>${fmt(+p.net_worth||0)}</b></div><div><small>Businesses</small><b>${p.businesses||0}</b></div><div><small>This week</small><b class="${g>=0?'up':'down'}">${g>=0?'+':''}${(g*100).toFixed(1)}%</b></div>${pr!=null?`<div><small>Share price</small><b>${money2(pr)}</b></div>`:''}</div>
  <h3 class="eyebrow">Achievements · ${bad.length}/${ACH.length}</h3><div class="sx-achs">${grid}</div>
  ${h&&h.q>0?`<p class="fine">You own ${h.q.toLocaleString()} shares (${fmt(h.q*pr)}).</p>`:''}</div>
@@ -8048,13 +8049,138 @@ const st=document.createElement('style');st.textContent=`
 .sx-ach.got{opacity:1;background:rgba(255,222,0,.06);border-color:rgba(255,222,0,.28)}.sx-ach span{font-size:22px}.sx-ach b{font-size:13px;color:#f1f0ea}.sx-ach small{font-size:11.5px;color:#8d9098;line-height:1.35}
 .sx-bdg{font-size:12px;margin-left:4px;letter-spacing:1px}
 .lb li.sx-click{cursor:pointer;border-radius:8px!important}.lb li.sx-click:hover{background:rgba(255,255,255,.05)}.lb li.sx-click:focus-visible{outline:2px solid rgba(255,222,0,.5)}
-.sx-lg{margin:0 0 10px}
+.sx-lg{margin:0 0 10px}.sx-ph{display:flex;align-items:center;gap:12px}.lb .ac-av{vertical-align:middle;margin-right:2px}
 .sx-days{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:10px}
 .sx-day{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 4px;border-radius:10px!important;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09)}
 .sx-day small{font:600 10.5px var(--f-body,system-ui);letter-spacing:.06em;text-transform:uppercase;color:#8d9098}.sx-day b{font:700 13px var(--f-body,system-ui);color:#f1f0ea}
 .sx-day.done{opacity:.55}.sx-day.done i{position:absolute;top:4px;right:6px;font-style:normal;color:#5fd38a;font-weight:700}
 .sx-day.now{background:rgba(255,222,0,.1);border-color:#ffde00;box-shadow:0 0 0 1px #ffde00 inset,0 0 22px rgba(255,222,0,.18)}.sx-day.now b{color:#ffde00}
 @media (max-width:560px){.sx-days{grid-template-columns:repeat(4,1fr)}}
+`;document.head.appendChild(st);
+})();
+
+</script>
+<script>
+// ANCAP LIFE · ACCOUNT LAYER (inspired by Capital Rift's account portal, in our own glass style)
+// Player number, member since and days as player; loyalty points earned only from active play; avatar skins unlocked by loyalty;
+// invite links with a monthly referral race and trophies that boost loyalty; patch notes; download-my-data and account deletion.
+(function(){
+const fmt=v=>big(v);
+const dbx=()=>(typeof AUTH!=='undefined'&&AUTH.db&&typeof authed==='function'&&authed())?AUTH.db:null;
+const uid=()=>AUTH&&AUTH.user?AUTH.user.id:null;
+// ---------- invite links: remember ?ref= until the visitor signs up ----------
+try{const m=location.search.match(/[?&]ref=([0-9a-f-]{36})/i);if(m){localStorage.setItem('ancap.ref',m[1]);history.replaceState(null,'',location.pathname+location.hash)}}catch(e){}
+const ACC={loaded:false,no:null,since:null,loyalty:0,today:0,avatar:'white',refMonth:0,refTotal:0,trophies:[],race:[],raceN:0};
+// ---------- avatar skins (gradient presets, unlocked by lifetime loyalty) ----------
+const SKINS=[['white','Classic','linear-gradient(135deg,#ffffff,#dfe4ea)',0],['sun','Sunrise','linear-gradient(135deg,#ffe866,#f5a800)',100],['mint','Mint','linear-gradient(135deg,#a7f3d0,#10b981)',250],
+ ['ocean','Ocean','linear-gradient(135deg,#7dd3fc,#2563eb)',500],['ember','Ember','linear-gradient(135deg,#fdba74,#dc2626)',1000],['violet','Violet','linear-gradient(135deg,#d8b4fe,#7c3aed)',2000],
+ ['crown','Crown','linear-gradient(135deg,#fef3c7,#fbbf24 45%,#d97706)',5000],['obsidian','Obsidian','linear-gradient(135deg,#52525b,#09090b)',10000]];
+const skin=id=>SKINS.find(s=>s[0]===id)||SKINS[0];
+function initials(n){const p=String(n||'').replace(/[^A-Za-z0-9 ]/g,' ').trim().split(/\s+/).filter(Boolean);if(!p.length)return'?';return(p.length>1?p[0][0]+p[p.length-1][0]:p[0].slice(0,2)).toUpperCase()}
+function avatarHTML(name,skinId,size){size=size||34;const dark=skinId==='obsidian'||skinId==='ocean'||skinId==='violet'||skinId==='ember';return`<span class="ac-av" style="width:${size}px;height:${size}px;font-size:${Math.round(size*.38)}px;background:${skin(skinId)[2]};color:${dark?'#fff':'#1b1600'}">${esc(initials(name))}</span>`}
+window.avatarHTML=avatarHTML;
+// ---------- trophies (monthly referral race) ----------
+const TIERS=[['diamond','Diamond','💎','#5ab8ff',.05,'Top 10'],['gold','Gold','🥇','#e6b84f',.03,'Top 1%'],['silver','Silver','🥈','#c0c6cf',.02,'Top 10%'],['bronze','Bronze','🥉','#c98a5a',.01,'Top 25%']];
+const tier=id=>TIERS.find(t=>t[0]===id);
+const boost=()=>ACC.trophies.reduce((a,t)=>a+((tier(t.tier)||[])[4]||0),0);
+const monthId=()=>new Date().toISOString().slice(0,7);
+const monthLabel=m=>new Date((m||monthId())+'-01T00:00:00Z').toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
+function monthEnds(){const d=new Date();return Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)-Date.now()}
+// ---------- server sync ----------
+async function load(){const db=dbx();if(!db)return;
+ try{const r=await db.rpc('account_summary');if(!r.error&&r.data){const d=Array.isArray(r.data)?r.data[0]:r.data;Object.assign(ACC,{no:d.player_no,since:d.member_since,refMonth:d.ref_month||0,refTotal:d.ref_total||0})}}catch(e){}
+ try{const r=await db.from('players').select('loyalty,avatar,trophies').eq('id',uid()).maybeSingle();if(!r.error&&r.data){ACC.loyalty=+r.data.loyalty||0;ACC.avatar=r.data.avatar||'white';ACC.trophies=Array.isArray(r.data.trophies)?r.data.trophies:[]}}catch(e){}
+ try{const r=await db.rpc('referral_race');if(!r.error&&r.data){ACC.race=r.data;ACC.raceN=r.data.length}}catch(e){}
+ ACC.loaded=true;checkMonth();topBtn()}
+let pend=0,lastAct=Date.now(),lastPush=0;
+['pointerdown','keydown','wheel'].forEach(ev=>addEventListener(ev,()=>{lastAct=Date.now()},{passive:true}));
+// loyalty: one point per minute of active play (tab visible, input in the last two minutes), boosted by trophies
+setInterval(()=>{if(!dbx()||!G||!ui.started||document.hidden||Date.now()-lastAct>120000)return;const n=1+boost();ACC.loyalty+=n;ACC.today+=n;pend+=n;push()},60000);
+async function push(force){const db=dbx();if(!db)return;const t=Date.now();if(!force&&t-lastPush<120000)return;lastPush=t;
+ try{await db.from('players').update({loyalty:Math.round(ACC.loyalty),avatar:ACC.avatar,trophies:ACC.trophies}).eq('id',uid());pend=0}catch(e){}}
+function checkMonth(){try{const k='ancap.refm.'+uid(),prev=JSON.parse(localStorage.getItem(k)||'null'),m=monthId();
+  if(prev&&prev.m!==m&&prev.rank>0&&prev.n>0){const N=Math.max(1,prev.size||1),r=prev.rank,t=r<=10?'diamond':r<=Math.ceil(N*.01)?'gold':r<=Math.ceil(N*.1)?'silver':r<=Math.ceil(N*.25)?'bronze':null;
+   if(t&&!ACC.trophies.some(x=>x.m===prev.m)){ACC.trophies.push({m:prev.m,tier:t});toast(`${tier(t)[2]} You won a ${tier(t)[1]} trophy in the ${monthLabel(prev.m)} referral race`,'good');push(true)}}
+  const me=ACC.race.findIndex(x=>x.player===uid());localStorage.setItem(k,JSON.stringify({m,rank:me+1,n:ACC.refMonth,size:ACC.raceN}))}catch(e){}}
+setInterval(()=>{if(dbx()&&!ACC.loaded)load()},3000);
+setInterval(()=>{if(dbx())load()},300000);
+addEventListener('beforeunload',()=>{if(pend)push(true)});
+// ---------- patch notes ----------
+const NOTES=[
+ ['2026-10-15','Accounts & rewards',['Account portal with player number, member since and days as player','Loyalty points from active play unlock avatar skins','Invite links, a monthly referral race and trophies that boost loyalty','Download your data or delete your account at any time']],
+ ['2026-10-15','Markets & leagues',['Stock market for every player company, with dividends','Player profiles, 17 achievements and visible badges','Weekly growth league and daily login rewards','Sign-in is now required: guest play has been removed']],
+ ['2026-10-14','Front page',['New glass title screen over real in-game New York footage','Live world ticker with real numbers']],
+ ['2026-10-14','Air & sea',['3,000 real airports with real runways; detailed layouts at the big hubs','Docks at 1,500 real ports, live ships on real sea lanes, flights between airports']],
+ ['2026-10-14','Real cities',['Chicago, Berlin and Tokyo built from real map data','Glass inventory panel']],
+ ['2026-10-14','Mining & resources',['Resource exchange with prices set by players','Buy land, survey it and dig real open pits with working machines','Resource heatmap and regional geology']],
+ ['2026-10-14','Shared world',['One clock for every player, offline progress, player competition','World chat, live activity and who is online']]];
+const seenKey='ancap.notes';const unseen=()=>{try{return localStorage.getItem(seenKey)!==NOTES[0][0]+NOTES[0][1]}catch(e){return false}};
+// ---------- the account portal ----------
+let TAB='profile',CONFIRM='';
+function tile(l,v,sub){return`<div><small>${l}</small><b>${v}</b>${sub?`<em>${sub}</em>`:''}</div>`}
+function mAccount(){const name=G&&G.company||'Your company',em=AUTH.user&&AUTH.user.email||'',days=ACC.since?Math.max(1,Math.floor((Date.now()-new Date(ACC.since).getTime())/864e5)+1):null;
+ const tabs=[['profile','Profile'],['loyalty','Loyalty'],['invite','Invite friends'],['notes','Patch notes'],['privacy','Privacy & data']];let body='';
+ if(TAB==='profile'){body=`<div class="ac-hero">${avatarHTML(name,ACC.avatar,64)}<div><b>${esc(name)}</b><small>${esc(dispName()||em)}</small></div></div>
+  <div class="sx-sum">${tile('Player #',ACC.no?'#'+ACC.no.toLocaleString():'—')}${tile('Days as player',days?days.toLocaleString():'—')}${tile('Loyalty points',Math.floor(ACC.loyalty).toLocaleString(),ACC.today?'+'+Math.floor(ACC.today)+' today':'')}${tile('Trophies',ACC.trophies.length)}</div>
+  <h3 class="eyebrow">Avatar skin</h3><div class="ac-skins">${SKINS.map(([id,n,g,need])=>{const ok=ACC.loyalty>=need;return`<button class="ac-skin ${ACC.avatar===id?'on':''}" data-ac="skin" data-id="${id}" ${ok?'':'disabled'} title="${ok?n:'Unlocks at '+need.toLocaleString()+' loyalty'}"><span style="background:${g}"></span><b>${n}</b><small>${ok?(ACC.avatar===id?'Equipped':'Unlocked'):need.toLocaleString()+' pts'}</small></button>`}).join('')}</div>
+  <div class="ac-rows"><div><span>Member since</span><b>${ACC.since?new Date(ACC.since).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):'—'}</b></div><div><span>Email</span><b>${esc(em)}</b></div><div><span>Player ID</span><b class="mono">${esc(uid()||'')}</b><button class="ghost sm" data-ac="copyid">Copy</button></div></div>`}
+ else if(TAB==='loyalty'){const nxt=SKINS.find(s=>s[3]>ACC.loyalty);body=`<div class="sx-sum">${tile('Loyalty points',Math.floor(ACC.loyalty).toLocaleString(),ACC.today?'+'+Math.floor(ACC.today)+' today':'')}${tile('Earning rate',(1+boost()).toFixed(2)+' / min',boost()?'+'+Math.round(boost()*100)+'% from trophies':'')}${tile('Next unlock',nxt?nxt[1]:'All unlocked',nxt?(nxt[3]-Math.floor(ACC.loyalty)).toLocaleString()+' pts to go':'')}</div>
+  <div class="ac-note"><span>⭐</span><p>Loyalty is earned only by playing: one point for every active minute in the shared world. It can't be bought, it never goes down, and it stays with your account even if you start a new company.</p></div>
+  <h3 class="eyebrow">Your trophies</h3>${ACC.trophies.length?`<div class="ac-troph">${ACC.trophies.map(t=>{const T=tier(t.tier)||TIERS[3];return`<div style="--tc:${T[3]}"><span>${T[2]}</span><b>${T[1]} trophy</b><small>${monthLabel(t.m)} referral race · +${Math.round(T[4]*100)}% loyalty</small></div>`}).join('')}</div>`:'<p class="fine">Win trophies in the monthly referral race. Each one permanently raises how fast you earn loyalty.</p>'}`}
+ else if(TAB==='invite'){const link=location.origin+location.pathname+'?ref='+(uid()||''),ms=monthEnds(),d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5),meR=ACC.race.findIndex(x=>x.player===uid())+1;
+  body=`<div class="ac-link"><input id="aclink" readonly value="${esc(link)}" aria-label="Your invite link"><button class="btn" data-ac="copylink">Copy link</button></div>
+  <div class="sx-sum">${tile(monthLabel().split(' ')[0]+' referrals',ACC.refMonth.toLocaleString(),meR?'#'+meR+' in the race':'')}${tile('Lifetime referrals',ACC.refTotal.toLocaleString())}${tile('Race ends in',d+'d '+h+'h')}</div>
+  <div class="ac-note"><span>★</span><p>Bring friends into the world. A fresh race starts every month, and a friend counts when they create an account with your link. Where you finish wins a trophy that raises your loyalty earnings for as long as you hold it:</p></div>
+  <div class="ac-tiers">${TIERS.map(t=>`<div style="--tc:${t[3]}"><span>${t[2]}</span><b>${t[5]}</b><small>${t[1]} trophy · +${Math.round(t[4]*100)}% loyalty</small></div>`).join('')}</div>
+  <h3 class="eyebrow">${monthLabel()} race</h3><ol class="lb">${ACC.race.slice(0,10).map((r,i)=>`<li class="${r.player===uid()?'me':''}"><span class="rk">${i+1}</span><b>${esc(r.company||'Player')}</b><small></small><span class="mono">${(+r.n).toLocaleString()} invited</span></li>`).join('')||'<p class="muted">No referrals yet this month. Be the first on the board.</p>'}</ol>`}
+ else if(TAB==='notes'){try{localStorage.setItem(seenKey,NOTES[0][0]+NOTES[0][1])}catch(e){}body=NOTES.map(([d,t,items])=>`<div class="ac-patch"><small>${new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}</small><b>${esc(t)}</b><ul>${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}
+ else{body=`<h3 class="eyebrow">Your data</h3><div class="ac-row2"><p class="fine">Download everything we keep about you: your account, company save, holdings and profile, as a JSON file.</p><button class="ghost" data-ac="download">Download my data</button></div>
+  <h3 class="eyebrow ac-danger">Danger zone</h3><div class="ac-dz"><p>Deleting your account removes your company, buildings, claims, trades and chat messages from the shared world for good. This can't be undone.</p>
+  <label class="fv-lbl" for="acdel">Type DELETE to confirm</label><div class="ac-link"><input id="acdel" value="${esc(CONFIRM)}" autocomplete="off" spellcheck="false" placeholder="DELETE"><button class="btn ac-red" data-ac="delete" ${CONFIRM==='DELETE'?'':'disabled'}>Delete account</button></div></div>`}
+ return`<div class="mhead"><p class="eyebrow">Player account</p><h2 class="h">Account</h2></div><nav class="tabs">${tabs.map(([t,n])=>`<button data-ac="tab" data-t="${t}" class="${TAB===t?'on':''}">${n}${t==='notes'&&unseen()?' <i class="ac-dot"></i>':''}</button>`).join('')}</nav><div class="mbody">${body}</div><div class="mfoot"><button class="ghost" data-act="signout">Sign out</button><button class="btn" data-act="close">Done</button></div>`}
+function copy(text,msg){try{navigator.clipboard.writeText(text).then(()=>toast(msg,'good'),()=>toast(text,''))}catch(e){toast(text,'')}}
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-ac]');if(!t||t.disabled)return;const a=t.dataset.ac;
+ if(a==='tab'){TAB=t.dataset.t;renderModal()}
+ else if(a==='skin'){ACC.avatar=t.dataset.id;push(true);renderModal();topBtn()}
+ else if(a==='copyid')copy(uid()||'','Player ID copied');
+ else if(a==='copylink')copy($('#aclink').value,'Invite link copied');
+ else if(a==='download'){const data={exported_at:new Date().toISOString(),account:{id:uid(),email:AUTH.user&&AUTH.user.email,username:dispName(),player_no:ACC.no,member_since:ACC.since,loyalty:ACC.loyalty,avatar:ACC.avatar,trophies:ACC.trophies,referrals:{month:ACC.refMonth,lifetime:ACC.refTotal}},save:G};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),l=document.createElement('a');l.href=url;l.download='ancap-life-data.json';document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(url),4000)}
+ else if(a==='delete'){if(CONFIRM!=='DELETE'||!dbx())return;t.disabled=true;t.textContent='Deleting…';
+  const r=await AUTH.db.rpc('delete_my_account').catch(err=>({error:err}));if(r&&r.error){toast('Could not delete the account: '+(r.error.message||'server not set up'),'warn');t.disabled=false;t.textContent='Delete account';return}
+  try{localStorage.removeItem(SKEY);localStorage.removeItem('ancap.ref')}catch(_){}try{await AUTH.db.auth.signOut()}catch(_){}location.reload()}});
+document.addEventListener('input',e=>{if(e.target.id!=='acdel')return;CONFIRM=e.target.value.trim();const b=$('[data-ac="delete"]');if(b)b.disabled=CONFIRM!=='DELETE'});
+// ---------- wiring ----------
+const _rm=renderModal;renderModal=function(){const m=ui.modal,el=$('#modal .modal');if(m&&m.kind==='account'){$('#modal').hidden=false;el.classList.add('rx-modal');el.innerHTML=mAccount();return}return _rm()};
+function topBtn(){const icons=document.querySelector('#bar .hb-icons');if(!icons||!dbx())return;let b=document.getElementById('acbtn');
+ if(!b){b=document.createElement('button');b.id='acbtn';b.className='hb-ic ac-top';b.title='Account';b.setAttribute('aria-label','Account');b.addEventListener('click',()=>{TAB='profile';openModal('account')});icons.appendChild(b)}
+ const h='<span class="hb-svg">'+avatarHTML(G&&G.company,ACC.avatar,26)+'</span>'+(unseen()?'<i class="ac-dot"></i>':'');if(b._h!==h){b._h=h;b.innerHTML=h}}
+setInterval(topBtn,1500);
+window.openAccount=t=>{TAB=t||'profile';openModal('account')};
+const st=document.createElement('style');st.textContent=`
+.ac-av{display:inline-grid;place-items:center;flex:0 0 auto;border-radius:50%!important;font-weight:800;font-family:var(--f-body,system-ui);letter-spacing:.02em;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 2px 8px rgba(0,0,0,.35)}
+#acbtn{position:relative}#acbtn .ac-av{pointer-events:none}
+.ac-dot{display:inline-block;width:8px;height:8px;border-radius:50%!important;background:#ff5b4d;vertical-align:middle}#acbtn .ac-dot{position:absolute;top:3px;right:2px}
+.ac-hero{display:flex;align-items:center;gap:16px;margin-bottom:16px}.ac-hero b{display:block;font:800 22px/1.2 var(--f-body,system-ui);color:#f6f5f0}.ac-hero small{color:#9c9ea6;font-size:13px}
+.sx-sum em{display:block;margin-top:2px;font-style:normal;font-size:11.5px;color:#5fd38a}
+.ac-skins{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;margin-bottom:16px}
+.ac-skin{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:10px!important;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);text-align:center}
+.ac-skin span{width:40px;height:40px;border-radius:50%!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}.ac-skin b{font-size:12.5px;color:#f1f0ea}.ac-skin small{font-size:11px;color:#8d9098}
+.ac-skin:hover:not(:disabled){background:rgba(255,255,255,.08)}.ac-skin.on{border-color:#ffde00;background:rgba(255,222,0,.08)}.ac-skin:disabled{opacity:.45;cursor:default}
+.ac-rows>div{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.06);font-size:13.5px}.ac-rows span{flex:0 0 130px;color:#8d9098}.ac-rows b{flex:1;min-width:0;color:#ecebe6;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ac-rows .mono{font-size:12px}
+.ac-note{display:flex;gap:12px;align-items:flex-start;margin:4px 0 14px}.ac-note span{color:#ffde00;font-size:18px;line-height:1.2}.ac-note p{margin:0;color:#a7a9b0;font-size:13.5px;line-height:1.55}
+.ac-tiers,.ac-troph{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:16px}
+.ac-tiers>div,.ac-troph>div{display:flex;flex-direction:column;gap:2px;padding:12px;border-radius:10px!important;background:rgba(255,255,255,.04);border:1px solid color-mix(in srgb,var(--tc) 35%,transparent)}
+.ac-tiers span,.ac-troph span{font-size:22px}.ac-tiers b,.ac-troph b{color:var(--tc);font-size:14px}.ac-tiers small,.ac-troph small{color:#8d9098;font-size:11.5px}
+.ac-link{display:flex;gap:8px;margin-bottom:14px}.ac-link input{flex:1;min-width:0;height:40px;padding:0 12px;border-radius:9px!important;background:rgba(0,0,0,.3)!important;border:1px solid rgba(255,255,255,.14)!important;color:#f1f0ea!important;font:500 13px var(--f-mono,monospace)!important}
+.ac-patch{padding:12px 0;border-top:1px solid rgba(255,255,255,.06)}.ac-patch:first-child{border-top:0}.ac-patch small{color:#8d9098;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase}.ac-patch b{display:block;margin:2px 0 6px;font-size:15px;color:#f6f5f0}.ac-patch ul{margin:0;padding-left:18px;color:#c9cbd2;font-size:13.5px;line-height:1.6}
+.ac-row2{display:flex;align-items:center;gap:14px;margin-bottom:18px}.ac-row2 p{flex:1;margin:0}
+.ac-danger{color:#ff8a7d!important}.ac-dz{padding:14px;border-radius:10px!important;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.25)}.ac-dz p{margin:0 0 12px;color:#d6d5cf;font-size:13.5px}
+html body .btn.ac-red{background:linear-gradient(180deg,#ff8a7d,#e5484d)!important;color:#fff!important}html body .btn.ac-red:disabled{filter:grayscale(.7) brightness(.7)}
+.fv-q{color:#ecebe6}
+@media (max-width:1500px){html body #bar .hb-right .hb-search{flex:0 0 34px!important;width:34px!important;min-width:34px!important;padding:0 9px!important;position:relative}html body #bar .hb-right .hb-search input{display:none}html body #bar .hb-right .hb-search:focus-within{flex-basis:200px!important;width:200px!important}html body #bar .hb-right .hb-search:focus-within input{display:block}}
+html body #bar .hb-icons{gap:2px!important}
+body:has(#modal:not([hidden])) .fl-lvl,body:has(#modal:not([hidden])) .fl-obj{visibility:hidden}
 `;document.head.appendChild(st);
 })();
 
