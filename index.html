@@ -597,7 +597,7 @@ body{font-family:var(--f-body);font-size:14px;line-height:1.45;font-feature-sett
  <div id="ticker"></div>
  <div id="toasts" aria-live="polite"></div>
  <div id="modal" class="modal-back" hidden><div class="modal" role="dialog" aria-modal="true"></div></div>
- <div id="front" hidden><video class="fr-video" muted loop playsinline preload="auto" poster="media/nyc-poster.jpg" aria-hidden="true"><source src="media/nyc-bg.mp4" type="video/mp4"></video><div class="fr-shade"></div><div class="fr-glow"></div><div class="fr-wrap"><div class="fr-logo"><i class="flag big"></i>ANCAP LIFE</div><p class="fr-hero">The whole planet is the map: a real <b>Earth</b>, not just one city. Lease a shop anywhere, hire a crew and build an empire, one block at a time.</p><div class="fr-card"></div><p class="fr-foot">A business sim on the real planet · background: New York City, filmed in-game</p></div></div>
+ <div id="front" hidden><video class="fr-video" muted loop playsinline preload="auto" poster="media/city-nyc-v2.jpg" aria-hidden="true"><source src="media/city-nyc-v2.webm" type="video/webm"><source src="media/city-nyc-v2.mp4" type="video/mp4"></video><div class="fr-shade"></div><div class="fr-glow"></div><div class="fr-wrap"><div class="fr-logo"><i class="flag big"></i>ANCAP LIFE</div><p class="fr-hero">The whole planet is the map: a real <b>Earth</b>, not just one city. Lease a shop anywhere, hire a crew and build an empire, one block at a time.</p><div class="fr-card"></div><p class="fr-foot">A business sim on the real planet · background: New York City, filmed in-game</p></div></div>
  <div id="loading"><i class="flag big" aria-hidden="true"></i><b>ANCAP LIFE</b><div class="bar2"><i></i></div><p>Loading the planet…</p></div>
 </div>
 <script>window.__PACKED=true</script>
@@ -7746,6 +7746,125 @@ let lastSel=0;
   const tt=performance.now()/1000;for(const o of LIVE_O.values()){if(o.userData.spin)for(const s of o.userData.spin)s.rotation.x=tt*40}}catch(e){if(!tick.w){tick.w=1;console.warn('traffic',e)}}})();
 window.__tp={LIVE_O,get FL(){return FL},AIR,PORTS,BUILT,DOCKS};
 window.__tpModels={cessna,bizjet,airliner:l=>airliner(LIVERIES[l||0]),widebody:l=>airliner(LIVERIES[l||1],true),cargojet:l=>cargojet({tail:'#4a3b8f',band:'#4a3b8f'}),motorboat,sailboat,superyacht,containership:()=>containership(3),tanker:()=>tanker(1),tug};
+})();
+
+</script>
+<script>
+// ANCAP LIFE · FRONT PAGE LAYER: glass title screen over real in-game footage of New York, a single call to action,
+// a separate glass sign-in / sign-up screen, and a live ticker with real numbers from the shared world.
+(function(){
+let FV='home';
+const fmt=v=>typeof big==='function'?big(v):'$'+Math.round(v).toLocaleString();
+// ---------- build the new layout around the existing video ----------
+function shell(){const f=document.getElementById('front');if(!f||f.dataset.v2)return;f.dataset.v2='1';
+ const wrap=f.querySelector('.fr-wrap');if(!wrap)return;
+ wrap.querySelectorAll('.fr-logo,.fr-hero,.fr-foot').forEach(e=>e.remove());
+ const head=document.createElement('header');head.className='fv-head';
+ head.innerHTML='<h1 class="fv-title"><i class="flag fv-flag" aria-hidden="true"></i><span>ANCAP LIFE</span></h1><span class="fv-beta">BETA</span><p class="fv-tag">The whole planet is your market</p>';
+ wrap.insertBefore(head,wrap.firstChild);
+ const tk=document.createElement('div');tk.className='fv-ticker';tk.setAttribute('aria-label','Live world stats');tk.innerHTML='<div class="fv-track"></div>';f.appendChild(tk);
+ const cr=document.createElement('p');cr.className='fv-credit';cr.textContent='Background: New York City, filmed in the game';f.appendChild(cr)}
+// ---------- live ticker (only real numbers) ----------
+function ticker(){const t=document.querySelector('#front .fv-track');if(!t)return;
+ const P=typeof NET!=='undefined'?[...NET.players.values()]:[],on=typeof NET!=='undefined'?(NET.online||1):1,nw=P.reduce((a,p)=>a+(+p.net_worth||0),0),top=P.slice().sort((a,b)=>b.net_worth-a.net_worth)[0];
+ const day=typeof worldDay==='function'?Math.floor(worldDay())+1:null,biz=P.reduce((a,p)=>a+(+p.businesses||0),0);
+ const items=[`<span class="fv-on"><i></i>${on.toLocaleString()} ${on===1?'player':'players'} online</span>`];
+ if(P.length)items.push(`<span>${P.length.toLocaleString()} companies ranked</span>`,`<span>Combined net worth ${fmt(nw)}</span>`,`<span>${biz.toLocaleString()} businesses open</span>`);
+ if(top)items.push(`<span>Richest: ${esc(top.company)} · ${fmt(top.net_worth)}</span>`);
+ if(day)items.push(`<span>Shared world · Day ${day.toLocaleString()}</span>`);
+ items.push('<span>3,000 real airports</span>','<span>6 cities built from real map data</span>');
+ const h=items.join('');if(t._h===h)return;t._h=h;t.innerHTML=`<div class="fv-run">${h}</div><div class="fv-run" aria-hidden="true">${h}</div>`}
+setInterval(()=>{try{const f=document.getElementById('front');if(f&&!f.hidden){shell();ticker()}}catch(e){}},1000);
+// ---------- cards ----------
+const SHIELD='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5z" fill="url(#fvg)"/><defs><linearGradient id="fvg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe866"/><stop offset="1" stop-color="#f5a800"/></linearGradient></defs><path d="M8.5 12l2.4 2.4 4.6-4.8" fill="none" stroke="#1b1600" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function homeOut(){return`<div class="fv-card"><h2 class="fv-h">Build something big.</h2>
+ <button class="fv-cta" data-fr="auth">START PLAYING</button>
+ <div class="fv-note">${SHIELD}<p>Free to play. Your company, cash and buildings save to your account, so you can carry on from any device. Prefer not to sign up? You can play as a guest from the next screen.</p></div></div>`}
+function homeIn(){const has=!!(G&&G.company&&(G.sites.length||G.props.length||G.day>(G.day0||0))),em=dispName()||'your account';
+ return`<div class="fv-card"><h2 class="fv-h">${has?'Welcome back.':'Build something big.'}</h2>
+ ${has?`<p class="fv-sub">${esc(G.company)} · ${fmt(G.cash)} in the bank${typeof dayName==='function'?' · '+dayName(G.day):''}</p>`:`<label class="fv-lbl" for="frname">Name your company</label><input id="frname" class="fv-in" type="text" maxlength="40" placeholder="e.g. Liberty Burgers" value="${esc(G&&G.company||'')}">`}
+ <button class="fv-cta" data-act="frplay">${has?'CONTINUE':'PLAY'}</button>
+ <div class="fv-acct"><span class="fv-av">${esc(em[0]||'?')}</span><div><small>${AUTH.cloud==='off'?'Saving on this device':'Saved to your account'}</small><b>${esc(em)}</b></div><button class="fv-link" data-act="signout">Sign out</button></div>
+ ${AUTH.adopted?'<p class="fv-ok">We found a game saved on this device and added it to your account.</p>':''}
+ ${has?`<button class="fv-link fv-danger" data-act="frnew">${ui.confirm==='frnew'?'Sure? This deletes your save. Click again':'Start a new game'}</button>`:''}</div>`}
+// auth screen: the existing form, restyled, with a way back
+if(typeof authCard==='function'){const _ac=authCard;authCard=function(){if(FV==='home'&&AUTH.mode!=='newpass')return homeOut();
+  return`<div class="fv-card fv-auth"><button class="fv-back" data-fr="home" aria-label="Back to the title screen">← Back</button>${_ac()}</div>`}}
+if(typeof renderFront==='function'){const _rf=renderFront;renderFront=function(force){const el=document.getElementById('front');if(!el||el.hidden)return;shell();const card=el.querySelector('.fr-card');el.classList.toggle('fv-authv',!authed()&&(FV==='auth'||AUTH.mode==='newpass'));
+  if(!authed()||AUTH.mode==='newpass'){if(!force&&card.querySelector('#authform,.fv-cta[data-fr]')&&card.dataset.fv===FV)return;card.dataset.fv=FV;card.innerHTML=authCard();ticker();return}
+  if(!force&&document.activeElement&&document.activeElement.id==='frname')return;card.dataset.fv='in';card.innerHTML=homeIn();ticker()}}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-fr]');if(!t)return;e.preventDefault();FV=t.dataset.fr;try{const v=document.querySelector('#front .fr-video');if(v&&v.paused)v.play().catch(()=>{})}catch(_){}if(FV==='auth'&&AUTH.mode==='newpass')AUTH.mode='in';renderFront(true);
+ const f=document.querySelector('#front .fr-card input');if(f&&FV==='auth')setTimeout(()=>f.focus(),40)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&FV==='auth'){const f=document.getElementById('front');if(f&&!f.hidden&&!authed()){FV='home';renderFront(true)}}});
+// a magic-link / password-reset return should land on the form, not the title
+try{if(/type=recovery|access_token|error_description/.test(location.hash))FV='auth'}catch(e){}
+// ---------- styles ----------
+const st=document.createElement('style');st.textContent=`
+html body #front{background:#07080a url(media/city-nyc-v2.jpg) center/cover no-repeat!important;overflow-y:auto!important;overflow-x:hidden!important}
+html body #front .fr-video,html body #front .fr-shade,html body #front .fr-glow{position:fixed!important}
+html body #front.fv-authv .fv-title{font-size:clamp(40px,5.5vw,72px)}html body #front.fv-authv .fv-flag{width:clamp(30px,3.6vw,48px)!important;height:clamp(21px,2.5vw,34px)!important}html body #front.fv-authv .fv-tag{display:none}html body #front.fv-authv .fr-wrap{justify-content:flex-start!important;padding-top:40px!important}
+html body #front .fr-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(1.1) brightness(1)}
+html body #front .fr-shade{position:absolute;inset:0;background:radial-gradient(ellipse 75% 65% at 50% 45%,rgba(7,8,10,.12),rgba(7,8,10,.66) 100%),linear-gradient(180deg,rgba(7,8,10,.4),rgba(7,8,10,.05) 35%,rgba(7,8,10,.55))!important;opacity:1!important}
+html body #front .fr-glow{position:absolute;inset:0;background:radial-gradient(ellipse 40% 30% at 50% 22%,rgba(255,222,0,.10),transparent 70%)!important;opacity:1!important;animation:none!important}
+html body #front .fr-wrap{position:relative;z-index:2;min-height:100%;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:28px!important;padding:56px 16px 96px!important;box-sizing:border-box;max-width:none!important;width:100%!important;margin:0!important}
+.fv-head{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.fv-title{margin:0;display:flex;align-items:center;gap:clamp(10px,1.6vw,20px);font:900 clamp(54px,9.5vw,128px)/.9 var(--f-display,'Big Shoulders Display',Impact,sans-serif);letter-spacing:.02em;text-transform:uppercase}
+.fv-title span{white-space:nowrap;background:linear-gradient(100deg,#fff3a3 0%,#ffde00 40%,#f5a800 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 26px rgba(255,190,0,.28))}
+html body #front .fv-flag{width:clamp(40px,6vw,80px)!important;height:clamp(28px,4.2vw,56px)!important;flex:0 0 auto;border-radius:4px!important;box-shadow:0 6px 20px rgba(0,0,0,.45)}
+.fv-beta{display:inline-block;padding:4px 12px 3px;border-radius:6px!important;background:#ffde00;color:#1b1600;font:800 12px/1.2 var(--f-body,system-ui);letter-spacing:.22em;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 6px 18px rgba(255,222,0,.25)}
+.fv-tag{margin:6px 0 0;font:700 clamp(11px,1.25vw,15px)/1.3 var(--f-body,system-ui);letter-spacing:.38em;text-transform:uppercase;color:rgba(236,235,230,.72);text-indent:.38em}
+html body #front .fr-card{all:unset;display:block;width:min(560px,100%)}
+.fv-card{position:relative;box-sizing:border-box;width:100%;padding:34px 36px 30px;border-radius:16px!important;background:rgba(22,24,28,.62);backdrop-filter:blur(20px) saturate(1.2);-webkit-backdrop-filter:blur(20px) saturate(1.2);border:1px solid rgba(255,255,255,.12);box-shadow:0 30px 70px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);color:#ecebe6;font:14px/1.5 var(--f-body,system-ui)}
+.fv-h{margin:0 0 20px;font:800 clamp(28px,3.4vw,38px)/1.1 var(--f-body,system-ui);letter-spacing:-.01em;color:#f6f5f0}
+.fv-sub{margin:-10px 0 18px;color:#a7a9b0}
+.fv-cta,html body #front .fr-play{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;min-height:58px;border-radius:10px!important;cursor:pointer;background:linear-gradient(180deg,#ffe866,#f5d200)!important;color:#1b1600!important;font:800 18px/1 var(--f-body,system-ui)!important;letter-spacing:.12em;box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 10px 26px rgba(245,200,0,.22),0 1px 2px rgba(0,0,0,.4)!important;border:1px solid rgba(0,0,0,.25)!important;transition:transform .15s,box-shadow .15s,filter .15s;text-transform:uppercase}
+.fv-cta:hover,html body #front .fr-play:hover{transform:translateY(-1px)!important;filter:brightness(1.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 14px 34px rgba(245,200,0,.32)!important}
+.fv-cta:focus-visible,html body #front .fr-play:focus-visible{outline:3px solid rgba(255,222,0,.55);outline-offset:3px}
+html body #front .fr-play:disabled{filter:grayscale(.6) brightness(.8);cursor:default}
+.fv-note{display:flex;gap:14px;align-items:flex-start;margin-top:22px}.fv-note svg{flex:0 0 auto;margin-top:2px}.fv-note p{margin:0;color:#9c9ea6;font-size:14.5px;line-height:1.55}
+.fv-lbl,html body #front .fr-lbl{display:block;margin:0 0 6px;font:600 12px/1.2 var(--f-body,system-ui)!important;letter-spacing:.08em!important;text-transform:uppercase;color:#a7a9b0!important}
+.fv-in,html body #front .au-f input:not([type=checkbox]){box-sizing:border-box;width:100%;height:46px;margin:0 0 14px;padding:0 14px!important;border-radius:9px!important;background:rgba(0,0,0,.32)!important;border:1px solid rgba(255,255,255,.14)!important;color:#f1f0ea!important;font:500 15px var(--f-body,system-ui)!important;box-shadow:none!important;color-scheme:dark}
+.fv-in:focus,html body #front .au-f input:focus{outline:none;border-color:rgba(255,222,0,.6)!important;box-shadow:0 0 0 3px rgba(255,222,0,.15)!important}
+.fv-acct{display:flex;align-items:center;gap:12px;margin-top:18px;padding:12px 14px;border-radius:10px!important;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}
+.fv-acct small{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#8d9098}.fv-acct b{display:block;font-weight:600;color:#ecebe6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}.fv-acct>div{flex:1;min-width:0}
+.fv-av{width:34px;height:34px;flex:0 0 auto;border-radius:50%!important;display:grid;place-items:center;background:#ffde00;color:#1b1600;font-weight:800;text-transform:uppercase}
+.fv-link,html body #front .fr-link{all:unset;cursor:pointer;color:#c9cbd2!important;font:600 13px var(--f-body,system-ui)!important;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(255,255,255,.25)}
+.fv-link:hover,html body #front .fr-link:hover{color:#fff!important}
+.fv-danger{display:block;margin:16px auto 0;color:#ff8a7d!important}
+.fv-ok{margin:12px 0 0;color:#6fd48a}
+.fv-back{all:unset;cursor:pointer;position:absolute;top:16px;left:18px;font:600 13px var(--f-body,system-ui);color:#a7a9b0;padding:4px 6px;border-radius:6px!important}.fv-back:hover{color:#fff;background:rgba(255,255,255,.06)}
+/* sign-in / sign-up screen: the existing form in the glass style */
+.fv-auth{padding-top:46px}
+html body #front .fv-auth .fr-top,html body #front .fv-auth .fr-live,html body #front .fv-auth .fr-cities,html body #front .fv-auth .fr-feat{display:none!important}
+html body #front .fv-auth h1{margin:0 0 6px!important;font:800 30px/1.15 var(--f-body,system-ui)!important;letter-spacing:-.01em!important;text-transform:none!important;color:#f6f5f0!important;text-align:left!important}
+html body #front .fv-auth .fr-sub{margin:0 0 18px!important;color:#9c9ea6!important;font:400 14.5px/1.5 var(--f-body,system-ui)!important;text-align:left!important}
+html body #front .fv-auth .au-tabs{display:flex!important;gap:4px!important;padding:4px!important;margin:0 0 18px!important;border-radius:10px!important;background:rgba(0,0,0,.28)!important;border:1px solid rgba(255,255,255,.08)!important}
+html body #front .fv-auth .au-tabs button{all:unset;flex:1;text-align:center;cursor:pointer;padding:9px 0;border-radius:7px!important;font:600 14px var(--f-body,system-ui);color:#a7a9b0}
+html body #front .fv-auth .au-tabs button.on{background:rgba(255,255,255,.1);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+html body #front .fv-auth .fr-body{padding:0!important;background:none!important;border:0!important;box-shadow:none!important}
+html body #front .fv-auth .au-f{display:flex!important;flex-direction:column!important;gap:0!important}
+html body #front .fv-auth .au-hint{margin:-8px 0 12px!important;color:#8d9098!important;font:400 12.5px/1.45 var(--f-body,system-ui)!important}
+html body #front .fv-auth .au-chk{display:flex!important;gap:10px!important;align-items:flex-start!important;margin:0 0 14px!important;color:#c9cbd2!important;font:400 13.5px/1.45 var(--f-body,system-ui)!important}
+html body #front .fv-auth .au-chk input{accent-color:#ffde00;width:17px;height:17px;margin-top:2px}
+html body #front .fv-auth .au-chk a,html body #front .fv-auth .au-hint a{color:#ffde00!important}
+html body #front .fv-auth .au-msg{min-height:0;margin:0 0 10px!important;font:500 13.5px/1.4 var(--f-body,system-ui)!important}html body #front .fv-auth .au-msg.err{color:#ff8a7d!important}html body #front .fv-auth .au-msg.ok{color:#6fd48a!important}
+html body #front .fv-auth .au-row{display:flex!important;justify-content:space-between!important;margin-top:14px!important}
+html body #front .fv-auth .au-or{display:flex!important;align-items:center!important;gap:12px!important;margin:20px 0 14px!important;color:#6f727a!important;font:600 11px var(--f-body,system-ui)!important;letter-spacing:.2em!important}
+html body #front .fv-auth .au-or::before,html body #front .fv-auth .au-or::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.1)}
+html body #front .fv-auth .fr-ghost{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;border-radius:10px!important;cursor:pointer;background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.16)!important;color:#ecebe6!important;font:700 14px var(--f-body,system-ui)!important;letter-spacing:.08em;text-transform:uppercase}
+html body #front .fv-auth .fr-ghost:hover{background:rgba(255,255,255,.1)!important}
+html body #front .fv-auth .fr-meta{text-align:center;color:#8d9098!important;font:400 12.5px var(--f-body,system-ui)!important;letter-spacing:0!important}
+/* live ticker */
+.fv-ticker{position:fixed;left:0;right:0;bottom:0;z-index:3;height:52px;overflow:hidden;display:flex;align-items:center;background:rgba(14,15,18,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(255,255,255,.08);padding-bottom:env(safe-area-inset-bottom,0px)}
+.fv-track{display:flex;width:max-content;animation:fvRoll 46s linear infinite}.fv-ticker:hover .fv-track{animation-play-state:paused}
+.fv-run{display:flex;gap:48px;padding-right:48px;white-space:nowrap;font:500 15px/1 var(--f-mono,'IBM Plex Mono',monospace);color:#b9bbc2}
+.fv-on{display:inline-flex;align-items:center;gap:10px;color:#ecebe6}.fv-on i{display:inline-block!important;width:9px!important;height:9px!important;border-radius:50%!important;background:#5fd38a;box-shadow:0 0 0 4px rgba(95,211,138,.18)}
+@keyframes fvRoll{to{transform:translateX(-50%)}}
+.fv-credit{position:fixed;right:16px;bottom:60px;z-index:3;margin:0;font:500 11px var(--f-body,system-ui);color:rgba(236,235,230,.45)}
+@media (prefers-reduced-motion:reduce){.fv-track{animation:none}html body #front .fr-video{display:none}}
+@media (max-width:600px){.fv-title{font-size:min(13vw,64px)}.fv-card{padding:28px 20px 22px}.fv-tag{letter-spacing:.22em}.fv-credit{display:none}.fv-run{font-size:13px}}
+`;document.head.appendChild(st);
+setTimeout(()=>{try{shell();renderFront(true)}catch(e){}},50);
 })();
 
 </script>
