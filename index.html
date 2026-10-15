@@ -3306,32 +3306,103 @@ function roomFor(lot,L){
  return{O,u,v,W,D,center:[mid[0]+v[0]*D/2,mid[1]+v[1]*D/2],theta:Math.atan2(-u[1],-u[0])};
 }
 
+// ---------- room shape: the shop floor follows the building's real footprint ----------
+const RT=.18; // wall thickness
+function clipHP(P,ax,az,c){const out=[];for(let i=0;i<P.length;i++){const A=P[i],B=P[(i+1)%P.length],da=ax*A[0]+az*A[1]-c,db=ax*B[0]+az*B[1]-c;if(da>=0)out.push(A);if((da>=0)!==(db>=0)){const t=da/(da-db);out.push([A[0]+(B[0]-A[0])*t,A[1]+(B[1]-A[1])*t])}}return out}
+function cleanRing(P){let R=P.slice();for(let pass=0;pass<4;pass++){const Q=R;R=Q.filter((p,i)=>{const q=Q[(i+1)%Q.length];return Math.hypot(p[0]-q[0],p[1]-q[1])>.06});
+ for(let i=0;i<R.length&&R.length>3;){const a=R[(i-1+R.length)%R.length],b=R[i],c=R[(i+1)%R.length],l=Math.hypot(c[0]-a[0],c[1]-a[1])||1e-9,cr=Math.abs((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]))/l;if(cr<.04)R.splice(i,1);else i++}}return R}
+function segD(x,z,a,b){const dx=b[0]-a[0],dz=b[1]-a[1],l2=dx*dx+dz*dz||1e-9,t=clamp(((x-a[0])*dx+(z-a[1])*dz)/l2,0,1);return Math.hypot(a[0]+dx*t-x,a[1]+dz*t-z)}
+// inside the room and at least m from every outer wall line
+function rmIn(rm,x,z,m){const P=rm.poly;if(!pipR(P,x,z))return false;if(m>0)for(let i=0;i<P.length;i++)if(segD(x,z,P[i],P[(i+1)%P.length])<m)return false;return true}
+function ptsIn(rm,pts,m,quad){for(const p of pts)if(!rmIn(rm,p[0],p[1],m))return false;if(quad){for(const v of rm.poly)if(pipR(quad,v[0],v[1]))return false}return true}
+function rectIn(rm,r,m){const[x0,z0,x1,z1]=r,mx=(x0+x1)/2,mz=(z0+z1)/2;return ptsIn(rm,[[x0,z0],[x1,z0],[x1,z1],[x0,z1],[mx,z0],[x1,mz],[mx,z1],[x0,mz],[mx,mz]],m,[[x0+.01,z0+.01],[x1-.01,z0+.01],[x1-.01,z1-.01],[x0+.01,z1-.01]])}
+function spansAt(rm,z,m){const out=[];let s=null;for(let x=0;x<=rm.W+1e-6;x+=.05){const ok=rmIn(rm,x,z,m);if(ok&&s==null)s=x;if(!ok&&s!=null){out.push([s,x-.05]);s=null}}if(s!=null)out.push([s,rm.W]);return out}
+const itemAng=it=>it.a!=null?it.a:-it.r*Math.PI/2;
+function iCorners(it,grow){const m=imodelOf(it.id),hw=m.w/2+(grow||0),hd=m.d/2+(grow||0),a=itemAng(it),c=Math.cos(a),s=Math.sin(a);return[[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(([x,z])=>[it.x+x*c+z*s,it.z-x*s+z*c])}
+function rmFits(rm,it,m){const C=iCorners(it),pts=C.concat(C.map((p,i)=>{const q=C[(i+1)%4];return[(p[0]+q[0])/2,(p[1]+q[1])/2]}),[[it.x,it.z]]);return ptsIn(rm,pts,m,iCorners(it,-.01))}
+// edges, the street front and which walls face open air (those get windows)
+function finishShape(rm,P,orig,nbs){rm.poly=P;let best=null;
+ rm.edges=P.map((a,i)=>{const b=P[(i+1)%P.length],len=Math.hypot(b[0]-a[0],b[1]-a[1])||1e-6,d=[(b[0]-a[0])/len,(b[1]-a[1])/len],n=[-d[1],d[0]],front=Math.abs(a[1]+RT)<.03&&Math.abs(b[1]+RT)<.03;
+  if(front&&(!best||len>best.len))best={len,x0:Math.min(a[0],b[0]),x1:Math.max(a[0],b[0])};
+  let ext=false;if(!front&&orig&&len>1.6){let hits=0;for(const t of[.3,.5,.7]){const x=a[0]+(b[0]-a[0])*t,z=a[1]+(b[1]-a[1])*t;let on=false;for(let k=0;k<orig.length;k++)if(segD(x,z,orig[k],orig[(k+1)%orig.length])<.08){on=true;break}if(!on)continue;
+    const ox=x-n[0]*.6,oz=z-n[1]*.6;let near=false;for(const Q of nbs){if(pipR(Q,ox,oz)){near=true;break}for(let k=0;k<Q.length&&!near;k++)if(segD(ox,oz,Q[k],Q[(k+1)%Q.length])<.5)near=true;if(near)break}if(!near)hits++}ext=hits>=2}
+  return{a,b,len,d,n,front,ext,win:[]}});
+ rm.front=best?[Math.max(0,best.x0),Math.min(rm.W,best.x1)]:[0,rm.W];
+ const mu=[-rm.u[0],-rm.u[1]];rm.center=[rm.O[0]+mu[0]*rm.W/2+rm.v[0]*rm.D/2,rm.O[1]+mu[1]*rm.W/2+rm.v[1]*rm.D/2]}
+function roomShape(lot,L,rm){
+ const tl=toLocalOf(L),mu=[-rm.u[0],-rm.u[1]],v=rm.v,O=rm.O,toR=p=>{const dx=p[0]-O[0],dy=p[1]-O[1];return[dx*mu[0]+dy*mu[1],dx*v[0]+dy*v[1]]};
+ const src=(lot.fp||lot.poly);if(!src||src.length<3)return false;
+ let P=clipHP(src.map(tl).map(toR),0,1,-.3);if(P.length<3)return false;
+ const area=Q=>Q.length<3?0:Math.abs(ringArea(Q)),sqm=lot.landmark?Math.min(lot.sqm,320):lot.sqm,target=clamp(Math.max(sqm*1.9,rm.W*rm.D*1.15),40,620);
+ if(area(P)>target*1.12){
+  // a big building: take the part of it that sits behind our frontage, as wide and deep as the unit needs
+  const cx=(e,Q)=>clipHP(clipHP(Q,1,0,-.3-e),-1,0,-(rm.W+.3+e));
+  if(area(cx(0,P))>target){P=cx(0,P);let a=Math.min(rm.D,Math.max(...P.map(p=>p[1]))),b=Math.max(...P.map(p=>p[1]));for(let k=0;k<16;k++){const m=(a+b)/2;if(area(clipHP(P,0,-1,-m))>target)b=m;else a=m}P=clipHP(P,0,-1,-a)}
+  else{let lo=0,hi=40;for(let k=0;k<16;k++){const m=(lo+hi)/2;if(area(cx(m,P))>target)hi=m;else lo=m}P=cx(lo,P)}}
+ const orig0=clipHP(src.map(tl).map(toR),0,1,-.31);
+ P=cleanRing(P);if(P.length<3||area(P)<12)return false;if(ringArea(P)<0)P=P.reverse();
+ let mnx=1e9,mnz=1e9;for(const p of P){mnx=Math.min(mnx,p[0]);mnz=Math.min(mnz,p[1])}
+ const sx=-RT-mnx,sz=-RT-mnz,sh=p=>[p[0]+sx,p[1]+sz];P=P.map(sh);
+ rm.O=[O[0]+rm.u[0]*sx-v[0]*sz,O[1]+rm.u[1]*sx-v[1]*sz];
+ let mxx=-1e9,mxz=-1e9;for(const p of P){mxx=Math.max(mxx,p[0]);mxz=Math.max(mxz,p[1])}
+ rm.W=mxx-RT;rm.D=mxz-RT;if(rm.W<2.5||rm.D<2.5)return false;
+ const nbs=L.kind==='lm'?[]:lotsOf(L).filter(o=>o.key!==lot.key&&!o.hidden&&Math.abs(o.lat-lot.lat)<.002&&Math.abs(o.lon-lot.lon)<.003).map(o=>o.poly.map(tl).map(toR).map(sh));
+ finishShape(rm,P,orig0.map(sh),nbs);return true}
+function rectShape(rm){finishShape(rm,[[-RT,-RT],[rm.W+RT,-RT],[rm.W+RT,rm.D+RT],[-RT,rm.D+RT]],null,[])}
+// the faces kit can stand against: inner faces of the outer walls, plus both sides of partitions on the ground floor
+function roomFaces(rm,lv){const F=[];if(!rm.edges)return F;for(const e of rm.edges){if(e.front)continue;F.push({a:[e.a[0]+e.n[0]*RT,e.a[1]+e.n[1]*RT],d:e.d,n:e.n,len:e.len,inset:RT})}
+ if(!lv)for(const w of rm.parts||[]){const lx=w[2]-w[0],lz=w[3]-w[1];if(lx>=lz){F.push({a:[w[0],w[1]],d:[1,0],n:[0,-1],len:lx,inset:0},{a:[w[0],w[3]],d:[1,0],n:[0,1],len:lx,inset:0})}else{F.push({a:[w[0],w[1]],d:[0,1],n:[-1,0],len:lz,inset:0},{a:[w[2],w[1]],d:[0,1],n:[1,0],len:lz,inset:0})}}
+ return F}
+// push an item back-first against the nearest wall face (models face -z, so their back is +z)
+function snapWall(rm,it,x,z,maxD,gap){const m=imodelOf(it.id),hw=m.w/2,hd=m.d/2;gap=gap==null?.01:gap;let best=null;
+ for(const f of roomFaces(rm,it.l||0)){const lo=hw+f.inset+.03,hi=f.len-hw-f.inset-.03;if(hi<lo)continue;
+  if((x-f.a[0])*f.n[0]+(z-f.a[1])*f.n[1]<-.05)continue; // we are on the other side of this wall
+  const s=clamp(Math.round(((x-f.a[0])*f.d[0]+(z-f.a[1])*f.d[1])*4)/4,lo,hi),px=f.a[0]+f.d[0]*s,pz=f.a[1]+f.d[1]*s,dist=Math.hypot(x-px,z-pz);
+  if(dist<(maxD||1.4)&&(!best||dist<best.dist))best={dist,f,px,pz}}
+ if(!best)return false;const f=best.f,phi=Math.atan2(-f.n[0],-f.n[1]);
+ it.x=best.px+f.n[0]*(hd+gap);it.z=best.pz+f.n[1]*(hd+gap);
+ const q=-phi/(Math.PI/2),qr=Math.round(q);if(Math.abs(q-qr)<.01){it.r=((qr%4)+4)%4;delete it.a}else{it.a=phi;it.r=0}
+ return true}
+// oriented box along a wall line: origin a, unit dir d, inward normal n; s runs along, o inward from the line, y up
+function ebox(g,a,d,n,s0,s1,o0,o1,y0,y1,col,top){const P=(s,o,y)=>[a[0]+d[0]*s+n[0]*o,y,a[1]+d[1]*s+n[1]*o],T=top||col;
+ g.quad(P(s0,o0,y1),P(s1,o0,y1),P(s1,o1,y1),P(s0,o1,y1),UPN,T,15);
+ g.quad(P(s0,o1,y0),P(s1,o1,y0),P(s1,o1,y1),P(s0,o1,y1),[n[0],0,n[1]],col,15);
+ g.quad(P(s1,o0,y0),P(s0,o0,y0),P(s0,o0,y1),P(s1,o0,y1),[-n[0],0,-n[1]],tint(col,.82),15);
+ g.quad(P(s0,o0,y0),P(s0,o1,y0),P(s0,o1,y1),P(s0,o0,y1),[-d[0],0,-d[1]],tint(col,.9),15);
+ g.quad(P(s1,o1,y0),P(s1,o0,y0),P(s1,o0,y1),P(s1,o1,y1),[d[0],0,d[1]],tint(col,.9),15)}
 // ---------- layout ----------
 function ifoot(id,r){const m=imodelOf(id);return r%2?[m.d,m.w]:[m.w,m.d]}
-function iRect(it){const[w,d]=ifoot(it.id,it.r);return[it.x-w/2,it.z-d/2,it.x+w/2,it.z+d/2]}
+function iRect(it){if(it.a!=null){const C=iCorners(it);let a=1e9,b=1e9,c=-1e9,d=-1e9;for(const p of C){a=Math.min(a,p[0]);b=Math.min(b,p[1]);c=Math.max(c,p[0]);d=Math.max(d,p[1])}return[a,b,c,d]}const[w,d]=ifoot(it.id,it.r);return[it.x-w/2,it.z-d/2,it.x+w/2,it.z+d/2]}
 function iOverlap(a,b){return a[0]<b[2]-.02&&a[2]>b[0]+.02&&a[1]<b[3]-.02&&a[3]>b[1]+.02}
-function iValid(rm,layout,it,skip){const r0=iRect(it),zo=imodelOf(it.id).zone==='over',pad=it.id==='seats'?.25:0,r=[r0[0]-pad,r0[1]-pad,r0[2]+pad,r0[3]+pad];
- if(r0[0]<.12||r0[1]<.12||r0[2]>rm.W-.12||r0[3]>rm.D-.12)return false;
- if(!zo&&rm.stairOn&&iOverlap(r,rm.stair))return false;if(!zo&&rm.dr&&(it.l||0)===rm.drl&&iOverlap(r,rm.dr))return false;
- if(!zo&&!it.l){if(rm.door&&iOverlap(r,rm.door))return false;if(rm.pz&&r[1]<rm.pz+.1&&r[3]>rm.pz-.1&&!(r[0]>=rm.gap[0]&&r[2]<=rm.gap[1]))return false;
-  if(rm.pz&&rm.gapClear&&iOverlap(r,rm.gapClear))return false}
+function iValid(rm,layout,it,skip){const r0=iRect(it),M=imodelOf(it.id),zo=M.zone==='over',wz=M.zone==='wall',pad=it.id==='seats'?.25:0,r=[r0[0]-pad,r0[1]-pad,r0[2]+pad,r0[3]+pad];
+ if(rm.poly){if(!rmFits(rm,it,wz?RT-.02:RT+.12))return false}else if(r0[0]<.12||r0[1]<.12||r0[2]>rm.W-.12||r0[3]>rm.D-.12)return false;
+ if(!zo&&rm.stairOn&&iOverlap(r,rm.stair))return false;if(!zo&&rm.drs&&(it.l||0)===rm.drl&&rm.drs.some(d=>iOverlap(r,d)))return false;
+ if(!it.l){for(const b of rm.blocks||[])if(iOverlap(r0,b))return false;
+  if(!zo){if(rm.door&&iOverlap(r,rm.door))return false;if(rm.gapClear&&iOverlap(r,rm.gapClear))return false;for(const k of rm.keep||[])if(iOverlap(r,k))return false}}
  for(let i=0;i<layout.length;i++){if(i===skip)continue;const o=layout[i];if((o.l||0)!==(it.l||0)||(imodelOf(o.id).zone==='over')!==zo)continue;if(iOverlap(r,iRect(o)))return false}return true}
-function iZone(id,b){const m=imodelOf(id);if(m.zone==='back'||m.zone==='over'){const e=b.equip.find(x=>x.id===id);return'back'}return m.zone}
+function iZone(id,b){const m=imodelOf(id);if(m.zone==='back'||m.zone==='over')return'back';return m.zone}
 function autoPlace(s,rm,id){
  const L=s.layout,m=imodelOf(id),zone=iZone(id,BIZ[s.type]),cands=[];
  const back=rm.pz?[rm.pz+.15,rm.D]:[rm.D*.45,rm.D],front=rm.pz?[0,rm.pz-.15]:[0,rm.D];
- const push=(x,z,r,pri)=>cands.push({id,x,z,r,pri});
- for(let r=0;r<4;r++){const[w,d]=ifoot(id,r);
+ const push=(x,z,r,pri,a)=>cands.push({x,z,r,pri,a});
+ // against a wall first: wall kit flush, back-of-house kit with a small service gap
+ if(rm.poly&&zone!=='floor'&&zone!=='front'){for(const f of roomFaces(rm,0))for(let sx=0;sx<=f.len;sx+=.25){const it={id,r:0};
+   if(!snapWall(rm,it,f.a[0]+f.d[0]*sx+f.n[0]*.3,f.a[1]+f.d[1]*sx+f.n[1]*.3,.45,zone==='wall'?.01:.13))continue;
+   push(it.x,it.z,it.r,zone==='wall'?(it.z<front[1]?0:5)+Math.abs(it.z-front[1])*.02:Math.abs(it.z-back[1])*.03,it.a)}}
+ if(zone!=='wall')for(let r=0;r<4;r++){const[w,d]=ifoot(id,r);
   for(let x=w/2+.15;x<=rm.W-w/2-.15;x+=.25){
-   if(zone==='back'||zone==='wall'||zone==='over'){if(r===0)push(x,(zone==='wall'?front[1]:back[1])-d/2-.15,0,0);if(r===2&&zone==='back')push(x,back[0]+d/2+.05,2,2)}
+   if(zone==='back'||zone==='over'){if(r===0)push(x,back[1]-d/2-.15,0,10);if(r===2)push(x,back[0]+d/2+.05,2,12)}
    if(zone==='front'&&r===0){push(x,Math.min(front[1]-d/2-.2,front[0]+front[1]*.55),0,0);push(x,d/2+.2,2,3)}}
-  for(let z=d/2+.15;z<=rm.D-d/2-.15;z+=.25){if(r===1)push(w/2+.15,z,1,1);if(r===3)push(rm.W-w/2-.15,z,3,1)}}
+  if(zone!=='front')for(let z=d/2+.15;z<=rm.D-d/2-.15;z+=.25){if(r===1)push(w/2+.15,z,1,11);if(r===3)push(rm.W-w/2-.15,z,3,11)}}
  if(zone==='floor'){const[w,d]=ifoot(id,0);const fz=(front[0]+front[1])/2+.4;for(let z=front[0]+d/2+.9;z<=front[1]-d/2-.1;z+=.5)for(let x=w/2+.3;x<=rm.W-w/2-.3;x+=.5)push(x,z,0,((x-rm.W*.55)**2+(z-fz)**2)*.001+.5)}
  cands.sort((a,b)=>a.pri-b.pri);
- for(const c of cands){const inZone=zone==='floor'||zone==='front'?c.z<front[1]+.01:zone==='wall'?true:c.z>back[0]-.01;if(!inZone)continue;const it={id,x:c.x,z:c.z,r:c.r};if(iValid(rm,L,it,-1))return it}
+ for(const c of cands){const inZone=zone==='floor'||zone==='front'?c.z<front[1]+.01:zone==='wall'?true:c.z>back[0]-.01;if(!inZone)continue;const it={id,x:c.x,z:c.z,r:c.r};if(c.a!=null)it.a=c.a;if(iValid(rm,L,it,-1))return it}
+ if(zone==='wall')return null;
  for(let z=.6;z<rm.D;z+=.5)for(let x=.6;x<rm.W;x+=.5)for(let r=0;r<4;r++){const it={id,x,z,r};if(iValid(rm,L,it,-1))return it}
  return null;
 }
+// a wall item is only right if it sits flush on a wall
+function flushOK(rm,it){const c={id:it.id,l:it.l||0,r:it.r};if(!snapWall(rm,c,it.x,it.z,imodelOf(it.id).d/2+.3))return false;return Math.abs(c.x-it.x)<.06&&Math.abs(c.z-it.z)<.06&&Math.abs(Math.sin((itemAng(c)-itemAng(it))/2))<.02}
 // keep the placed items in step with what the business owns (extra placed copies are dropped; unplaced kit stays in storage)
 function syncLayout(s,rm){
  const b=BIZ[s.type];const legacy=!s.layout;if(legacy)s.layout=[];
@@ -3339,6 +3410,13 @@ function syncLayout(s,rm){
   while(have>n){const i=s.layout.map(x=>x.id).lastIndexOf(e.id);s.layout.splice(i,1);have--}
   if(legacy)while(have<n){const it=autoPlace(s,rm,e.id);if(!it)break;s.layout.push(it);have++}}
  s.layout=s.layout.filter(x=>!INOPLACE[x.id]&&b.equip.some(e=>e.id===x.id));
+ // the room follows the building now: anything that no longer fits (or a wall item left floating) is moved somewhere sensible
+ if(!rm.poly)return;const keep=[];let moved=0,stored=0;
+ for(const it of s.layout){const wz=imodelOf(it.id).zone==='wall';if(iValid(rm,keep,it,-1)&&(!wz||flushOK(rm,it))){keep.push(it);continue}
+  let n=null;if(wz){const c=Object.assign({},it);if(snapWall(rm,c,it.x,it.z,3)&&iValid(rm,keep,c,-1))n=c}
+  if(!n&&!(it.l||0)){const c=autoPlace({layout:keep,type:s.type},rm,it.id);if(c)n=c}
+  if(n){n.l=it.l||0;keep.push(n);moved++}else stored++}
+ s.layout=keep;if((moved||stored)&&!legacy)rm.fixMsg=`${moved?moved+' item'+(moved>1?'s were':' was')+' moved to fit the room'+(stored?', ':''):''}${stored?stored+' put in storage':''}`;
 }
 function storageOf(s){const b=BIZ[s.type],o=[];for(const e of b.equip){if(INOPLACE[e.id])continue;const n=(s.equip[e.id]||0)-(s.layout||[]).filter(x=>x.id===e.id).length;if(n>0)o.push({e,n})}return o}
 // ---------- the live interior ----------
@@ -3353,7 +3431,10 @@ const hasStairs=s=>!!s.lv&&Object.keys(s.lv).length>0;
 const lvCost=s=>{const lot=siteLot(s);return equipCost({c:2600+(lot?lot.sqm:60)*24},s.p)};
 function siteSqm(s,lot){let n=1;for(const k in s.lv||{})if(s.lv[k].use==='sales')n++;return lot.sqm*n}
 function lvFx(s){const o={store:0,office:0};for(const k in s.lv||{})o[s.lv[k].use]=1;return o}
-function stairRect(rm){const d=rm.pz?Math.max(1.6,Math.min(3,rm.D-rm.pz-.4)):Math.max(1.8,Math.min(3,rm.D*.5));return[.14,rm.D-d-.14,1.34,rm.D-.14]}
+function stairRect(rm){const d=rm.pz?Math.max(1.6,Math.min(3,rm.D-rm.pz-.4)):Math.max(1.8,Math.min(3,rm.D*.5)),w=1.2;
+ if(rm.poly){const zmin=rm.pz?rm.pz+.2:Math.min(rm.D*.3,1.6);for(let z=rm.D-.14-d;z>=zmin-1e-6;z-=.2)for(let x=.14;x<=rm.W-.14-w;x+=.2){const r=[x,z,x+w,z+d];
+  if(!rectIn(rm,r,RT+.04))continue;if((rm.blocks||[]).some(b=>iOverlap(r,b))||(rm.keep||[]).some(b=>iOverlap(r,b))||(rm.gapClear&&iOverlap(r,rm.gapClear))||(rm.door&&iOverlap(r,rm.door)))continue;return r}}
+ return[.14,rm.D-d-.14,1.34,rm.D-.14]}
 function addStairs(g,rm){const[x0,z0,x1,z1]=rm.stair,n=15,d=(z1-z0)/n,C=IC('#b58a5a');
  for(let i=0;i<n;i++){const y=3.05*(i+1)/n,z=z0+d*i;icube(g,x0,0,z,x1,y,z+d,tint(C,.8),i%2?tint(C,1.06):C);icube(g,x1-.04,y+.86,z,x1,y+.9,z+d,CHROME);if(i%3===0)icube(g,x1-.04,y,z,x1,y+.9,z+.04,CHROME)}}
 function addRail(g,rm){const[x0,z0,x1,z1]=rm.stair;icube(g,x0,.9,z0-.04,x1+.04,.94,z0,CHROME);icube(g,x1,.9,z0,x1+.04,.94,z1,CHROME);for(const[x,z]of[[x0,z0-.04],[x1,z0-.04],[x1,z1-.04]])icube(g,x,0,z,x+.04,.94,z+.04,CHROME)}
@@ -3362,17 +3443,20 @@ IMODELS._desk={w:1.6,d:.8,b(g){ibox(g,0,0,.8,.4,.7,.75,WOOD,tint(WOOD,1.1));for(
 IMODELS._filing={w:.5,d:.6,b(g){ibox(g,0,0,.25,.3,0,1.35,DSTEEL);for(let i=0;i<4;i++){ibox(g,0,-.302,.22,.004,.1+i*.32,.38+i*.32,STEEL);ibox(g,0,-.31,.08,.006,.28+i*.32,.3+i*.32,BLACK)}}};
 // stockroom racking + crates that fill up with your real stock, or an office with desks
 function rebuildDress(){
- if(IN.dress){IN.grp.remove(IN.dress);IN.dress=null}IN.rm.dr=null;
+ if(IN.dress){IN.grp.remove(IN.dress);IN.dress=null}IN.rm.drs=null;
  const s=IN.site,rm=IN.rm,lv=IN.lv,u=lvUse(s,lv);if(!lv||(u!=='store'&&u!=='office'))return;
- const g=new THREE.Group(),W=rm.W,D=rm.D,add=(id,x,z,r,k,y)=>{const m=new THREE.Mesh(imodelGeo(id,s.type,k),BMAT);m.userData.shared=true;m.position.set(x,y||0,z);m.rotation.y=-(r||0)*Math.PI/2;m.castShadow=m.receiveShadow=true;g.add(m)};let rect=null;
- if(u==='store'){const n=Math.floor((W-.2)/2.8);if(n>0){const off=(W-.2-n*2.8)/2;for(let k=0;k<n;k++)add('racking',.1+off+1.4+k*2.8,D-.65,0);rect=[.1,D-1.3,W-.1,D-.1]}
-  if(D>=6.5){let full=0,tot=0;for(const k in s.inv){tot++;if(s.inv[k].q>0)full++}const cols=Math.max(1,Math.floor((W-.4)/.68)),nC=Math.round(Math.min(1,full/Math.max(1,tot))*cols*2),z0=D-(n>0?1.65:.5);
-   for(let i=0;i<nC;i++){const r=Math.floor(i/cols),c=i%cols;add('_crate',.45+c*.68,z0-r*.68,0,(i+r)%2);if(i%3===0)add('_crate',.45+c*.68,z0-r*.68,0,1,.58)}
-   if(nC>0)rect=[.1,Math.min(rect?rect[1]:D,z0-Math.ceil(nC/cols)*.68-.1),W-.1,D-.1]}}
- else{const n=Math.max(1,Math.min(3,Math.floor(W/2.3)));for(let k=0;k<n;k++)add('_desk',W/n*(k+.5),D-1,0);if(W>n*1.9+.9)add('_filing',W-.45,D-.4,0);
-  rect=[.1,D-2.1,W-.1,D-.1]}
- IN.dress=g;IN.grp.add(g);if(!rect)return;IN.rm.dr=rect;IN.rm.drl=lv;
- if(!IN.placing){let ev=0;s.layout=s.layout.filter(it=>{if((it.l||0)!==lv)return true;const h=iOverlap(iRect(it),rect);if(h)ev++;return!h});if(ev)toast(`${ev} item${ev>1?'s':''} moved to storage to make room`,'')}}
+ const g=new THREE.Group(),tmp=[],put=(it,y)=>{const m=new THREE.Mesh(imodelGeo(it.id,s.type,it.k),BMAT);m.userData.shared=true;m.position.set(it.x,y||0,it.z);m.rotation.y=itemAng(it);m.castShadow=m.receiveShadow=true;g.add(m)};
+ const free=(it,m)=>rmFits(rm,it,m)&&!(rm.stairOn&&iOverlap(iRect(it),rm.stair))&&!tmp.some(o=>iOverlap(iRect(it),iRect(o)));
+ // kit stood back-first against the walls, back walls first
+ const along=(id,step,max)=>{const F=roomFaces(rm,lv).sort((a,b)=>a.n[1]-b.n[1]),w=imodelOf(id).w;let n=0;
+  for(const f of F)for(let sx=w/2+f.inset+.05;sx<=f.len-w/2-f.inset-.05&&n<max;sx+=step){const it={id,l:lv,r:0},p=[f.a[0]+f.d[0]*sx+f.n[0]*.4,f.a[1]+f.d[1]*sx+f.n[1]*.4];
+   if(!snapWall(rm,it,p[0],p[1],.6,.02)||!free(it,RT-.02))continue;tmp.push(it);put(it);n++}return n};
+ if(u==='store'){along('racking',2.9,Math.max(1,Math.floor(rm.W*rm.D/14)));
+  let full=0,tot=0;for(const k in s.inv){tot++;if(s.inv[k].q>0)full++}let want=Math.round(Math.min(1,full/Math.max(1,tot))*Math.max(2,Math.floor(rm.W*rm.D/6))),k=0;
+  for(let z=rm.D-.5;z>.9&&want>0;z-=.68)for(let x=.45;x<rm.W-.3&&want>0;x+=.68){const it={id:'_crate',x,z,r:0,k:(k+Math.round(z*3))%2};if(!free(it,RT+.08))continue;tmp.push(it);put(it);if(k%3===0){const t2={id:'_crate',x,z,r:0,k:1};put(t2,.58)}k++;want--}}
+ else{along('_desk',2.3,3);along('_filing',.7,2)}
+ IN.dress=g;IN.grp.add(g);if(!tmp.length)return;IN.rm.drs=tmp.map(iRect);IN.rm.drl=lv;
+ if(!IN.placing){let ev=0;s.layout=s.layout.filter(it=>{if((it.l||0)!==lv)return true;const h=IN.rm.drs.some(r=>iOverlap(iRect(it),r));if(h)ev++;return!h});if(ev)toast(`${ev} item${ev>1?'s':''} moved to storage to make room`,'')}}
 function rebuildLevel(){
  IN.grp.remove(IN.shell);IN.shell.geometry.dispose();IN.grp.add(IN.shell=buildShell(IN.rm,IN.site,IN.lv));
  rebuildDress();rebuildItems();renderInteriorBar();renderSite()}
@@ -3387,67 +3471,125 @@ function lvBarHtml(P){const s=IN.site,L=lvList(s);if(L.length<2)return'';
  const u=lvUse(s,IN.lv),uses=IN.lv&&!P?Object.entries(LVUSE).map(([k,v])=>`<button class="${u===k?'btn':'ghost'} sm" data-act="iuse" data-id="${k}" title="${esc(v[1])}">${v[0]}</button>`).join(''):'';
  return`<div class="ib-row" style="margin-bottom:8px;align-items:center"><span class="ib-k">Levels</span>${chips}</div>`+(uses?`<div class="ib-row" style="margin-bottom:6px;align-items:center"><span class="ib-k">Used as</span>${uses}</div><p class="ib-k" style="margin:0 0 8px">${esc(LVUSE[u][1])}</p>`:'')}
 
-// ---------- shells: floors, walls, trims, art, windows and per-business decor ----------
+// ---------- shells: floors, walls, windows, partitions, a staff WC and per-business decor, all following the footprint ----------
 function shellDetail(g,rm,s,lv,fit){
- const W=rm.W,D=rm.D,t=s.type,tc=IC({cafe:'#6e4a2c',bakery:'#7b4a30',burger:'#b9473b',boutique:'#8b6f5a',tech:'#2a3340',shop:'#4f7a62',farm:'#6e5a3a',dairy:'#6e5a3a',orchard:'#6e5a3a',factory:'#566069',datacenter:'#232a33'}[t]||'#6e5a4a'),bs=IC(fit||lv?'#fbfaf7':'#a7a197'),seed=hashId(s.id);
- icube(g,0,0,D-.05,W,.13,D,bs);icube(g,0,0,0,.05,.13,D,bs);icube(g,W-.05,0,0,W,.13,D,bs);
- if(fit||lv){icube(g,0,.13,D-.07,W,1.05,D,tc);icube(g,0,.13,0,.07,1.05,D,tc);icube(g,W-.07,.13,0,W,1.05,D,tc);
-  icube(g,0,1.05,D-.09,W,1.09,D,CREAM);icube(g,0,1.05,0,.09,1.09,D,CREAM);icube(g,W-.09,1.05,0,W,1.09,D,CREAM)}
- const nA=Math.max(0,Math.floor((W-1)/1.9));for(let k=0;k<nA;k++){const x=W/(nA+1)*(k+1),w=.34+hash2(k,seed%97,3)*.2,c=PC(k+seed);icube(g,x-w-.04,2.12,D-.05,x+w+.04,2.86,D,DWOOD);icube(g,x-w,2.16,D-.07,x+w,2.82,D-.04,tint(c,1.1));icube(g,x-w*.6,2.3,D-.075,x+w*.6,2.5,D-.07,tint(c,.7))}
- if(lv<0)icube(g,.1,2.7,D-.14,W-.1,2.78,D-.06,DSTEEL);
- else if(lv>0||t==='farm'){const nw=Math.max(1,Math.floor(W/3));for(let k=0;k<nw;k++){const x=W/nw*(k+.5);icube(g,x-.6,1.2,D-.09,x+.6,2.0,D,DWOOD);icube(g,x-.54,1.26,D-.1,x+.54,1.94,D-.085,IC('#cfe8f0'));icube(g,x-.03,1.26,D-.11,x+.03,1.94,D-.1,DWOOD)}}
- for(const z of[D*.25,D*.55,D*.85]){icube(g,0,2.2,z-.06,.12,2.42,z+.06,IC('#fff3c4'));icube(g,W-.12,2.2,z-.06,W,2.42,z+.06,IC('#fff3c4'))}
- const cz=D*.4;icube(g,W-.06,2.3,cz-.2,W,2.7,cz+.2,WHITE2);icube(g,W-.075,2.5,cz-.01,W-.06,2.6,cz+.01,BLACK);icube(g,W-.075,2.49,cz,W-.06,2.51,cz+.1,BLACK);
+ const t=s.type,tc=IC({cafe:'#6e4a2c',bakery:'#7b4a30',burger:'#b9473b',boutique:'#8b6f5a',tech:'#2a3340',shop:'#4f7a62',farm:'#6e5a3a',dairy:'#6e5a3a',orchard:'#6e5a3a',factory:'#566069',datacenter:'#232a33'}[t]||'#6e5a4a'),bs=IC(fit||lv?'#fbfaf7':'#a7a197'),seed=hashId(s.id);
+ const FW=rm.edges.filter(e=>!e.front),fb=(e,s0,s1,y0,y1,o0,o1,c)=>{if(s1-s0>.01)ebox(g,e.a,e.d,e.n,s0,s1,RT+o0,RT+o1,y0,y1,c)},fp=(e,s,o)=>[e.a[0]+e.d[0]*s+e.n[0]*(RT+o),e.a[1]+e.d[1]*s+e.n[1]*(RT+o)];
+ const freeAt=(e,s0,s1)=>s0>RT+.08&&s1<e.len-RT-.08&&!e.win.some(w=>s1>w[0]-.12&&s0<w[1]+.12);
+ const spot=(e,w)=>{if(!e)return null;for(let k=0;k<12;k++){const c=e.len/2+(k%2?1:-1)*Math.ceil(k/2)*.45;if(freeAt(e,c-w,c+w))return c}return null};
+ // skirting and (fitted / upstairs) wainscot panelling on every wall
+ for(const e of FW){fb(e,0,e.len,0,.12,0,.035,bs);if(fit||lv){fb(e,0,e.len,.12,1.0,0,.055,tc);fb(e,0,e.len,1.0,1.04,0,.075,CREAM)}}
+ for(const p of(lv?[]:rm.parts||[])){icube(g,p[0]-.03,0,p[1]-.03,p[2]+.03,.12,p[3]+.03,bs)}
+ let bk=null,bsc=0;for(const e of FW){const sc=e.len*Math.max(0,-e.n[1]-.4);if(sc>bsc){bsc=sc;bk=e}}if(!bk)bk=FW.reduce((a,e)=>!a||e.len>a.len?e:a,null);
+ const side=sg=>FW.filter(e=>e.n[0]*sg>.6).reduce((a,e)=>!a||e.len>a.len?e:a,null),lft=side(1),rgt=side(-1);
+ // art along the back wall, clear of windows
+ if(bk){const nA=Math.max(0,Math.floor((bk.len-1)/1.9));for(let k=0;k<nA;k++){const x=bk.len/(nA+1)*(k+1),w=.34+hash2(k,seed%97,3)*.2,c=PC(k+seed);if(!freeAt(bk,x-w-.05,x+w+.05))continue;
+  fb(bk,x-w-.04,x+w+.04,2.12,2.86,0,.05,DWOOD);fb(bk,x-w,x+w,2.16,2.82,.05,.07,tint(c,1.1));fb(bk,x-w*.6,x+w*.6,2.3,2.5,.07,.075,tint(c,.7))}}
+ if(lv<0&&bk)fb(bk,.1,bk.len-.1,2.7,2.78,.02,.1,DSTEEL);
+ // wall lights on every wall, a clock on one side
+ for(const e of FW){const n=Math.floor(e.len/3);for(let k=0;k<n;k++){const c=e.len/n*(k+.5);if(freeAt(e,c-.1,c+.1)){fb(e,c-.07,c+.07,2.2,2.24,0,.1,DSTEEL);fb(e,c-.06,c+.06,2.24,2.42,.02,.12,IC('#fff3c4'))}}}
+ {const e=rgt||lft||bk,c=spot(e,.22);if(c!=null){fb(e,c-.2,c+.2,2.3,2.7,0,.05,WHITE2);fb(e,c-.01,c+.01,2.5,2.62,.05,.065,BLACK);fb(e,c-.01,c+.1,2.49,2.51,.05,.065,BLACK)}}
  if(lv)return;
- const cx=W/2,d=rm.door,dx=(d[0]+d[2])/2,hw=Math.min(1,W*.18);
+ const d=rm.door,dx=(d[0]+d[2])/2,fr=rm.front,fw=fr[1]-fr[0];
  icube(g,d[0]-.15,0,.02,d[2]+.15,.02,.9,IC('#3a3d44'));for(let k=0;k<5;k++)icube(g,d[0]-.1,.02,.1+k*.15,d[2]+.1,.025,.14+k*.15,IC('#4a4f57'));icube(g,dx-.28,2.6,.02,dx+.28,2.8,.08,IC('#2fbf6a'));
- if(fit){const z0=rm.pz?rm.pz*.2:D*.15,z1=rm.pz?rm.pz*.8:D*.55;icube(g,W*.18,0,z0,W*.82,.016,z1,tint(tc,.9));icube(g,W*.18+.12,.016,z0+.12,W*.82-.12,.02,z1-.12,tint(tc,1.3))}
- const board=(x,w,c)=>{icube(g,x-w-.05,1.5,D-.07,x+w+.05,2.4,D,DWOOD);icube(g,x-w,1.55,D-.09,x+w,2.35,D-.07,c)};
- if(t==='cafe'||t==='bakery'){board(cx,hw,IC('#22292b'));for(let i=0;i<6;i++)icube(g,cx-hw*.8+(i%2)*.1,1.7+i*.1,D-.095,cx+hw*.3+(i%3)*.1,1.72+i*.1,D-.09,IC('#e8e4d8'));
-  if(D>=4){icube(g,0,1.5,1,.3,1.54,3.2,WOOD);for(let i=0;i<5;i++)t==='cafe'?cupR(g,.15,1.2+i*.42,.05,1.54,1.66,i%2?WHITE2:RED):ilathe(g,.15,1.2+i*.42,[[.1,1.54],[.12,1.62],[0,1.68]],IC('#d9a35a'),8)}}
- else if(t==='burger'){for(let k=0;k<Math.floor(W/.5);k++)icube(g,k*.5,1.2,D-.08,k*.5+.5,1.4,D-.01,k%2?WHITE2:RED);icube(g,W*.15,2.45,D-.06,W*.85,2.55,D,IC('#ff4a6a'));icube(g,W*.15+.03,2.48,D-.07,W*.85-.03,2.52,D-.06,IC('#ffd0d8'))}
- else if(t==='boutique'){for(const x of[W*.3,W*.7]){icube(g,x-.5,.9,D-.07,x+.5,2.6,D,CHROME);icube(g,x-.44,.96,D-.09,x+.44,2.54,D-.07,IC('#cfe3ea'))}}
- else if(t==='tech'){icube(g,.3,2.9,D-.06,W-.3,2.95,D,IC('#3fe0ff'));icube(g,cx-1,1.5,D-.05,cx+1,2.4,D,IC('#bfc5ca'));for(let i=0;i<8;i++)for(let j=0;j<4;j++)icube(g,cx-.9+i*.25,1.6+j*.2,D-.065,cx-.86+i*.25,1.64+j*.2,D-.05,BLACK)}
- else if(t==='shop'){for(let k=0;k<Math.max(1,Math.floor(W/2.4));k++){const x=W/Math.max(1,Math.floor(W/2.4))*(k+.5);icube(g,x-.45,2.3,D-.08,x+.45,2.8,D,IC('#f2c230'));icube(g,x-.35,2.5,D-.09,x+.35,2.58,D-.08,BLACK)}}
- else if(t==='farm'||t==='dairy'||t==='orchard'){icube(g,W-1.3,0,D-1.1,W-.2,.45,D-.2,IC('#d9b64a'));icube(g,W-1.1,.45,D-1.0,W-.3,.9,D-.3,IC('#c9a43a'));board(cx,hw,IC('#2b2e33'));for(let i=0;i<5;i++)icube(g,cx-hw*.8+i*hw*.4,1.65,D-.1,cx-hw*.8+i*hw*.4+.04,2.25,D-.09,DSTEEL)}
- else if(t==='factory'){for(let k=0;k<Math.floor(W/.4);k++)icube(g,k*.4,0,D-.5,k*.4+.4,.012,D-.3,k%2?IC('#f2c230'):BLACK);icube(g,.1,2.55,D-.2,W-.1,2.7,D-.06,DSTEEL);icube(g,.1,2.8,D-.2,W-.1,2.9,D-.06,IC('#c8463a'));board(Math.min(W-hw-.2,cx+W*.2),hw,IC('#d9cfb8'))}
- else if(t==='datacenter'){icube(g,.1,2.8,D-.4,W-.1,2.9,D-.05,DSTEEL);icube(g,0,2.5,.5,.04,2.56,D-.5,GLOWS);icube(g,W-.04,2.5,.5,W,2.56,D-.5,GLOWS)}
+ if(fit){const z0=rm.pz?rm.pz*.2:rm.D*.15,z1=rm.pz?rm.pz*.8:rm.D*.55,r=[fr[0]+fw*.18,z0,fr[1]-fw*.18,z1];if(r[2]-r[0]>1&&rectIn(rm,r,RT+.05)){icube(g,r[0],0,z0,r[2],.016,z1,tint(tc,.9));icube(g,r[0]+.12,.016,z0+.12,r[2]-.12,.02,z1-.12,tint(tc,1.3))}}
+ const board=(e,w,c)=>{const x=spot(e,w+.06);if(x==null)return null;fb(e,x-w-.05,x+w+.05,1.5,2.4,0,.07,DWOOD);fb(e,x-w,x+w,1.55,2.35,.07,.09,c);return x};
+ const hw=Math.min(1,(bk?bk.len:4)*.18);
+ if(t==='cafe'||t==='bakery'){const x=board(bk,hw,IC('#22292b'));if(x!=null)for(let i=0;i<6;i++)fb(bk,x-hw*.8+(i%2)*.1,x+hw*.3+(i%3)*.1,1.7+i*.1,1.72+i*.1,.09,.095,IC('#e8e4d8'));
+  const e=lft||rgt;if(e&&e.len>3){const s0=Math.min(e.len-2.4,.9);if(freeAt(e,s0,s0+2.2)){fb(e,s0,s0+2.2,1.5,1.54,0,.3,WOOD);for(let i=0;i<5;i++){const p=fp(e,s0+.2+i*.42,.15);t==='cafe'?cupR(g,p[0],p[1],.05,1.54,1.66,i%2?WHITE2:RED):ilathe(g,p[0],p[1],[[.1,1.54],[.12,1.62],[0,1.68]],IC('#d9a35a'),8)}}}}
+ else if(t==='burger'&&bk){for(let k=0;k*.5<bk.len;k++){const a=k*.5,b=Math.min(bk.len,a+.5);if(freeAt(bk,a,b)||(a<RT+.1||b>bk.len-RT-.1)&&!bk.win.some(w=>b>w[0]&&a<w[1]))fb(bk,a,b,1.2,1.4,0,.07,k%2?WHITE2:RED)}
+  const a=bk.len*.15,b=bk.len*.85;if(freeAt(bk,a,b)){fb(bk,a,b,2.45,2.55,0,.06,IC('#ff4a6a'));fb(bk,a+.03,b-.03,2.48,2.52,.06,.07,IC('#ffd0d8'))}}
+ else if(t==='boutique'&&bk){for(const f of[.3,.7]){const x=bk.len*f;if(!freeAt(bk,x-.55,x+.55))continue;fb(bk,x-.5,x+.5,.9,2.6,0,.07,CHROME);fb(bk,x-.44,x+.44,.96,2.54,.07,.09,IC('#cfe3ea'))}}
+ else if(t==='tech'&&bk){fb(bk,.3,bk.len-.3,2.9,2.95,0,.06,IC('#3fe0ff'));const x=spot(bk,1.05);if(x!=null){fb(bk,x-1,x+1,1.5,2.4,0,.05,IC('#bfc5ca'));for(let i=0;i<8;i++)for(let j=0;j<4;j++)fb(bk,x-.9+i*.25,x-.86+i*.25,1.6+j*.2,1.64+j*.2,.05,.065,BLACK)}}
+ else if(t==='shop'&&bk){const n=Math.max(1,Math.floor(bk.len/2.4));for(let k=0;k<n;k++){const x=bk.len/n*(k+.5);if(!freeAt(bk,x-.5,x+.5))continue;fb(bk,x-.45,x+.45,2.3,2.8,0,.08,IC('#f2c230'));fb(bk,x-.35,x+.35,2.5,2.58,.08,.09,BLACK)}}
+ else if((t==='farm'||t==='dairy'||t==='orchard')&&bk){const p=fp(bk,Math.max(RT+.7,bk.len-1.0),.55);if(rmIn(rm,p[0],p[1],RT+.5)){ibox(g,p[0],p[1],.55,.45,0,.45,IC('#d9b64a'));ibox(g,p[0],p[1],.4,.35,.45,.9,IC('#c9a43a'))}
+  const x=board(bk,hw,IC('#2b2e33'));if(x!=null)for(let i=0;i<5;i++)fb(bk,x-hw*.8+i*hw*.4,x-hw*.8+i*hw*.4+.04,1.65,2.25,.09,.1,DSTEEL)}
+ else if(t==='factory'&&bk){for(let k=0;k*.4<bk.len;k++)fb(bk,k*.4,Math.min(bk.len,k*.4+.4),0,.012,.3,.5,k%2?IC('#f2c230'):BLACK);fb(bk,.1,bk.len-.1,2.55,2.7,.02,.16,DSTEEL);fb(bk,.1,bk.len-.1,2.8,2.9,.02,.16,IC('#c8463a'));board(bk,hw,IC('#d9cfb8'))}
+ else if(t==='datacenter'){if(bk)fb(bk,.1,bk.len-.1,2.8,2.9,.05,.4,DSTEEL);for(const e of[lft,rgt])if(e)fb(e,.5,e.len-.5,2.5,2.56,0,.04,GLOWS)}
+ // potted plants in the front corners
+ if(fit){for(const x of[fr[0]+.45,fr[1]-.45]){if(!rmIn(rm,x,.45,RT+.15))continue;ilathe(g,x,.45,[[.18,0],[.2,.4],[0,.4]],IC('#c9b8a0'),8);ilathe(g,x,.45,[[.1,.4],[.32,.7],[.28,1.1],[0,1.25]],IC('#4f8a4a'),8)}}
 }
 function buildShell(rm,s,lv){
  if(lv==null)lv=IN?IN.lv:0;
  const g=new GB(),fit=s.equip.fitout>0,u=lvUse(s,lv)||'sales',F=lv===0?(FLOORS[s.type]||FLOORS.tech):lv<0?['#8e9296','#999da1']:u==='store'?['#a9adb0','#b3b7ba']:u==='office'?['#7e8898','#8791a1']:['#b08a5c','#a67f52'],
- wall=lv<0?IC('#c9c5bc'):fit||lv>0?IC('#f1ece2'):IC('#dcd8cf'),cap=IC('#fbfaf7'),H=3.2,T=.18,pz=lv===0?rm.pz:0,S=rm.stair,L=lvList(s),
- hasUp=rm.stairOn&&L.includes(lv+1)&&lvOpen(s,lv+1),hole=rm.stairOn&&L.includes(lv-1)&&lvOpen(s,lv-1);
- const q=(a,b,c,d,col)=>g.quad([a,0,b],[c,0,b],[c,0,d],[a,0,d],UPN,col,15);
- const tq=(a,b,c,d,col)=>{if(!hole||c<=S[0]||a>=S[2]||d<=S[1]||b>=S[3]){q(a,b,c,d,col);return}if(a<S[0])q(a,b,S[0],d,col);if(c>S[2])q(S[2],b,c,d,col);const l=Math.max(a,S[0]),r=Math.min(c,S[2]);if(b<S[1])q(l,b,r,S[1],col);if(d>S[3])q(l,S[3],r,d,col)};
- for(let x=0;x<rm.W;x+=1)for(let z=0;z<rm.D;z+=1){const x1=Math.min(rm.W,x+1),z1=Math.min(rm.D,z+1),back=pz&&z>=pz;
-  const c=back?IC(((x+z)&1)?'#a9adb0':'#b3b7ba'):IC(F[(Math.floor(x)+Math.floor(z))&1]);tq(x,z,x1,z1,fit&&!back&&lv===0?tint(c,1.06):c)}
- if(hole)q(S[0],S[1],S[2],S[3],IC('#17191c'));
- icube(g,-T,-.32,-T,rm.W+T,-.001,rm.D+T,IC('#8d8a84'));
- const wallSeg=(x0,z0,x1,z1,h)=>{icube(g,x0,0,z0,x1,h,z1,wall,cap)};
- wallSeg(-T,rm.D,rm.W+T,rm.D+T,H);wallSeg(-T,-T,0,rm.D+T,H);wallSeg(rm.W,-T,rm.W+T,rm.D+T,H);
- if(lv===0){const d=rm.door;wallSeg(0,-T,d[0],0,.55);wallSeg(d[2],-T,rm.W,0,.55);
-  for(let x=0;x<=rm.W+.01;x+=Math.max(1.6,rm.W/Math.round(rm.W/2.2))){if(x>d[0]-.1&&x<d[2]+.1)continue;icube(g,x-.05,.55,-T,x+.05,H,0,IC('#3a3f46'))}
-  icube(g,d[0]-.06,0,-T,d[0],H,0,IC('#3a3f46'));icube(g,d[2],0,-T,d[2]+.06,H,0,IC('#3a3f46'));icube(g,-T,H-.25,-T,rm.W+T,H,0,IC('#3a3f46'),cap);
-  if(pz){wallSeg(0,pz-.08,rm.gap[0],pz+.08,H*.82);wallSeg(rm.gap[1],pz-.08,rm.W,pz+.08,H*.82)}
-  if(fit){for(const[x,z]of[[.45,.45],[rm.W-.45,.45]]){ilathe(g,x,z,[[.18,0],[.2,.4],[0,.4]],IC('#c9b8a0'),8);ilathe(g,x,z,[[.1,.4],[.32,.7],[.28,1.1],[0,1.25]],IC('#4f8a4a'),8)}}}
- else{wallSeg(-T,-T,rm.W+T,0,.9);if(lv>0){for(let x=0;x<=rm.W+.01;x+=Math.max(1.6,rm.W/Math.round(rm.W/2.2)))icube(g,x-.05,.9,-T,x+.05,H,0,IC('#3a3f46'));icube(g,-T,H-.25,-T,rm.W+T,H,0,IC('#3a3f46'),cap)}}
+ wall=lv<0?IC('#c9c5bc'):fit||lv>0?IC('#f1ece2'):IC('#dcd8cf'),cap=IC('#fbfaf7'),H=3.2,T=RT,pz=lv===0?rm.pz:0,S=rm.stair,L=lvList(s),
+ hasUp=rm.stairOn&&L.includes(lv+1)&&lvOpen(s,lv+1),hole=rm.stairOn&&L.includes(lv-1)&&lvOpen(s,lv-1),P=rm.poly,dark=IC('#3a3f46'),frc=IC('#f4f2ec');
+ // floor: 1 m tiles clipped to the footprint
+ let x0=1e9,z0=1e9,x1=-1e9,z1=-1e9;for(const p of P){x0=Math.min(x0,p[0]);z0=Math.min(z0,p[1]);x1=Math.max(x1,p[0]);z1=Math.max(z1,p[1])}
+ for(let x=Math.floor(x0);x<x1;x++)for(let z=Math.floor(z0);z<z1;z++){const back=pz&&z>=pz,c0=back?IC(((x+z)&1)?'#a9adb0':'#b3b7ba'):IC(F[(x+z)&1]),c=fit&&!back&&lv===0?tint(c0,1.06):c0;
+  const Q=clipHP(clipHP(clipHP(clipHP(P,1,0,x),-1,0,-(x+1)),0,1,z),0,-1,-(z+1));if(Q.length<3)continue;const ar=Math.abs(ringArea(Q));if(ar<1e-4)continue;
+  if(Q.length===4&&Math.abs(ar-1)<1e-6){g.quad([x,0,z],[x+1,0,z],[x+1,0,z+1],[x,0,z+1],UPN,c,15);continue}
+  let tris;try{tris=THREE.ShapeUtils.triangulateShape(Q.map(p=>new THREE.Vector2(p[0],p[1])),[])}catch(e){continue}
+  for(const tr of tris){const a=Q[tr[0]],b=Q[tr[1]],d=Q[tr[2]];g.tri([a[0],0,a[1]],[b[0],0,b[1]],[d[0],0,d[1]],UPN,c,c,c)}}
+ if(hole)g.quad([S[0],.006,S[1]],[S[2],.006,S[1]],[S[2],.006,S[3]],[S[0],.006,S[3]],UPN,IC('#17191c'),15);
+ for(const e of rm.edges)g.quad([e.a[0],-.32,e.a[1]],[e.b[0],-.32,e.b[1]],[e.b[0],0,e.b[1]],[e.a[0],0,e.a[1]],[-e.n[0],0,-e.n[1]],IC('#8d8a84'),15);
+ // outer walls follow every edge of the footprint
+ const E=rm.edges,nE=E.length,cvx=i=>{const p=E[(i-1+nE)%nE],q=E[i];return p.d[0]*q.d[1]-p.d[1]*q.d[0]>1e-3};
+ for(let i=0;i<nE;i++){const e=E[i],e0=cvx(i)?-T:0,e1=e.len+(cvx((i+1)%nE)?T:0),W_=(a,b,y0,y1,c,tp)=>{if(b-a>.005)ebox(g,e.a,e.d,e.n,a,b,0,T,y0,y1,c||wall,tp||cap)},B_=(a,b,o0,o1,y0,y1,c)=>{if(b-a>.005)ebox(g,e.a,e.d,e.n,a,b,o0,o1,y0,y1,c)};
+  e.win=[];
+  if(e.front){
+   if(lv===0){const ds=[(rm.door[0]-e.a[0])/e.d[0],(rm.door[2]-e.a[0])/e.d[0]].sort((a,b)=>a-b),inD=ds[1]>e0&&ds[0]<e1,segs=inD?[[e0,Math.max(e0,ds[0])],[Math.min(e1,ds[1]),e1]]:[[e0,e1]];
+    for(const[a,b]of segs){W_(a,b,0,.55);B_(a,b,T-.02,T+.06,.53,.58,CREAM)}
+    const nm=Math.max(1,Math.round(e.len/2.2));for(let k=0;k<=nm;k++){const sm=e.len*k/nm;if(inD&&sm>ds[0]-.15&&sm<ds[1]+.15)continue;B_(sm-.05,sm+.05,0,T,.55,H,dark)}
+    if(inD)for(const sm of ds){B_(sm-.06,sm+.06,0,T,0,H,dark);B_(sm-.02,sm+.02,T,T+.05,1.0,1.3,CHROME)}
+    B_(e0,e1,0,T,H-.25,H,dark)}
+   else{W_(e0,e1,0,.9);if(lv>0){const nm=Math.max(1,Math.round(e.len/2.2));for(let k=0;k<=nm;k++){const sm=e.len*k/nm;B_(sm-.05,sm+.05,0,T,.9,H,dark)}B_(e0,e1,0,T,H-.25,H,dark)}}
+   continue}
+  if(e.ext&&lv>=0&&e.len>2.2){const n=Math.floor((e.len-.8)/2.6);for(let k=0;k<n;k++){const c=e.len/n*(k+.5);e.win.push([c-.55,c+.55])}}
+  const sill=1.1,head=2.3;let cur=e0;
+  for(const[a,b]of e.win){W_(cur,a,0,H);W_(a,b,0,sill);W_(a,b,head,H);
+   B_(a,b,T*.46,T*.54,sill,head,IC('#bcdde8'));                                   // pane
+   B_(a-.05,a,T-.02,T+.03,sill,head,frc);B_(b,b+.05,T-.02,T+.03,sill,head,frc);B_(a-.05,b+.05,T-.02,T+.03,head,head+.05,frc); // inner frame
+   B_(a-.05,a,-.03,.02,sill,head,dark);B_(b,b+.05,-.03,.02,sill,head,dark);B_(a-.05,b+.05,-.03,.02,head,head+.05,dark);   // outer frame
+   B_((a+b)/2-.02,(a+b)/2+.02,T*.4,T*.6,sill,head,frc);B_(a,b,T*.4,T*.6,(sill+head)/2-.02,(sill+head)/2+.02,frc);          // glazing bars
+   B_(a-.08,b+.08,T-.02,T+.1,sill-.05,sill,frc);                                   // sill board
+   if(lv>=0){B_(a+.1,b-.1,T+.08,T+.15,.2,.75,IC('#ecebe6'));for(let q=0;q<6;q++){const sq=a+.18+q*(b-a-.36)/5;B_(sq-.008,sq+.008,T+.15,T+.152,.22,.73,IC('#cfcdc6'))}}  // radiator
+   cur=b}
+  W_(cur,e1,0,H)}
+ // ground floor: partition with a proper doorway, and the staff WC
+ if(lv===0){const Hp=H-.2,leaf=IC('#b58a5a');
+  for(const p of rm.parts||[])icube(g,p[0],0,p[1],p[2],Hp,p[3],wall,cap);
+  if(rm.pz&&rm.gap){const[a,b]=rm.gap,z=rm.pz;icube(g,a,2.15,z-.08,b,Hp,z+.08,wall,cap);icube(g,a,0,z-.08,b,.012,z+.08,DSTEEL);
+   for(const sz of[-1,1]){icube(g,a-.06,0,z+sz*.08-.015,a,2.21,z+sz*.08+.015,frc);icube(g,b,0,z+sz*.08-.015,b+.06,2.21,z+sz*.08+.015,frc);icube(g,a-.06,2.15,z+sz*.08-.015,b+.06,2.21,z+sz*.08+.015,frc)}
+   icube(g,b-.045,0,z+.1,b-.005,2.1,z+1.15,leaf);icube(g,b-.07,1.0,z+.95,b-.045,1.04,z+1.05,CHROME);icube(g,b+.06,1.15,z-.12,b+.12,1.23,z-.09,WHITE2)}
+  if(rm.wc){const[wx0,wz0,wx1,wz1]=rm.wc,dz0=rm.pz+.35,dz1=rm.pz+1.15;
+   for(let x=wx0;x<wx1-.01;x+=.3)for(let z=wz0;z<wz1-.01;z+=.3)icube(g,x,0,z,Math.min(wx1,x+.3),.006,Math.min(wz1,z+.3),IC(((Math.round(x/.3)+Math.round(z/.3))&1)?'#e9eef0':'#d3dce1'));
+   icube(g,wx1,2.1,dz0,wx1+.12,Hp,dz1,wall,cap);
+   for(const sx of[-1,1]){const x=wx1+(sx<0?-.015:.135);icube(g,x-.015,0,dz0-.06,x+.015,2.16,dz0,frc);icube(g,x-.015,0,dz1,x+.015,2.16,dz1+.06,frc);icube(g,x-.015,2.1,dz0-.06,x+.015,2.16,dz1+.06,frc)}
+   icube(g,wx1-.78,0,dz1-.045,wx1-.02,2.05,dz1-.005,leaf);icube(g,wx1-.7,1.0,dz1-.07,wx1-.62,1.04,dz1-.045,CHROME);
+   // toilet against the far wall, basin and mirror on the side wall, dryer, bin, ceiling light
+   const tx=wx0+.48,tz=wz1;ibox(g,tx,tz-.11,.19,.09,.38,.82,WHITE2);ibox(g,tx,tz-.11,.2,.1,.82,.85,IC('#f7f7f4'));ibox(g,tx+.12,tz-.2,.025,.008,.76,.79,CHROME);
+   ilathe(g,tx,tz-.45,[[.13,0],[.16,.22],[.2,.38],[.19,.4],[0,.39]],WHITE2,12);ilathe(g,tx,tz-.45,[[.205,.4],[.205,.43],[0,.43]],IC('#fbfbf8'),12);
+   const sz=wz0+.6,sx0=wx0;ibox(g,sx0+.22,sz,.2,.24,.8,.88,WHITE2);ilathe(g,sx0+.24,sz,[[.14,.88],[.12,.82],[0,.82]],IC('#dfe6ea'),10);ibox(g,sx0+.06,sz,.04,.02,.88,1.0,CHROME);ibox(g,sx0+.1,sz,.06,.012,.98,1.0,CHROME);
+   ibox(g,sx0+.015,sz,.012,.27,1.17,1.78,DWOOD);ibox(g,sx0+.025,sz,.006,.24,1.2,1.75,IC('#cfe3ea'));ibox(g,sx0+.06,sz+.55,.05,.1,1.2,1.45,WHITE2);
+   ilathe(g,wx1-.2,wz1-.2,[[.1,0],[.11,.35],[0,.35]],IC('#9aa1a8'),8);ibox(g,(wx0+wx1)/2,(wz0+wz1)/2,.2,.2,2.98,3.0,IC('#fff3c4'))}}
  if(rm.stairOn){if(hasUp)addStairs(g,rm);else if(hole)addRail(g,rm)}
  shellDetail(g,rm,s,lv,fit);
  const m=new THREE.Mesh(g.geo(),BMAT);m.castShadow=true;m.receiveShadow=true;return m;
 }
 
 let IN=null,PENDING_PLACE=null; // {key,site,lot,L,rm,grp,items:[],people:[],placing}
-function interiorRoomOf(lot,L){const rm=roomFor(lot,L);
- const dw=1.4,dx=clamp(rm.W*.5,dw/2+.3,rm.W-dw/2-.3);rm.door=[dx-dw/2,0,dx+dw/2,1.3];
- if(rm.D>5.5){rm.pz=+(rm.D*.62).toFixed(2);const gx=rm.W>6?rm.W-1.6:rm.W*.5;rm.gap=[gx-.6,gx+.6];rm.gapClear=[gx-.6,rm.pz-.9,gx+.6,rm.pz+.9]}
+function interiorRoomOf(lot,L){const rm=roomFor(lot,L);if(!roomShape(lot,L,rm))rectShape(rm);
+ const fr=rm.front,dw=1.4,dx=fr[1]-fr[0]>dw+.6?clamp((fr[0]+fr[1])/2,fr[0]+dw/2+.3,fr[1]-dw/2-.3):(fr[0]+fr[1])/2;rm.door=[dx-dw/2,0,dx+dw/2,1.3];
+ rm.parts=[];rm.blocks=[];rm.keep=[];
+ if(rm.D>5.5){const pz=+(rm.D*.62).toFixed(2),sp=spansAt(rm,pz,RT+.02);let S=null;for(const q of sp)if(!S||q[1]-q[0]>S[1]-S[0])S=q;
+  let back=0;for(let z=pz+.25;z<rm.D;z+=.5)for(let x=.25;x<rm.W;x+=.5)if(rmIn(rm,x,z,RT))back+=.25;
+  if(S&&S[1]-S[0]>=2.6&&back>=5){rm.pz=pz;const w=S[1]-S[0],gx=w>6?S[1]-1.6:(S[0]+S[1])/2;rm.gap=[gx-.6,gx+.6];rm.gapClear=[gx-.6,pz-.9,gx+.6,pz+.9];
+   rm.parts.push([S[0]-RT-.02,pz-.08,rm.gap[0],pz+.08],[rm.gap[1],pz-.08,S[1]+RT+.02,pz+.08]);
+   // a staff WC tucked into the back corner when the back is wide enough
+   if(w>=6.5){let hit=null;for(const dep of[2.3,2.1,1.9]){for(let x0=S[0];x0<S[0]+1.2&&!hit;x0+=.1){const r=[x0,pz+.08,x0+1.9,pz+.08+dep];if(r[3]<=rm.D+.01&&rectIn(rm,r,RT-.03))hit=r}if(hit)break}
+    if(hit){const[x0,z0,x1]=hit;let zb=hit[3],toBack=false;if(zb>rm.D-.7){let z=zb;while(z<rm.D+.5&&rmIn(rm,x0+.45,z+.05,RT)&&rmIn(rm,x1-.1,z+.05,RT))z+=.05;zb=z;toBack=true}
+     rm.wc=[x0,z0,x1,zb];const dz0=pz+.35,dz1=pz+1.15;
+     rm.parts.push([x1,pz+.08,x1+.12,dz0],[x1,dz1,x1+.12,toBack?zb+RT:zb+.12]);if(!toBack)rm.parts.push([x0-RT-.02,zb,x1+.12,zb+.12]);
+     rm.blocks.push(rm.wc);rm.keep.push([x1+.12,dz0,x1+1.0,dz1])}}}}
+ rm.blocks.push(...rm.parts);
  rm.stair=stairRect(rm);return rm}
 function enterInterior(s){
  let lot=siteLot(s);if(!lot)return;let L=liveFor(lot);
  if(!L){flyTo(lot.lat,lot.lon,Math.min(CAM.dist,420),()=>{setTimeout(()=>enterInterior(s),900)});return}
  if(IN)exitInterior(true);
  if(L.kind!=='lm'){const own=lotsOf(L).find(l=>l.key===lot.key);if(own)lot=own}
- const rm=interiorRoomOf(lot,L);rm.stairOn=hasStairs(s);syncLayout(s,rm);
+ const rm=interiorRoomOf(lot,L);rm.stairOn=hasStairs(s);syncLayout(s,rm);if(rm.fixMsg){setTimeout(()=>toast(rm.fixMsg,''),1200);rm.fixMsg=null}
  IN={key:lot.key,site:s,lot,L,rm,grp:new THREE.Group(),items:[],people:[],crates:[],placing:null,t:0,spawn:0,hidden:[],lv:0};
  ui.interior=IN;const g=IN.grp;g.position.set(rm.O[0],.3,-rm.O[1]);g.rotation.y=rm.theta;L.grp.add(g);g.updateMatrixWorld(true);
  g.add(IN.shell=buildShell(rm,s));rebuildItems();rebuildCrowd();hideBuilding(true);
@@ -3491,7 +3633,7 @@ function clearOccluders(now){
 }
 // a chunk rebuilt its buildings while we were inside: hide ours again in the new mesh
 function interiorReapply(L){if(IN&&IN.L.grp===L.grp){IN.L=L;hideBuilding(true)}}
-function itemMesh(it,ghost){const geo=imodelGeo(it.id,IN.site.type);const m=new THREE.Mesh(geo,ghost?GHOSTMAT:BMAT);m.userData.shared=true;m.position.set(it.x,ghost?.02:0,it.z);m.rotation.y=-it.r*Math.PI/2;m.castShadow=!ghost;m.receiveShadow=!ghost;if(imodelOf(it.id).zone==='over')m.position.y=0;return m}
+function itemMesh(it,ghost){const geo=imodelGeo(it.id,IN.site.type);const m=new THREE.Mesh(geo,ghost?GHOSTMAT:BMAT);m.userData.shared=true;m.position.set(it.x,ghost?.02:0,it.z);m.rotation.y=itemAng(it);m.castShadow=!ghost;m.receiveShadow=!ghost;if(imodelOf(it.id).zone==='over')m.position.y=0;return m}
 const GHOSTMAT=new THREE.MeshLambertMaterial({vertexColors:true,transparent:true,opacity:.62,emissive:new THREE.Color('#2a8a3a'),depthWrite:false});
 function rebuildItems(){
  for(const m of IN.items)IN.grp.remove(m);IN.items=[];
@@ -3499,12 +3641,12 @@ function rebuildItems(){
 }
 // ---------- navigation: a coarse walkability grid so people walk around kit instead of through it ----------
 const NAVC=.2;
-function itemSpot(it,side,lat){const m=imodelOf(it.id),lz=side*(m.d/2+.36),lx=lat||0,a=it.r*Math.PI/2;return[it.x+lx*Math.cos(a)-lz*Math.sin(a),it.z+lx*Math.sin(a)+lz*Math.cos(a)]}
+function itemSpot(it,side,lat){const m=imodelOf(it.id),lz=side*(m.d/2+.36),lx=lat||0,a=-itemAng(it);return[it.x+lx*Math.cos(a)-lz*Math.sin(a),it.z+lx*Math.sin(a)+lz*Math.cos(a)]}
 function buildNav(){
  const rm=IN.rm,s=IN.site,nx=Math.max(2,Math.ceil(rm.W/NAVC)),nz=Math.max(2,Math.ceil(rm.D/NAVC)),g=new Uint8Array(nx*nz);
  const mark=(x0,z0,x1,z1)=>{const i0=Math.max(0,Math.ceil(x0/NAVC-.5)),i1=Math.min(nx-1,Math.floor(x1/NAVC-.5)),j0=Math.max(0,Math.ceil(z0/NAVC-.5)),j1=Math.min(nz-1,Math.floor(z1/NAVC-.5));for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++)g[j*nx+i]=1};
- const M=.2;mark(0,0,M,rm.D);mark(rm.W-M,0,rm.W,rm.D);mark(0,rm.D-M,rm.W,rm.D);mark(0,0,rm.door[0],M);mark(rm.door[2],0,rm.W,M);
- if(rm.pz){mark(0,rm.pz-.24,rm.gap[0]+.05,rm.pz+.24);mark(rm.gap[1]-.05,rm.pz-.24,rm.W,rm.pz+.24)}
+ for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=(i+.5)*NAVC,z=(j+.5)*NAVC;if(z<1.1&&x>rm.door[0]+.05&&x<rm.door[2]-.05)continue;if(rm.poly?!rmIn(rm,x,z,RT+.2):(x<.2||z<.2||x>rm.W-.2||z>rm.D-.2))g[j*nx+i]=1}
+ for(const b of rm.blocks||[])mark(b[0]-.16,b[1]-.16,b[2]+.16,b[3]+.16);
  if(rm.stairOn)mark(rm.stair[0]-.1,rm.stair[1]-.1,rm.stair[2]+.1,rm.stair[3]+.1);for(const it of s.layout){if(it.l||imodelOf(it.id).zone==='over')continue;const r=iRect(it),p=it.id==='seats'?.02:.14;mark(r[0]-p,r[1]-p,r[2]+p,r[3]+p)}
  for(const c of IN.crates)mark(c.position.x-.38,c.position.z-.38,c.position.x+.38,c.position.z+.38);
  IN.nav={nx,nz,g};
@@ -3742,14 +3884,16 @@ function startPlacing(id,from){
 function cancelPlacing(){if(!IN||!IN.placing)return;IN.grp.remove(IN.placing.ghost);IN.placing=null;rebuildItems();renderInteriorBar()}
 function interiorMove(x,y){
  if(!IN||!IN.placing)return false;const h=roomHit(x,y);if(!h)return true;const P=IN.placing,it=P.it,[w,d]=ifoot(it.id,it.r);
- const sn=v=>Math.round(v*4)/4;it.x=clamp(sn(h[0]),w/2+.12,IN.rm.W-w/2-.12);it.z=clamp(sn(h[1]),d/2+.12,IN.rm.D-d/2-.12);
- P.ok=iValid(IN.rm,IN.site.layout,it,P.from==null?-1:P.from);P.ghost.position.set(it.x,.02,it.z);P.ghost.rotation.y=-it.r*Math.PI/2;return true}
-function interiorRotate(){if(!IN||!IN.placing)return;const P=IN.placing;P.it.r=(P.it.r+1)%4;P.ok=iValid(IN.rm,IN.site.layout,P.it,P.from==null?-1:P.from);P.ghost.rotation.y=-P.it.r*Math.PI/2}
+ const sn=v=>Math.round(v*4)/4,wz=imodelOf(it.id).zone==='wall';
+ if(wz){P.snap=snapWall(IN.rm,it,h[0],h[1],1.8);if(!P.snap){delete it.a;it.x=h[0];it.z=h[1]}}
+ else{delete it.a;it.x=clamp(sn(h[0]),w/2+.12,IN.rm.W-w/2-.12);it.z=clamp(sn(h[1]),d/2+.12,IN.rm.D-d/2-.12)}
+ P.ok=(!wz||!!P.snap)&&iValid(IN.rm,IN.site.layout,it,P.from==null?-1:P.from);P.ghost.position.set(it.x,.02,it.z);P.ghost.rotation.y=itemAng(it);return true}
+function interiorRotate(){if(!IN||!IN.placing)return;const P=IN.placing;if(imodelOf(P.it.id).zone==='wall'){toast('Wall kit always hangs flat against the wall it is on','');return}delete P.it.a;P.it.r=(P.it.r+1)%4;P.ok=iValid(IN.rm,IN.site.layout,P.it,P.from==null?-1:P.from);P.ghost.rotation.y=itemAng(P.it)}
 function interiorClick(x,y){
  if(!IN)return false;
  if(typeof INV!=='undefined'&&INV.open&&!IN.placing)invClose();
- if(IN.placing){const P=IN.placing;if(!P.ok){toast("That spot is blocked — try somewhere clear of walls, the door and other kit",'warn');return true}
-  const s=IN.site;if(P.from!=null)s.layout[P.from]={id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r,l:P.it.l||0};else{s.layout.push({id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r,l:P.it.l||0});weekCount('kit')}
+ if(IN.placing){const P=IN.placing;if(!P.ok){toast(imodelOf(P.it.id).zone==='wall'&&!P.snap?"This goes on a wall. Move it up to one and it will snap flat against it":"That spot is blocked. Try somewhere clear of walls, the door and other kit",'warn');return true}
+  const s=IN.site,ne={id:P.it.id,x:P.it.x,z:P.it.z,r:P.it.r,l:P.it.l||0};if(P.it.a!=null)ne.a=P.it.a;if(P.from!=null)s.layout[P.from]=ne;else{s.layout.push(ne);weekCount('kit')}
   IN.grp.remove(P.ghost);IN.placing=null;rebuildItems();rebuildCrowd();renderInteriorBar();save();return true}
  raycaster.setFromCamera({x:x/window.innerWidth*2-1,y:-(y/window.innerHeight)*2+1},camera);
  const hit=raycaster.intersectObjects(IN.items,false)[0];if(hit){if(typeof invOpenFor==='function'&&invOpenFor(hit.object.userData.idx))return true;startPlacing(null,hit.object.userData.idx);return true}
