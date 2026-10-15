@@ -4021,6 +4021,7 @@ function buyBox(v,text,down,act){const dp=Math.round(v*down);return`<div class="
 
 // ===================== SITE PANEL =====================
 function renderSite(){
+ if(typeof PSL_DRAG!=='undefined'&&PSL_DRAG)return;
  const el=$('#right'),s=G&&G.sites.find(x=>x.id===ui.site);
  if(!s){el.hidden=true;if(window.innerWidth<860&&ui.started)renderLeft();return}
  el.hidden=false;if(window.innerWidth<860)$('#left').hidden=true;
@@ -4089,12 +4090,36 @@ function siteStaff(s,b,E){
  <p class="fine">Each employee works an 8-hour shift. Opening longer spreads them thinner, and trade after 10 hours is slower. Payroll: ${money(daily)}/day.</p>
  <h3 class="eyebrow">Team</h3>${staff}<h3 class="eyebrow">Applicants <small class="muted">· new faces every Monday</small></h3>${cands}`;
 }
+// price slider: the track is coloured by what each price would do (red loses money, orange is thin or pricey, green is the sweet spot)
+function priceZones(cost,ref){const lo=Math.max(.1,Math.min(cost*.6,ref*.4)),hi=Math.max(ref*2,cost*1.6);return{lo,hi,b:[cost,ref*.9,ref*1.05,ref*1.25,ref*1.5]}}
+function priceVerdict(pr,cost,ref){const z=priceZones(cost,ref).b;
+ if(pr<z[0])return['red','Losing money','Every sale costs you '+pm(z[0]-pr)+'. Raise the price above '+pm(cost)+'.'];
+ if(pr<z[1])return['orange','Too cheap','You make a profit, but a thin one. Customers love it and your reputation grows.'];
+ if(pr<z[2])return['green','Just right','Priced like the shops nearby. Steady customers and a healthy margin.'];
+ if(pr<z[3])return['green','Making good profit','A bit above market. Slightly fewer buyers, but each sale earns more.'];
+ if(pr<z[4])return['orange','Pricey','Noticeably above market. Expect customers to start walking out.'];
+ return['red','Overpriced','Most customers will go elsewhere. Lower the price to win them back.']}
+function priceTrack(cost,ref){const Z=priceZones(cost,ref),P=v=>Math.max(0,Math.min(100,(v-Z.lo)/(Z.hi-Z.lo)*100)).toFixed(1)+'%',R='#e5484d',O='#f5a524',G='#3fbf6f',b=Z.b;
+ return`linear-gradient(90deg,${R} 0,${R} ${P(b[0])},${O} ${P(b[0])},${O} ${P(b[1])},${G} ${P(b[1])},${G} ${P(b[3])},${O} ${P(b[3])},${O} ${P(b[4])},${R} ${P(b[4])},${R} 100%)`}
+function priceSlider(p,pr,cost,ref){const Z=priceZones(cost,ref),step=ref>=200?1:ref>=20?.1:.05,v=priceVerdict(pr,cost,ref),mk=(Math.max(0,Math.min(1,(ref-Z.lo)/(Z.hi-Z.lo)))*100).toFixed(1);
+ return`<div class="psl" data-cost="${cost}" data-ref="${ref}"><div class="psl-top"><input id="price-${p.id}" class="mono psl-num" type="number" min="0.1" step="${step}" value="${pr.toFixed(2)}" data-change="price" data-id="${p.id}" aria-label="${esc(p.n)} price"><span class="psl-v ${v[0]}"><i></i>${v[1]}</span></div>
+ <div class="psl-wrap"><input type="range" class="psl-r" data-price="${p.id}" min="${Z.lo.toFixed(2)}" max="${Z.hi.toFixed(2)}" step="${step}" value="${Math.min(Z.hi,Math.max(Z.lo,pr)).toFixed(2)}" style="--trk:${priceTrack(cost,ref)}" aria-label="${esc(p.n)} price slider" aria-valuetext="${pm(pr)}, ${v[1]}"><span class="psl-mk" style="left:${mk}%" title="Market price ${pm(ref)}"></span></div>
+ <div class="psl-scale"><span>${pm(Z.lo)}</span><span>market ${pm(ref)}</span><span>${pm(Z.hi)}</span></div><p class="psl-tip">${v[2]}</p></div>`}
+// live feedback while dragging; the price is saved as you go and the panel refreshes when you let go
+let PSL_DRAG=false;
+document.addEventListener('pointerdown',e=>{if(e.target.classList&&e.target.classList.contains('psl-r'))PSL_DRAG=true},true);
+document.addEventListener('pointerup',()=>{if(PSL_DRAG){PSL_DRAG=false;setTimeout(()=>{try{renderSite()}catch(_){}},0)}},true);
+document.addEventListener('input',e=>{const t=e.target;if(!t.classList||!t.classList.contains('psl-r'))return;const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;const id=t.dataset.price,pr=Math.max(.1,Math.round(+t.value*100)/100);s.prices[id]=pr;
+ const box=t.closest('.psl'),cost=+box.dataset.cost,ref=+box.dataset.ref,v=priceVerdict(pr,cost,ref),n=box.querySelector('.psl-num'),vb=box.querySelector('.psl-v'),tip=box.querySelector('.psl-tip');
+ if(n)n.value=pr.toFixed(2);if(vb){vb.className='psl-v '+v[0];vb.innerHTML='<i></i>'+v[1]}if(tip)tip.textContent=v[2];t.setAttribute('aria-valuetext',pm(pr)+', '+v[1]);
+ const mi=box.closest('.mi'),dd=mi&&mi.querySelectorAll('.kv dd');if(dd&&dd.length>2){const mg=(pr-cost)/pr;dd[1].textContent=Math.round(mg*100)+'%';dd[1].className='mono '+(mg<.25?'down':'');dd[2].innerHTML=`${pm(ref)} <small class="${pr>ref*1.05?'down':pr<ref*.95?'up':''}">${pr>=ref?'+':''}${Math.round((pr/ref-1)*100)}%</small>`}});
+document.addEventListener('change',e=>{if(e.target.classList&&e.target.classList.contains('psl-r')){PSL_DRAG=false;save();renderSite()}});
 function siteMenu(s,b,E){
  const L=s.last;
  return`<p class="muted">The market price is what nearby shops typically charge. Customers buy less of anything priced above it, and cheap prices build reputation.</p><div class="menu">${b.products.map(p=>{
   const cost=Object.entries(p.rec).reduce((a,[k,q])=>a+q*((s.inv[k]&&s.inv[k].q>0)?s.inv[k].c:supPrice(k,E)*1.05),0),pr=s.prices[p.id],ref=refPrice(b,p,E),mg=(pr-cost)/pr,step=pr>=200?10:pr>=20?1:.1;
   return`<div class="mi"><div class="mt"><b>${esc(p.n)}</b><small>${Object.keys(p.rec).map(k=>esc(SUP[k].n.toLowerCase())).join(', ')}</small></div>
-  <div class="mrow"><button class="ghost sm" data-act="price" data-id="${p.id}" data-d="${-step}" aria-label="Lower price">−</button><input id="price-${p.id}" class="mono" type="number" min="0" step="${step}" value="${pr.toFixed(2)}" data-change="price" data-id="${p.id}" aria-label="${esc(p.n)} price"><button class="ghost sm" data-act="price" data-id="${p.id}" data-d="${step}" aria-label="Raise price">+</button></div>
+  ${priceSlider(p,pr,cost,ref)}
   <dl class="kv sm"><dt>Unit cost</dt><dd class="mono">${pm(cost)}</dd><dt>Margin</dt><dd class="mono ${mg<.25?'down':''}">${Math.round(mg*100)}%</dd><dt>Market price</dt><dd class="mono">${pm(ref)} <small class="${pr>ref*1.05?'down':pr<ref*.95?'up':''}">${pr>=ref?'+':''}${Math.round((pr/ref-1)*100)}%</small></dd><dt>Sold yesterday</dt><dd class="mono">${L&&L.sold[p.id]!=null?L.sold[p.id]:'—'}</dd></dl></div>`}).join('')}</div><button class="ghost sm" data-act="resetprice">Match market prices</button>`;
 }
 function siteStock(s,b,E){
@@ -6755,6 +6780,24 @@ html body #invp .rx-inv{border-top:1px solid rgba(255,255,255,.08)!important;mar
 html body #invp .rx-inv small{font:600 11px/1 var(--f-body,system-ui)!important;letter-spacing:.08em!important;color:var(--hb-text,#f1f0ea)!important}
 html body #invp .rx-inv button{border-radius:9px!important;padding:5px 9px!important;font:600 12px/1 var(--f-body,system-ui)!important}
 html body #invp .ivbody::-webkit-scrollbar{width:6px}html body #invp .ivbody::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+/* price slider */
+html body .mi .psl{grid-column:1/-1!important;width:100%}
+.psl{display:flex;flex-direction:column;gap:6px;margin:8px 0 10px}
+.psl-top{display:flex;align-items:center;gap:10px}
+html body .psl .psl-num{width:96px!important;height:34px;padding:0 10px!important;border-radius:8px!important;background:rgba(0,0,0,.3)!important;border:1px solid rgba(255,255,255,.14)!important;color:#f1f0ea!important;font:700 15px var(--f-body,system-ui)!important;text-align:left}
+.psl-v{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px!important;font:700 12.5px/1 var(--f-body,system-ui);letter-spacing:.01em}
+.psl-v i{width:8px;height:8px;border-radius:50%!important;background:currentColor;box-shadow:0 0 8px currentColor}
+.psl-v.green{color:#5fd38a;background:rgba(63,191,111,.14)}.psl-v.orange{color:#f5a524;background:rgba(245,165,36,.14)}.psl-v.red{color:#ff6b5b;background:rgba(229,72,77,.15)}
+.psl-wrap{position:relative;padding:6px 0}
+.psl-r{-webkit-appearance:none;appearance:none;width:100%;height:10px;margin:0;border-radius:6px!important;background:var(--trk);outline:none;cursor:pointer;box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
+.psl-r::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:linear-gradient(180deg,#fff,#dcdcdc);border:2px solid #1b1c20;box-shadow:0 2px 8px rgba(0,0,0,.55);cursor:grab;transition:transform .1s}
+.psl-r:active::-webkit-slider-thumb{transform:scale(1.15);cursor:grabbing}
+.psl-r::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:linear-gradient(180deg,#fff,#dcdcdc);border:2px solid #1b1c20;box-shadow:0 2px 8px rgba(0,0,0,.55);cursor:grab}
+.psl-r::-moz-range-track{height:10px;border-radius:6px;background:var(--trk)}
+.psl-r:focus-visible{box-shadow:0 0 0 3px rgba(255,222,0,.35)}
+.psl-mk{position:absolute;top:1px;width:2px;height:20px;margin-left:-1px;background:#fff;opacity:.85;border-radius:1px!important;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.psl-scale{display:flex;justify-content:space-between;font:500 11px var(--f-body,system-ui);color:#8d9098}
+.psl-tip{margin:0;font:400 12.5px/1.45 var(--f-body,system-ui);color:#b9bbc2}
 /* game logo replaces the old flag everywhere */
 html body .flag,html body #bar .brand .flag,html body header#bar .brand i.flag{display:inline-block!important;width:30px!important;height:30px!important;margin:0 2px 0 0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:url(media/logo-mark.png) center/contain no-repeat!important;vertical-align:middle;flex:0 0 auto}
 html body header#bar .brand i.flag{width:44px!important;height:44px!important;margin:-6px 0 -6px -4px!important}html body .flag.big{width:72px!important;height:72px!important}
