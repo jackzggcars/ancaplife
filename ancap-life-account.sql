@@ -1,9 +1,107 @@
 -- ANCAP LIFE · accounts: player numbers, loyalty, avatars, trophies, referrals, account deletion
 -- Paste into Supabase → SQL Editor → New query, then press Run. Safe to run more than once.
--- Needs supabase-setup.sql (profiles) and ancap-life-supabase.sql (players) to have been run first.
+-- Self-contained: it also creates the account profiles table and sign-up checks if they are missing.
 
+-- ---------------------------------------------------------------- players (shared leaderboard)
+create table if not exists public.players (
+  id          uuid primary key references auth.users(id) on delete cascade,
+  company     text not null default 'Free Enterprise Co.' check (char_length(company) <= 40),
+  cash        numeric not null default 0,
+  net_worth   numeric not null default 0,
+  businesses  int not null default 0,
+  updated_at  timestamptz not null default now()
+);
+alter table public.players enable row level security;
+drop policy if exists "players are public" on public.players;
+create policy "players are public" on public.players for select using (true);
+drop policy if exists "update own player" on public.players;
+create policy "update own player" on public.players for update using (auth.uid() = id);
+
+-- ---------------------------------------------------------------- profiles + sign-up checks
+create table if not exists public.profiles (
+  user_id          uuid primary key references auth.users(id) on delete cascade,
+  username         text not null,
+  dob              date,
+  tos_version      text,
+  tos_accepted_at  timestamptz,
+  created_at       timestamptz not null default now(),
+  constraint username_format check (username ~ '^[A-Za-z0-9_]{3,20}$')
+);
+alter table public.profiles alter column dob drop not null;
+create unique index if not exists profiles_username_lower_key on public.profiles (lower(username));
+
+alter table public.profiles enable row level security;
+drop policy if exists "profiles_select_own" on public.profiles;
+create policy "profiles_select_own" on public.profiles for select to authenticated using (auth.uid() = user_id);
+-- no insert/update/delete policies on purpose: rows are created by the trigger below only.
+
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  uname text := nullif(trim(new.raw_user_meta_data->>'username'), '');
+  born  date;
+begin
+  -- guests (anonymous sign-ins) and magic-link logins to existing accounts carry no profile data
+  if coalesce(new.is_anonymous, false) then return new; end if;
+  if uname is null then
+    raise exception 'username required';
+  end if;
+  begin
+    born := (new.raw_user_meta_data->>'dob')::date;
+  exception when others then
+    raise exception 'valid date of birth required';
+  end;
+  if born is null or born > current_date or born < date '1900-01-01' then
+    raise exception 'valid date of birth required';
+  end if;
+  if age(current_date, born) < interval '13 years' then   -- minimum age: change 13 here AND MIN_AGE in index.html together
+    raise exception 'too young';
+  end if;
+  if lower(uname) in ('admin','administrator','support','moderator','mod','staff','system','ancap','ancaplife','anthropic','root') then
+    raise exception 'username not allowed';
+  end if;
+  insert into public.profiles (user_id, username, dob, tos_version, tos_accepted_at)
+  values (new.id, uname, born, new.raw_user_meta_data->>'tos_version',
+          nullif(new.raw_user_meta_data->>'tos_accepted_at','')::timestamptz);
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- lets the sign-up form say "taken" before submitting (returns only true/false, exposes nothing else)
+create or replace function public.username_available(u text) returns boolean
+language sql security definer set search_path = public stable as $$
+  select not exists (select 1 from public.profiles where lower(username) = lower(trim(u)))
+     and lower(trim(u)) not in ('admin','administrator','support','moderator','mod','staff','system','ancap','ancaplife','anthropic','root');
+$$;
+revoke all on function public.username_available(text) from public;
+grant execute on function public.username_available(text) to anon, authenticated;
+
+-- accounts made before this table existed get a profile now (username from sign-up if free, else player_xxxx)
+do $$
+declare u record; nm text;
+begin
+  for u in select id, raw_user_meta_data, created_at from auth.users
+           where coalesce(is_anonymous,false) = false and id not in (select user_id from public.profiles) order by created_at loop
+    nm := nullif(trim(u.raw_user_meta_data->>'username'),'');
+    if nm is null or nm !~ '^[A-Za-z0-9_]{3,20}$' or exists(select 1 from public.profiles where lower(username)=lower(nm)) then
+      nm := 'player_' || substr(replace(u.id::text,'-',''),1,10);
+    end if;
+    insert into public.profiles (user_id, username, dob, created_at) values (u.id, nm, null, u.created_at);
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------- account features
 -- player number = order of sign-up; who invited you
-alter table public.profiles add column if not exists player_no bigint generated by default as identity;
+alter table public.profiles add column if not exists player_no bigint;
+create sequence if not exists public.player_no_seq;
+alter table public.profiles alter column player_no set default nextval('public.player_no_seq');
+-- number existing accounts in sign-up order
+do $$ declare r record; begin
+  for r in select user_id from public.profiles where player_no is null order by created_at loop
+    update public.profiles set player_no = nextval('public.player_no_seq') where user_id = r.user_id; end loop; end $$;
 alter table public.profiles add column if not exists referred_by uuid references auth.users(id) on delete set null;
 
 -- the sign-up trigger also records the invite link the new player arrived with
