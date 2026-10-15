@@ -4856,7 +4856,7 @@ async function authGo(){
    authMsg('Almost there. We sent a confirmation link to '+email+'. Open it, then sign in.','ok')}
   if(m==='magic'){const r=await AUTH.db.auth.signInWithOtp({email,options:{emailRedirectTo:authUrl(),shouldCreateUser:false}});if(r.error)throw r.error;authMsg('Sign-in link sent to '+email+'. Open it on this device.','ok')}
   if(m==='newpass'){const r=await AUTH.db.auth.updateUser({password:pw});if(r.error)throw r.error;AUTH.mode='in';location.hash='';location.reload();return}
- }catch(e){authMsg(/invalid login/i.test(e.message)?'Wrong email or password.':/database error saving new user/i.test(e.message)?'We could not create that account. The username may be taken or not allowed. Try another.':/signups? not allowed|otp_disabled/i.test(e.message)?'No account with that email yet. Use Create account first.':e.message||'Something went wrong.','err')}
+ }catch(e){authMsg(/invalid login/i.test(e.message)?'Wrong email or password.':/database error saving new user/i.test(e.message)?'We could not create that account. The username may be taken or not allowed. Try another.':/signups? not allowed|otp_disabled/i.test(e.message)?'No account with that email yet. Use Create account first.':/rate limit|over_email_send_rate_limit|too many/i.test(e.message)?'Too many emails have gone out in the last hour. Please try again a little later.':e.message||'Something went wrong.','err')}
  authBusy(false);
 }
 async function authForgot(){
