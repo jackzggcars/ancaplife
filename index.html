@@ -570,7 +570,7 @@ body{font-family:var(--f-body);font-size:14px;line-height:1.45;font-feature-sett
 .fr-lb{border-top:1px solid var(--rule)}
 #front .fr-foot{text-shadow:none;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;color:var(--muted);margin-top:22px}
 @media (max-width:700px){#front .fr-wrap{padding:28px 18px}#front .fr-logo{font-size:clamp(56px,19vw,96px)}.fr-shade{background:rgba(0,0,0,.78)}}
-#gl{transition:filter .6s ease}body.vivid #gl{filter:saturate(1.24) contrast(1.06) brightness(1.03)}
+#gl{transition:filter .6s ease}body.vivid #gl{filter:saturate(1.18) contrast(1.06)}
 </style>
 <div id="app">
  <canvas id="gl" aria-label="3D map of the Earth"></canvas>
@@ -1759,7 +1759,7 @@ function updateLights(){
  sun.target.position.copy(T);sun.position.copy(T).addScaledVector(d,4000);
  // street scale: strong warm sun + cool sky fill from above + low ambient, so shade is dark but never black
  const st=1-k;HEMI.position.copy(U);HEMI.color.set('#b6d6ff').lerp(DAYC.skyLowDusk,dusk*.6).lerp(DAYC.ambNight,night);HEMI.groundColor.set('#7d8a52').lerp(new THREE.Color('#1c2236'),night);
- HEMI.intensity=st*(.44-.12*dusk-.24*night);AMB.intensity*=1-.6*st;sun.intensity*=1+.22*st*(1-night);document.body.classList.toggle('vivid',VIVID&&st>.5&&night<.5);
+ HEMI.intensity=st*(.4-.11*dusk-.22*night);AMB.intensity*=1-.62*st;sun.intensity*=1+.06*st*(1-night);document.body.classList.toggle('vivid',VIVID&&st>.5&&night<.5);
  SKYSHEEN.value.copy(SKY_MID).lerp(SKY_LOW,.55);
 }
 
@@ -1829,7 +1829,7 @@ function buildPatch(spec){
  for(const T of tiles)for(const p of T.land)if(hit(p.bb)){poly(p);x.stroke()}
  x.fillStyle='#7cbb57';for(const T of tiles)for(const p of T.land)if(hit(p.bb)){poly(p);x.fill('evenodd')}
  x.fillStyle='#4aa2d4';for(const T of tiles)for(const p of T.lakes)if(hit(p.bb)){poly(p);x.fill('evenodd')}
- x.fillStyle='rgba(222,212,190,.92)';for(const T of tiles)for(const p of T.urban)if(hit(p.bb)){poly(p);x.fill('evenodd')}
+ x.fillStyle='rgba(170,162,140,.96)';for(const T of tiles)for(const p of T.urban)if(hit(p.bb)){poly(p);x.fill('evenodd')}
  // Natural Earth rivers are too coarse inside cities with real water data, so mask those areas out
  x.save();x.beginPath();x.rect(0,0,N,N);for(const id in REAL){const R=REAL[id];if(distM(R.lat0,R.lon0,spec.lat,spec.lon)>r+20000)continue;const Q=(cx,cy)=>P(R.lon0+cx/R.kx,R.lat0+cy/R.ky);if(R.covp){for(let i=0;i<R.covp.length;i+=2){const[a,b]=Q(R.covp[i],R.covp[i+1]);i?x.lineTo(a,b):x.moveTo(a,b)}x.closePath()}for(const b of R.cover){const[a1,b1]=Q(b[0],b[1]),[a2,b2]=Q(b[2],b[3]);x.moveTo(a1,b1);x.lineTo(a1,b2);x.lineTo(a2,b2);x.lineTo(a2,b1);x.closePath()}}x.clip('evenodd');
  x.lineCap='round';x.lineJoin='round';x.strokeStyle='#4aa2d4';
@@ -2643,7 +2643,7 @@ function lmGlowAll(){for(const L of LANDMARKS){const v=LMLIVE.get(L.id);if(v)lmG
 // ===================== ANCAP LIFE · STREAMING (frustum-based, 4 levels of detail) =====================
 const MATS={flat:(()=>{const m=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});m.onBeforeCompile=groundShader;m.customProgramCacheKey=()=>'ground2';return m})(),tree:new THREE.MeshLambertMaterial({vertexColors:true})};
 const LIVE=new Map();
-const ROADCOL={major:new THREE.Color('#464b54'),minor:new THREE.Color('#50555e'),path:new THREE.Color('#e3dac0'),walk:new THREE.Color('#dcd8cd'),park:new THREE.Color('#72b84e'),dirt:new THREE.Color('#d2b98a'),water:new THREE.Color('#3f90d8'),line:new THREE.Color('#e9cf73')};
+const ROADCOL={major:new THREE.Color('#464b54'),minor:new THREE.Color('#50555e'),path:new THREE.Color('#c4b694'),walk:new THREE.Color('#b9b09c'),park:new THREE.Color('#72b84e'),dirt:new THREE.Color('#d2b98a'),water:new THREE.Color('#3f90d8'),line:new THREE.Color('#e9cf73')};
 function roofColorFor(lot){const st=lotState(lot);if(st.st==='build')return new THREE.Color('#d4a347');return null}
 // status is shown as a soft coloured glow around the building (ground halo, rising haze, bright crown), never by repainting the roof
 const GLOWC={player:new THREE.Color('#ffffff'),lease:new THREE.Color('#ffde00'),sale:new THREE.Color('#2fd3e6'),rival:new THREE.Color('#ff4b3e'),other:new THREE.Color('#c86bff')};
@@ -2735,7 +2735,7 @@ function fieldGround(gb,f){
 }
 const YARDC=[FC('#8fc06a'),FC('#9cc874'),FC('#86b862')];
 // ---------- roads: asphalt, raised kerbs and pavements, lane markings and zebra crossings ----------
-const PAVE=[FC('#dacdb0'),FC('#ded1b5'),FC('#d8cbaf')],CURB=FC('#b5a78c'),MARKW=FC('#f6f3ea'),MARKY=FC('#f0c63a'),ASPH=FC('#42464e'),ASPH2=FC('#4c5058');
+const PAVE=[FC('#b8ad94'),FC('#bcb198'),FC('#b5aa91')],CURB=FC('#9a8f78'),MARKW=FC('#f6f3ea'),MARKY=FC('#f0c63a'),ASPH=FC('#42464e'),ASPH2=FC('#4c5058');
 function ribbonFlat(gb,a,b,w,y,col){const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<.01)return;const nx=-dy/L*w/2,ny=dx/L*w/2;gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]+nx,y,-(b[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],UPN,col,col,col);gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],[a[0]-nx,y,-(a[1]-ny)],UPN,col,col,col)}
 function markRoad(gb,a,b,w,c,amer,y){
  const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<14)return;const ux=dx/L,uy=dy/L,nx=-uy,ny=ux;
@@ -8502,7 +8502,9 @@ function onShow(sel,el){
 function scan(){
  for(const[s,el]of els()){const v=isVis(el),was=wasVis.get(el)||false;if(v&&!was){wasVis.set(el,true);requestAnimationFrame(()=>onShow(s,el))}else if(!v&&was){wasVis.set(el,false);if(isModal(el)){resetPos(el)}}}
 }
-setInterval(scan,250);addEventListener('resize',()=>{for(const[,el]of els()){if(!isVis(el))continue;const r=el.getBoundingClientRect();if(r.right>innerWidth||r.bottom>innerHeight||r.left<0||r.top<0){moved.delete(el);resetPos(el)}}});
+setInterval(scan,250);
+// panels change size as their contents change; one that has grown over a more important panel steps aside (never ones the player has moved)
+setInterval(()=>{const vis=els().filter(([,e])=>isVis(e));for(const[s,el]of vis){if(moved.has(el)||isModal(el))continue;const r=el.getBoundingClientRect(),p=PRIO.get(s)||0;if(vis.some(([s2,o])=>o!==el&&(PRIO.get(s2)||0)>p&&ov(r,o.getBoundingClientRect())>40))place(el,s)}},1000);addEventListener('resize',()=>{for(const[,el]of els()){if(!isVis(el))continue;const r=el.getBoundingClientRect();if(r.right>innerWidth||r.bottom>innerHeight||r.left<0||r.top<0){moved.delete(el);resetPos(el)}}});
 // ---- dragging by the top edge ----
 const GRIP=34,ACTIVE='button,a,input,select,textarea,label,[data-act],[data-change],.psl,.tabs';
 function panelAt(t){for(const[s,el]of els()){if(el.contains(t)&&isVis(el))return[s,el]}return null}
@@ -8635,10 +8637,11 @@ function resOf(lot){
  if(!lot)return null;if(lot._res!==undefined)return lot._res;let r=null;
  if(!lot.hidden&&!lot.landmark&&!lot.civic&&!lot.park&&!lot.kind&&!lot.landcell&&lot.zone&&lot.zone!=='lm'){
   const h=hash2(lot.i|0,lot.zone.length,51),f=lot.floors||1,a=lot.area||0;
-  if(lot.house)r=a<120?'small':'medium';
+  const fa=lot.fp?Math.abs(ringArea(lot.fp)):a*.42;
+  if(lot.house)r=fa<130?'small':'medium';
   else if(isCityLot(lot)){if(f>=4&&h<.3)r='apt';else if(f<=3&&a>=240&&h>.86)r='mansion'}
-  else{if(f<=2&&h<.38)r=a<110?'small':'medium';else if(f>=3&&h<.14)r='apt'}}
- lot._res=r;if(r){const t=hash2(lot.i|0,77,lot.zone.length+3);lot._rest=r==='apt'?(t<.2?'sale':t<.65?'rooms':'occ'):(t<.42?'sale':t<.64?'rooms':'occ')}
+  else{if(f<=2&&h<.38&&fa<220)r=fa<110?'small':'medium';else if(f>=3&&h<.14)r='apt'}}
+ lot._res=r;if(r){const t=hash2(lot.i|0,77,lot.zone.length+3);lot._rest=r==='apt'?(t<.12?'sale':t<.36?'rooms':'occ'):(t<.36?'sale':t<.54?'rooms':'occ')}
  return r}
 // homes only take over buildings that were simply occupied or for sale, so shops to lease and rival businesses are untouched
 const _ls=lotState;lotState=function(lot){const s=_ls(lot);if(!s||!lot)return s;if(s.st!=='occ'&&s.st!=='sale')return s;if(G&&G.ov&&G.ov[lot.key])return s;const r=resOf(lot);if(!r)return s;return lot._rs||(lot._rs={st:lot._rest,res:r})};
@@ -8718,13 +8721,26 @@ function landHover(hit,x,y){
  if(!hit){tip.hidden=true;LAND.hov=null;return}
  const{lot,L}=hit;LAND.hov=lot;const P=[];landFill(lot.poly.map(toLocalOf(L)),.52,P);const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));LAND.hm=new THREE.Mesh(g,HOVM);LAND.hm.renderOrder=7;L.grp.add(LAND.hm);
  const E=econAt(lot.lat,lot.lon);tip.innerHTML=`<b>${big(plotValue(E,lot))}</b><small>${lot.area} m² · click to build</small>`;tip.hidden=false;tip.style.left=(x+14)+'px';tip.style.top=(y+12)+'px'}
+// find the bare plot under the cursor: intersect the ray with the ground of each live block
+const _gi=new THREE.Matrix4(),_go=new THREE.Vector3(),_gd=new THREE.Vector3();
+function plotUnderRay(){let best=null,bd=1e18;const ray=raycaster.ray;
+ for(const L of LIVE.values()){if(L.kind==='empty'||!L.grp)continue;L.grp.updateMatrixWorld();_gi.copy(L.grp.matrixWorld).invert();_go.copy(ray.origin).applyMatrix4(_gi);_gd.copy(ray.direction).transformDirection(_gi);
+  if(_gd.y>=-1e-6)continue;const t=(.4-_go.y)/_gd.y;if(t<0)continue;const x=_go.x+_gd.x*t,y=-(_go.z+_gd.z*t),tl=toLocalOf(L);
+  for(const lot of lotsOf(L)){if(lot.hidden)continue;const st=lotState(lot);if(!st||st.st!=='plot')continue;const R=lot._pr||(lot._pr=lot.poly.map(tl));let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;for(const q of R){if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1]}
+   if(x<x0||x>x1||y<y0||y>y1||!pipR(R,x,y))continue;if(t<bd){bd=t;best={lot,L}}}}
+ if(!best)return null;
+ // a building standing in front of the plot wins
+ try{const ms=[];for(const L of LIVE.values())for(const m of L.meshes||[])ms.push(m);const hs=raycaster.intersectObjects(ms,false);if(hs.length&&hs[0].distance<bd*.98)return null}catch(e){}
+ return best}
+// clicking bare land always selects it, even where the older ground picker misses
+if(typeof pickLot==='function'){const _pk2=pickLot;pickLot=function(x,y){const r=_pk2(x,y);if(r)return r;try{raycaster.setFromCamera({x:x/innerWidth*2-1,y:-(y/innerHeight)*2+1},camera);const g=plotUnderRay();if(g)return g.lot}catch(e){}return r}}
 let hovT=0;
 document.addEventListener('pointermove',e=>{
  if(!(G&&ui.started&&ui.street&&!ui.interior&&ui.show.plot)||e.target.id!=='gl'||e.buttons){if(LAND.hov||!tip.hidden)landHover(null);return}
  const now=performance.now();if(now-hovT<110){if(!tip.hidden){tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+12)+'px'}return}hovT=now;
- try{raycaster.setFromCamera({x:e.clientX/innerWidth*2-1,y:-(e.clientY/innerHeight)*2+1},camera);const g=groundLot();
-  if(g&&lotState(g.lot).st==='plot'){let L=null;for(const l of LIVE.values())if(l.kind!=='empty'&&lotsOf(l).includes(g.lot)){L=l;break}if(L){if(LAND.hov!==g.lot)landHover({lot:g.lot,L},e.clientX,e.clientY);else{tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+12)+'px'}return}}
-  landHover(null)}catch(err){}},{passive:true});
+ try{raycaster.setFromCamera({x:e.clientX/innerWidth*2-1,y:-(e.clientY/innerHeight)*2+1},camera);const g=plotUnderRay();
+  if(g){if(LAND.hov!==g.lot)landHover(g,e.clientX,e.clientY);else{tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+12)+'px'}return}
+  landHover(null)}catch(err){console.warn(err)}},{passive:true,capture:true});
 
 // =====================================================================================================
 // 3. LOT PANELS for homes and land
@@ -8736,7 +8752,7 @@ function resPanel(lot,st){
  else if(st==='rooms'){const o=roomOffer(lot);act=`<div class="box"><div class="price"><span class="mono">${money(o.rent)}</span><small>per month for a ${o.sqm} m² room</small></div><p class="muted">The owner doesn't sell, but rents out rooms. Take one and run a small business from it. Two months' deposit (${money(o.rent*2)}) now.</p><button class="btn wide" data-act="esroom" ${G.cash<o.rent*2?'disabled':''}>Rent a room for a business</button></div>`}
  else act=`<div class="box"><p class="muted">People live here. It isn't for sale and there are no rooms free right now.</p></div>`;
  return`<div class="pad"><button class="ghost sm close" data-act="desel" aria-label="Close">✕</button><p class="eyebrow">${esc(E.place)}, ${esc(E.country)}</p><h2 class="h">${lot.num} ${esc(lot.street)}</h2><span class="pill es-kind">${RES_N[r]}</span>
- <dl class="kv"><dt>Home</dt><dd>${esc(RES_D[r])}</dd><dt>Size</dt><dd class="mono">${lot.sqm} m² a floor · ${lv} floor${lv>1?'s':''} · about ${rooms} rooms</dd><dt>Local room rent</dt><dd class="mono">≈${money(mk)}/month (14 m²)</dd></dl>${act}</div>`}
+ <dl class="kv"><dt>Home</dt><dd>${esc(RES_D[r])}</dd><dt>Size</dt><dd class="mono">${lv} floor${lv>1?'s':''} · ~${rooms} rooms</dd><dt>Room rent here</dt><dd class="mono">≈${money(mk)}/mo</dd></dl>${act}</div>`}
 function ownedHomeBox(lot,p){const r=resOf(lot)||'medium',E2=ES().find(e=>e.key===lot.key);
  if(E2){const let_=Object.values(E2.rooms).filter(x=>x.tenant).length,tot=Object.keys(E2.rooms).length||'?';return`<div class="box mine es-own"><p><b>Landlord · ${esc(E2.name)}</b><br>${let_} of ${tot} rooms let · ${money(estIncome(E2))}/day in rent</p><button class="btn" data-act="esopen" data-id="${E2.id}">Manage rooms</button></div>`}
  return`<div class="box mine es-own"><p><b>Your ${RES_N[r].toLowerCase()}</b><br>Turn it into rented rooms: about ${estRoomsGuess(lot)} rooms, each with its own tenant. Furnish them, heat them and set the rent.</p><button class="btn" data-act="esstart">Become a landlord</button></div>`}
@@ -8812,24 +8828,34 @@ function wallSpans(rm,horiz,c,a0,a1,gaps){ // a wall line clipped to the inside 
  for(let t=a0;t<=a1+1e-6;t+=.1){const v=ok(t);if(v&&s==null)s=t;if((!v||t+.1>a1)&&s!=null){const e=v?a1:t-.1;if(e-s>.15)out.push([s,e]);s=null}}return out}
 function estLayout(rm,E){
  rm.parts=[];rm.blocks=[];rm.keep=[];rm.pz=0;rm.gap=null;rm.gapClear=null;rm.wc=null;rm.homeFront=true;rm.allLv=true;
- const W=rm.W,D=rm.D,cw=E.kind==='mansion'?5:E.kind==='small'?3.4:3.8,dx=(rm.door[0]+rm.door[2])/2,cells=[];let corr;
- const bands=D>=7.2?[{z0:0,z1:D/2-.7,f:1},{z0:D/2+.7,z1:D,f:0}]:[{z0:1.5,z1:D,f:0}];corr=D>=7.2?[D/2-.7,D/2+.7]:[0,1.5];
- for(const b of bands){const n=Math.max(1,Math.round(W/cw));for(let i=0;i<n;i++){const x0=W*i/n,x1=W*(i+1)/n;cells.push({x0,x1,z0:b.z0,z1:b.z1,f:b.f,first:i===0,last:i===n-1})}}
- // the hall (front door) and the core (stairs and bathroom) are shared; everything else is a room
- const fronts=cells.filter(c=>c.f),backs=cells.filter(c=>!c.f),near=(L)=>L.reduce((a,c)=>!a||Math.abs((c.x0+c.x1)/2-dx)<Math.abs((a.x0+a.x1)/2-dx)?c:a,null);
- const hall=fronts.length?near(fronts):null;if(hall)hall.hall=1;const core=near(backs);if(core&&(backs.length>1||E.lvls.length>1))core.core=1;
- // shrink each cell until it sits fully inside the building
- for(const c of cells){for(let k=0;k<16;k++){const r=[c.x0+.06,c.z0+(c.f?0:.06),c.x1-.06,c.z1-(c.f?.06:0)];if(rectIn(rm,r,RT-.04)){c.ok=1;break}if(c.f)c.z0+=.3;else c.z1-=.3;if(c.first)c.x0+=.25;if(c.last)c.x1-=.25;if((c.x1-c.x0)*(c.z1-c.z0)<6)break}
-  c.area=(c.x1-c.x0)*(c.z1-c.z0)}
- const keep=cells.filter(c=>c.ok&&c.area>=6),walls=[],doors=[];
- // corridor walls with a door into every room (the hall is open)
- for(const b of bands){const z=b.f?b.z1:b.z0,gaps=[];for(const c of keep){if(c.f!==b.f)continue;const m=(c.x0+c.x1)/2;if(c.hall)gaps.push([c.x0+.25,c.x1-.25]);else{gaps.push([m-.45,m+.45]);doors.push({x:m,z,f:c.f,c})}}
-  for(const[s,e]of wallSpans(rm,true,z,-.2,W+.2,gaps))walls.push([s-.02,z-.05,e+.02,z+.05])}
- // walls between neighbouring cells
- for(let i=0;i<cells.length-1;i++){const a=cells[i],b=cells[i+1];if(a.f!==b.f)continue;const x=a.x1,z0=Math.min(a.z0,b.z0),z1=Math.max(a.z1,b.z1);for(const[s,e]of wallSpans(rm,false,x,z0,z1,[]))walls.push([x-.05,s,x+.05,e])}
- rm.eparts=walls;rm.blocks=walls.slice();rm.edoors=doors;rm.ehall=hall&&hall.ok?hall:null;rm.ecore=core&&core.ok?core:null;rm.ecorr=corr;
- rm.erooms=keep.filter(c=>!c.hall&&!c.core).map((c,k)=>({k,rect:[c.x0,c.z0,c.x1,c.z1],area:c.area,f:c.f,door:doors.find(d=>d.c===c)?[doors.find(d=>d.c===c).x,doors.find(d=>d.c===c).z]:null}));
- if(rm.ecore&&E.lvls.length>1){const c=rm.ecore,dep=c.z1-c.z0;if(dep>=1.9&&c.x1-c.x0>=1.6)rm.stair=[c.x0+.12,c.z0+.15,c.x0+1.32,c.z1-.15]}
+ const W=rm.W,D=rm.D,cw=E.kind==='mansion'?5:E.kind==='small'?3.4:3.8,dx=(rm.door[0]+rm.door[2])/2,cells=[],walls=[],doors=[];
+ // each cell knows which wall is its "far" wall (opposite its door): z0/z1 (front/back) or x0/x1 (sides)
+ const spine=D>=14&&D>=W*.9;
+ if(!spine){
+  // a corridor across the building, rooms in front of and behind it
+  const bands=D>=7.2?[{z0:0,z1:D/2-.7,far:'z0'},{z0:D/2+.7,z1:D,far:'z1'}]:[{z0:1.5,z1:D,far:'z1'}];
+  for(const b of bands){const n=Math.max(1,Math.round(W/cw));for(let i=0;i<n;i++)cells.push({x0:W*i/n,x1:W*(i+1)/n,z0:b.z0,z1:b.z1,far:b.far,band:b,first:i===0,last:i===n-1})}
+  const fronts=cells.filter(c=>c.far==='z0'),backs=cells.filter(c=>c.far==='z1'),near=L=>L.reduce((a,c)=>!a||Math.abs((c.x0+c.x1)/2-dx)<Math.abs((a.x0+a.x1)/2-dx)?c:a,null);
+  const hall=fronts.length?near(fronts):null;if(hall)hall.hall=1;const core=near(backs);if(core&&(backs.length>1||E.lvls.length>1))core.core=1;
+  for(const c of cells)fit(c,()=>{if(c.far==='z0')c.z0+=.3;else c.z1-=.3;if(c.first)c.x0+=.25;if(c.last)c.x1-=.25});
+  for(const b of bands){const z=b.far==='z0'?b.z1:b.z0,gaps=[];for(const c of cells){if(c.band!==b||!c.ok)continue;const m=(c.x0+c.x1)/2;if(c.hall)gaps.push([c.x0+.25,c.x1-.25]);else{gaps.push([m-.45,m+.45]);doors.push({x:m,z,v:0,c})}}
+   for(const[s0,e0]of wallSpans(rm,true,z,-.2,W+.2,gaps))walls.push([s0-.02,z-.05,e0+.02,z+.05])}
+  for(let i=0;i<cells.length-1;i++){const a=cells[i],b=cells[i+1];if(a.band!==b.band)continue;const x=a.x1;for(const[s0,e0]of wallSpans(rm,false,x,Math.min(a.z0,b.z0),Math.max(a.z1,b.z1),[]))walls.push([x-.05,s0,x+.05,e0])}}
+ else{
+  // a deep building: a corridor runs back from the front door, rooms open off both sides of it
+  const two=W>=7.6;let sx0,sx1;if(two){const c=clamp(dx,3.7,W-3.7);sx0=c-.7;sx1=c+.7}else if(dx<W/2){sx0=0;sx1=1.4}else{sx0=W-1.4;sx1=W}
+  const rd=E.kind==='mansion'?5.2:E.kind==='small'?3.6:4.2,n=Math.max(1,Math.round(D/rd)),sides=[];if(sx0>2.5)sides.push({x0:0,x1:sx0,far:'x0',wx:sx0});if(W-sx1>2.5)sides.push({x0:sx1,x1:W,far:'x1',wx:sx1});
+  for(const sd of sides)for(let i=0;i<n;i++)cells.push({x0:sd.x0,x1:sd.x1,z0:D*i/n,z1:D*(i+1)/n,far:sd.far,side:sd,first:i===0,last:i===n-1});
+  const backs=cells.filter(c=>c.last);const core=backs[0];if(core&&(cells.length>3||E.lvls.length>1))core.core=1;
+  for(const c of cells)fit(c,()=>{if(c.far==='x0')c.x0+=.3;else c.x1-=.3;if(c.first)c.z0+=.25;if(c.last)c.z1-=.25});
+  for(const sd of sides){const x=sd.wx,gaps=[];for(const c of cells){if(c.side!==sd||!c.ok)continue;const m=(c.z0+c.z1)/2;gaps.push([m-.45,m+.45]);doors.push({x,z:m,v:1,c})}
+   for(const[s0,e0]of wallSpans(rm,false,x,-.2,D+.2,gaps))walls.push([x-.05,s0-.02,x+.05,e0+.02])}
+  for(let i=0;i<cells.length-1;i++){const a=cells[i],b=cells[i+1];if(a.side!==b.side)continue;const z=a.z1;for(const[s0,e0]of wallSpans(rm,true,z,Math.min(a.x0,b.x0),Math.max(a.x1,b.x1),[]))walls.push([s0,z-.05,e0,z+.05])}}
+ function fit(c,shrink){for(let k=0;k<16;k++){const r=[c.x0+.06,c.z0+.06,c.x1-.06,c.z1-.06];if(rectIn(rm,r,RT-.04)){c.ok=1;break}shrink();if((c.x1-c.x0)*(c.z1-c.z0)<6)break}c.area=(c.x1-c.x0)*(c.z1-c.z0);if(c.area<6)c.ok=0}
+ const keep=cells.filter(c=>c.ok);
+ rm.eparts=walls;rm.blocks=walls.slice();rm.edoors=doors;rm.ehall=keep.find(c=>c.hall)||null;rm.ecore=keep.find(c=>c.core)||null;
+ rm.erooms=keep.filter(c=>!c.hall&&!c.core).map((c,k)=>{const d=doors.find(q=>q.c===c);return{k,rect:[c.x0,c.z0,c.x1,c.z1],area:c.area,far:c.far,f:c.far==='z0'?1:0,door:d?[d.x,d.z]:null}});
+ if(rm.ecore&&E.lvls.length>1){const c=rm.ecore;if(c.z1-c.z0>=1.9&&c.x1-c.x0>=1.6)rm.stair=[c.x0+.12,c.z0+.15,c.x0+1.32,c.z1-.15]}
 }
 const _iro=interiorRoomOf;interiorRoomOf=function(lot,L){const rm=_iro(lot,L);if(EST_ENTER)estLayout(rm,EST_ENTER);return rm};
 const _rf=roomFaces;roomFaces=function(rm,lv){const F=_rf(rm,lv);if(rm&&rm.eparts)for(const w of rm.eparts){const lx=w[2]-w[0],lz=w[3]-w[1];if(lx>=lz)F.push({a:[w[0],w[1]],d:[1,0],n:[0,-1],len:lx,inset:0},{a:[w[0],w[3]],d:[1,0],n:[0,1],len:lx,inset:0});else F.push({a:[w[0],w[1]],d:[0,1],n:[-1,0],len:lz,inset:0},{a:[w[2],w[1]],d:[0,1],n:[1,0],len:lz,inset:0})}return F};
@@ -8847,7 +8873,7 @@ function estEnter(E){
  const s=estSite(E);s.layout=E.layout;s.equip=E.equip;ui.site=null;$q('#right').hidden=true;
  EST_ENTER=E;try{enterInterior(s)}finally{EST_ENTER=null}
  if(!IN||IN.site!==s)return;IN.estate=E;const rm=IN.rm;
- E.defs=rm.erooms.map(r=>{const o=(E.defs||[]).find(x=>x.k===r.k)||{};return Object.assign(o,{k:r.k,rect:r.rect.map(v=>+v.toFixed(2)),area:+r.area.toFixed(1),door:r.door,f:r.f})});
+ E.defs=rm.erooms.map(r=>{const o=(E.defs||[]).find(x=>x.k===r.k)||{};return Object.assign(o,{k:r.k,rect:r.rect.map(v=>+v.toFixed(2)),area:+r.area.toFixed(1),door:r.door,f:r.f,far:r.far})});
  for(const l of E.lvls)for(const d of E.defs){const id=l+':'+d.k;if(!E.rooms[id]){E.rooms[id]=newRoom(E,d)}}
  for(const id of Object.keys(E.rooms)){const k=+id.split(':')[1];if(!E.defs.some(d=>d.k===k))delete E.rooms[id]}
  estMeasure();for(const id in E.rooms){const R=E.rooms[id],d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!R.tenant&&!R.apps)genApps(E,id,R,d)}
@@ -8864,26 +8890,31 @@ const EDGEM=new THREE.LineBasicMaterial({color:'#9df5b8',transparent:true,opacit
 function heatColor(t){const st=[[12,'#3b6bff'],[16,'#39c4ff'],[19.5,'#43d17a'],[23,'#f2d23a'],[26,'#ff5a3c']];if(t<=st[0][0])return st[0][1];for(let i=1;i<st.length;i++)if(t<=st[i][0]){const a=new THREE.Color(st[i-1][1]),b=new THREE.Color(st[i][1]);return'#'+a.lerp(b,(t-st[i-1][0])/(st[i][0]-st[i-1][0])).getHexString()}return st[st.length-1][1]}
 function labelSprite(text,col,big_){const c=document.createElement('canvas');c.width=256;c.height=128;const x=c.getContext('2d');x.font=`800 ${big_?96:56}px system-ui,sans-serif`;x.textAlign='center';x.textBaseline='middle';x.lineWidth=10;x.strokeStyle='rgba(0,0,0,.35)';x.strokeText(text,128,66);x.fillStyle=col||'rgba(255,255,255,.92)';x.fillText(text,128,66);
  const t=new THREE.CanvasTexture(c);const m=new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false,depthTest:false});const s=new THREE.Sprite(m);s.scale.set(1.6,.8,1);s.renderOrder=9;return s}
-function furnish(g,d,R,seed){const[x0,z0,x1,z1]=d.rect,r=rngOf(seed),far=d.f?z0:z1,sg=d.f?1:-1,w=x1-x0,cx=(x0+x1)/2;
+function roomFrame(d){const[x0,z0,x1,z1]=d.rect,far=d.far||(d.f?'z0':'z1'),alongX=far==='z0'||far==='z1',L=alongX?x1-x0:z1-z0,Dp=alongX?z1-z0:x1-x0;
+ const P=(u,v)=>far==='z0'?[x0+u,z0+v]:far==='z1'?[x0+u,z1-v]:far==='x0'?[x0+v,z0+u]:[x1-v,z0+u];
+ const box=(g,u,v,hu,hv,y0,y1,c)=>{const p=P(u,v);alongX?ibox(g,p[0],p[1],hu,hv,y0,y1,c):ibox(g,p[0],p[1],hv,hu,y0,y1,c)};
+ const yaw=far==='z0'?Math.PI:far==='z1'?0:far==='x0'?-Math.PI/2:Math.PI/2;return{L,Dp,P,box,yaw}}
+function furnish(g,d,R,seed){const r=rngOf(seed),F=roomFrame(d),L=F.L,Dp=F.Dp,b=(u,v,hu,hv,y0,y1,c)=>F.box(g,u,v,hu,hv,y0,y1,c);
  const duv=IC(pickR(r,['#4f7cc9','#c8463a','#3bb273','#e8e4d8','#7b5ea7','#f2c230','#2f6fa8'])),wood=IC('#a8733f');
- if(R.furn==='landlord'){const bx=x0+Math.min(1.1,w*.32);// bed against the far wall, wardrobe, desk, rug, lamp
-  ibox(g,bx,far+sg*1.05,.75,1.0,0,.32,IC('#6e4a2c'));ibox(g,bx,far+sg*1.05,.72,.96,.32,.5,WHITE2);ibox(g,bx,far+sg*1.25,.73,.78,.5,.6,duv);ibox(g,bx,far+sg*.32,.5,.16,.5,.62,IC('#f4f2ec'));ibox(g,bx,far+sg*.08,.78,.06,0,1.0,IC('#6e4a2c'));
-  if(w>2.6){ibox(g,x1-.35,far+sg*.32,.3,.28,0,1.9,wood);ibox(g,x1-.35,far+sg*.6,.005,.005,.9,1.1,CHROME)}
-  const dz=(d.f?z1:z0)-sg*.45;if(w>2.4){ibox(g,x1-.55,dz-sg*.2,.45,.28,.72,.76,wood);ibox(g,x1-.55,dz-sg*.2,.42,.25,0,.72,tint(wood,.8));ibox(g,x1-.55,dz+sg*.25,.2,.2,0,.46,IC('#2b2e33'))}
-  ibox(g,cx+.2,(z0+z1)/2,Math.min(.9,w*.3),.7,0,.012,IC(pickR(r,['#c9a06a','#8d4a5e','#3f6b57','#d9cfb8'])));cyl(g,x0+.25,far+sg*.25,.12,0,.05,BLACK,8);ibox(g,x0+.25,far+sg*.25,.015,.015,.05,1.4,BLACK);cyl(g,x0+.25,far+sg*.25,.16,1.4,1.62,IC('#fff3c4'),8)}
+ if(R.furn==='landlord'){const bu=Math.min(1.1,L*.3);// bed against the far wall, wardrobe, desk and chair by the door wall, rug, lamp
+  b(bu,1.05,.75,1.0,0,.32,IC('#6e4a2c'));b(bu,1.05,.72,.96,.32,.5,WHITE2);b(bu,1.25,.73,.78,.5,.6,duv);b(bu,.32,.5,.16,.5,.62,IC('#f4f2ec'));b(bu,.08,.78,.06,0,1.0,IC('#6e4a2c'));
+  if(L>2.6){b(L-.35,.32,.3,.28,0,1.9,wood);b(L-.35,.6,.005,.005,.9,1.1,CHROME)}
+  if(L>2.4&&Dp>2.6){b(L-.55,Dp-.65,.45,.28,.72,.76,wood);b(L-.55,Dp-.65,.42,.25,0,.72,tint(wood,.8));b(L-.55,Dp-1.1,.2,.2,0,.46,IC('#2b2e33'))}
+  b(L/2+.2,Dp/2,Math.min(.9,L*.3),Math.min(.7,Dp*.25),0,.012,IC(pickR(r,['#c9a06a','#8d4a5e','#3f6b57','#d9cfb8'])));b(.25,.25,.12,.12,0,.05,BLACK);b(.25,.25,.015,.015,.05,1.4,BLACK);b(.25,.25,.16,.16,1.4,1.62,IC('#fff3c4'))}
  else{// the tenant's own stuff: a mattress, boxes, a clothes rail
-  ibox(g,x0+.8,far+sg*1.0,.7,.95,0,.22,IC('#e8e4d8'));ibox(g,x0+.8,far+sg*1.15,.68,.78,.22,.3,duv);for(let i=0;i<3;i++)ibox(g,x1-.4-i*.05,far+sg*(.35+i*.5),.25,.22,0,.4+.05*i,IC(i%2?'#c9a06a':'#b9926a'));
-  ibox(g,cx,(d.f?z1:z0)-sg*.4,.5,.03,1.55,1.58,CHROME);for(let i=0;i<5;i++)ibox(g,cx-.4+i*.2,(d.f?z1:z0)-sg*.4,.06,.18,.85,1.5,PC(i+(seed%5)))}}
+  b(.8,1.0,.7,.95,0,.22,IC('#e8e4d8'));b(.8,1.15,.68,.78,.22,.3,duv);for(let i=0;i<3;i++)b(L-.4-i*.05,.35+i*.5,.25,.22,0,.4+.05*i,IC(i%2?'#c9a06a':'#b9926a'));
+  if(Dp>1.6){b(L/2,Dp-.4,.5,.03,1.55,1.58,CHROME);for(let i=0;i<5;i++)b(L/2-.4+i*.2,Dp-.4,.06,.18,.85,1.5,PC(i+(seed%5)))}}}
 function estDraw(){
  if(!IN||!IN.estate)return;const E=IN.estate,rm=IN.rm,lv=IN.lv||0;
  if(IN.eg){IN.grp.remove(IN.eg);IN.eg.traverse(o=>{if(o.geometry&&!o.userData.shared)o.geometry.dispose();if(o.material&&o.material.map)o.material.map.dispose()})}
  const grp=new THREE.Group(),g=new GB(),wall=IC('#f2ece2'),cap=IC('#fbfaf7'),frc=IC('#f4f2ec'),leaf=IC('#8a5a36');
  for(const w of rm.eparts)icube(g,w[0],0,w[1],w[2],2.85,w[3],wall,cap);
- for(const d of rm.edoors){const x=d.x;icube(g,x-.45,2.1,d.z-.05,x+.45,2.85,d.z+.05,wall,cap);icube(g,x-.43,0,d.z-.025,x+.43,2.08,d.z+.025,leaf);for(const sx of[-1,1])icube(g,x+sx*.47-.03,0,d.z-.07,x+sx*.47+.03,2.14,d.z+.07,frc);icube(g,x-.5,2.08,d.z-.07,x+.5,2.14,d.z+.07,frc);icube(g,x+.3,1.0,d.z-.06,x+.36,1.04,d.z+.06,CHROME)}
+ for(const d of rm.edoors){const B=(ax,az,bx,bz,y0,y1,c)=>d.v?icube(g,d.x+az,y0,d.z+ax,d.x+bz,y1,d.z+bx,c,c===wall?cap:undefined):icube(g,d.x+ax,y0,d.z+az,d.x+bx,y1,d.z+bz,c,c===wall?cap:undefined);B(-.45,-.05,.45,.05,2.1,2.85,wall);B(-.43,-.025,.43,.025,0,2.08,leaf);for(const sx of[-1,1])B(sx*.47-.03,-.07,sx*.47+.03,.07,0,2.14,frc);B(-.5,-.07,.5,.07,2.08,2.14,frc);B(.3,-.06,.36,.06,1.0,1.04,CHROME)}
  // shared bathroom in the core
- if(rm.ecore){const c=rm.ecore,bx=rm.stair?c.x0+1.5:c.x0+.2;for(let x=bx;x<c.x1-.01;x+=.3)for(let z=c.z0;z<c.z1-.01;z+=.3)icube(g,x,0,z,Math.min(c.x1,x+.3),.006,Math.min(c.z1,z+.3),IC(((Math.round(x/.3)+Math.round(z/.3))&1)?'#e9eef0':'#d3dce1'));
-  if(c.x1-bx>1.2){const tz=c.f?c.z0:c.z1,sg=c.f?1:-1;ibox(g,c.x1-.45,tz+sg*.11,.19,.09,.38,.82,WHITE2);ilathe(g,c.x1-.45,tz+sg*.45,[[.13,0],[.16,.22],[.2,.38],[.19,.4],[0,.39]],WHITE2,12);ibox(g,bx+.35,tz+sg*.3,.25,.2,.8,.88,WHITE2);ibox(g,bx+.35,tz+sg*.03,.27,.012,1.2,1.75,IC('#cfe3ea'));
-   if(c.z1-c.z0>2.2)ibox(g,c.x1-.5,(c.z0+c.z1)/2,.42,.42,0,.08,IC('#e4ecf0'))}}
+ if(rm.ecore){const c=rm.ecore,st=rm.stair&&E.lvls.length>1,x0=st?Math.min(c.x1,c.x0+1.45):c.x0;
+  for(let x=x0;x<c.x1-.01;x+=.3)for(let z=c.z0;z<c.z1-.01;z+=.3)icube(g,x,0,z,Math.min(c.x1,x+.3),.006,Math.min(c.z1,z+.3),IC(((Math.round(x/.3)+Math.round(z/.3))&1)?'#e9eef0':'#d3dce1'));
+  if(c.x1-x0>1.2){const F=roomFrame({rect:[x0,c.z0,c.x1,c.z1],far:c.far}),b=(u,v,hu,hv,y0,y1,col)=>F.box(g,u,v,hu,hv,y0,y1,col);
+   b(F.L-.45,.11,.19,.09,.38,.82,WHITE2);b(F.L-.45,.45,.17,.2,0,.4,WHITE2);b(F.L-.45,.45,.2,.22,.4,.43,IC('#fbfbf8'));b(.4,.25,.25,.2,.8,.88,WHITE2);b(.4,.02,.27,.012,1.2,1.75,IC('#cfe3ea'));if(F.Dp>2.2)b(F.L/2,F.Dp-.5,.42,.42,0,.08,IC('#e4ecf0'))}}
  const ids=Object.keys(E.rooms).filter(id=>+id.split(':')[0]===lv);
  for(const id of ids){const R=E.rooms[id],d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!d)continue;if(R.tenant||R.furn==='landlord')furnish(g,d,R.tenant?R:Object.assign({},R),(R.tenant?R.tenant.seed:hashStr(id))>>>0)}
  const m=new THREE.Mesh(g.geo(),BMAT);m.castShadow=true;m.receiveShadow=true;grp.add(m);
@@ -8895,7 +8926,7 @@ function estDraw(){
   if(ESP.heat){const s=labelSprite(roomTemp(E,lv,d).toFixed(0)+'°',heatColor(roomTemp(E,lv,d)));s.position.set(cx,1.4,cz);grp.add(s)}
   else if(!R.tenant){const s=labelSprite('$',null,true);s.scale.set(1.3,.65,1);s.position.set(cx,2.25,cz);grp.add(s)}}
  // the tenants themselves, standing in their rooms
- IN.etenants=[];for(const id of ids){const R=E.rooms[id];if(!R.tenant)continue;const d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!d)continue;const[x0,z0,x1,z1]=d.rect,p=makePerson(R.tenant.look);p.position.set(x0+(x1-x0)*.62,0,(z0+z1)/2+(d.f?.3:-.3));p.rotation.y=d.f?Math.PI:0;grp.add(p);IN.etenants.push({m:p,ph:(R.tenant.seed%100)/16})}
+ IN.etenants=[];for(const id of ids){const R=E.rooms[id];if(!R.tenant)continue;const d=E.defs.find(x=>x.k===+id.split(':')[1]);if(!d)continue;const F=roomFrame(d),q=F.P(Math.min(F.L-.6,F.L*.62),Math.min(F.Dp-.6,F.Dp*.55)),p=makePerson(R.tenant.look);p.position.set(q[0],0,q[1]);p.rotation.y=F.yaw;grp.add(p);IN.etenants.push({m:p,ph:(R.tenant.seed%100)/16})}
  IN.eg=grp;IN.grp.add(grp)}
 const _rl=rebuildLevel;rebuildLevel=function(){_rl.apply(this,arguments);if(IN&&IN.estate){estMeasure();estDraw();renderESP()}};
 const _rbi=rebuildItems;rebuildItems=function(){_rbi.apply(this,arguments);if(IN&&IN.estate&&IN.eg){estDraw();if(ESP.open)renderESP()}};
@@ -8906,7 +8937,7 @@ const _ic=interiorClick;interiorClick=function(x,y){if(!IN||!IN.site||!IN.site.e
  raycaster.setFromCamera({x:x/innerWidth*2-1,y:-(y/innerHeight)*2+1},camera);const hit=raycaster.intersectObjects(IN.items,false)[0];if(hit){startPlacing(null,hit.object.userData.idx);return true}
  const h=roomHit(x,y);if(h){const E=IN.estate,lv=IN.lv||0;for(const id in E.rooms){if(+id.split(':')[0]!==lv)continue;const d=E.defs.find(z=>z.k===+id.split(':')[1]);if(!d)continue;const[x0,z0,x1,z1]=d.rect;if(h[0]>=x0&&h[0]<=x1&&h[1]>=z0&&h[1]<=z1){ESP.sel=id;ESP.open=true;estDraw();renderESP();return true}}}
  return true};
-const _rib=renderInteriorBar;renderInteriorBar=function(){if(!IN||!IN.site||!IN.site.estate||IN.placing)return _rib();const el=$q('#ibar');if(!el)return;el.hidden=false;const E=IN.estate,s=IN.site;
+const _rib=renderInteriorBar;renderInteriorBar=function(){if(!IN||!IN.site||!IN.site.estate||IN.placing)return _rib();const el=$q('#ibar');if(!el)return;el.hidden=false;const s=IN.site,E=s.estate;
  const let_=Object.values(E.rooms).filter(r=>r.tenant).length,tot=Object.keys(E.rooms).length,st=storageOf(s).find(o=>o.e.id==='heater');
  const chips=E.lvls.length>1?`<div class="ib-row" style="margin-bottom:8px;align-items:center"><span class="ib-k">Floors</span>${E.lvls.slice().reverse().map(l=>`<button class="${l===IN.lv?'btn':'ghost'} sm" data-act="eslv" data-id="${l}">${lvName(l)}</button>`).join('')}</div>`:'';
  el.innerHTML=`${chips}<div class="ib-main"><span class="ib-t">${esc(E.name)} · ${let_}/${tot} rooms let · ${money(estIncome(E))}/day</span><span class="ib-k">Click a room to set its rent, furnish it, heat it or pick a tenant · outside it's ${outsideTemp(E.lat).toFixed(0)}°C</span></div>
@@ -9002,10 +9033,10 @@ const css=document.createElement('style');css.textContent=`
 .es-list{display:flex;flex-direction:column;gap:6px}.es-row{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);color:inherit;text-align:left;cursor:pointer}.es-row:hover{background:rgba(255,255,255,.07)}
 .es-av{flex:none;width:38px;height:46px;border-radius:6px;overflow:hidden;display:grid;place-items:center}.es-av .es-photo{width:38px;height:46px;border-radius:6px}.es-av.free{background:rgba(61,220,132,.15);color:#7cf59a;font:800 20px system-ui;border:1px solid rgba(61,220,132,.4)}
 .es-rt{min-width:0}.es-rt b{display:block;font-size:13px}.es-rt small{color:var(--hb-mut,#9a9da5);font-size:11.5px}.es-rt i{font-style:normal;font-weight:700}
-.es-back{background:none!important;border:0!important;color:#ffe866!important;padding:2px 0!important;cursor:pointer;font:600 12.5px var(--f-body,system-ui)!important}
+.es-back{display:block;margin:2px 0 4px;background:none!important;border:0!important;color:#ffe866!important;padding:2px 0!important;cursor:pointer;font:600 12.5px var(--f-body,system-ui)!important}
 #elp .link{background:none!important;border:0!important;color:#ffe866!important;padding:0!important;cursor:pointer;text-decoration:underline}`;
 document.head.appendChild(css);
-window.ESTATE={resOf,estEnter,estStart,ESP,renderESP,splitPark,tenantPhoto,roomTemp,heatersIn,mkTenant};
+window.ESTATE={housePrice,plotUnderRay,resOf,estEnter,estStart,ESP,renderESP,splitPark,tenantPhoto,roomTemp,heatersIn,mkTenant};
 
 })();
 
