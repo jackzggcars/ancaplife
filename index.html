@@ -1671,8 +1671,14 @@ function migrateLotKeys(){
 }
 // ===================== ANCAP LIFE · ENGINE (three.js) =====================
 const canvas=document.getElementById('gl');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true});
-renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+// graphics tier: picked from the device (or the player's choice in Settings) so low-end machines stay smooth
+const GFX=(()=>{let pref='auto',fps30=false;try{pref=localStorage.getItem('ancap.gfx')||'auto';fps30=localStorage.getItem('ancap.fps30')==='1'}catch(e){}
+ const mem=navigator.deviceMemory||8,cores=navigator.hardwareConcurrency||8,mob=/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)||(window.matchMedia&&matchMedia('(pointer:coarse)').matches);
+ let tier=pref;if(tier!=='high'&&tier!=='balanced'&&tier!=='low')tier=(mem<=2||cores<=2)?'low':(mem<=4||cores<=4||mob)?'balanced':'high';
+ return{pref,tier,auto:pref==='auto',fps30,cap:fps30?1000/30:1000/61,maxDpr:tier==='low'?1:tier==='balanced'?1.5:2,dpr:1,work:8}})();
+GFX.dpr=Math.min(GFX.maxDpr,window.devicePixelRatio||1);
+const renderer=new THREE.WebGLRenderer({canvas,antialias:GFX.tier==='high',logarithmicDepthBuffer:true,powerPreference:GFX.tier==='low'?'default':'high-performance'});
+renderer.setPixelRatio(GFX.dpr);
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const scene=new THREE.Scene();
 // floating origin: everything lives under WR, shifted so the point under the camera sits at (0,0,0);
@@ -1724,11 +1730,11 @@ const atmo=new THREE.Mesh(new THREE.SphereGeometry(R_E*1.028,96,64),new THREE.Sh
 WR.add(atmo);
 
 // ---------- lights: sun follows the camera at globe scale, sits high in the local sky at street scale ----------
-let VIVID=true;try{VIVID=localStorage.getItem('ancap.vivid')!=='0'}catch(e){}
+let VIVID=true;try{const vv=localStorage.getItem('ancap.vivid');VIVID=vv==null?GFX.tier==='high':vv!=='0'}catch(e){}
 const AMB=new THREE.AmbientLight('#c6d2e4',.62);scene.add(AMB);
 const HEMI=new THREE.HemisphereLight('#bcd4f0','#6e6250',.0);scene.add(HEMI);
 const sun=new THREE.DirectionalLight('#ffefd2',.82);WR.add(sun);WR.add(sun.target);
-sun.shadow.mapSize.set(MAXTEX>=16384?4096:2048,MAXTEX>=16384?4096:2048);sun.shadow.bias=-.0004;sun.shadow.normalBias=.6;
+{const sm=GFX.tier==='low'?1024:GFX.tier==='balanced'?2048:(MAXTEX>=16384?4096:2048);sun.shadow.mapSize.set(sm,sm)}sun.shadow.bias=-.0004;sun.shadow.normalBias=.6;
 const VIS={phase:.12,period:600,cycle:true};
 try{if(localStorage.getItem('groundfloor.cycle')==='0')VIS.cycle=false}catch(e){}
 const DAYC={sun:new THREE.Color('#ffecc8'),sunDusk:new THREE.Color('#ffa868'),moon:new THREE.Color('#9fb4e6'),amb:new THREE.Color('#b8c4d6'),ambDusk:new THREE.Color('#c9a29a'),ambNight:new THREE.Color('#4c5c8a'),
@@ -2809,7 +2815,7 @@ function disposeLive(L){WR.remove(L.grp);L.grp.traverse(o=>{if(o.geometry&&o.geo
 // ---------- what should be loaded: everything inside the view, out to the haze ----------
 const LOD_D=[950,2500,6500]; // camera distance under which a chunk gets level 3, 2, 1
 // adaptive detail: if frames get slow the full-detail and shadow radius shrinks; it grows back when there is headroom
-const QUAL={q:1,ema:16,t:0,shadows:true,fixed:false};try{if(localStorage.getItem('groundfloor.shadows')==='0')QUAL.shadows=false}catch(e){}
+const QUAL={q:1,ema:16,t:0,shadows:true,fixed:false};try{const sv=localStorage.getItem('groundfloor.shadows');if(sv==='0'||(sv==null&&GFX.tier==='low'))QUAL.shadows=false}catch(e){}if(GFX.tier==='low')QUAL.q=.75;
 function qualityTick(dt,now){QUAL.ema=QUAL.ema*.95+dt*1000*.05;if(QUAL.fixed||now-QUAL.t<2500)return;QUAL.t=now;
  if(QUAL.ema>40&&QUAL.q>.45){QUAL.q=Math.max(.45,QUAL.q-.15);wantT=0}else if(QUAL.ema<21&&QUAL.q<1){QUAL.q=Math.min(1,QUAL.q+.1);wantT=0}}
 function lodFor(d0,cur){const d=d0/QUAL.q;const k=cur!=null?1.15:1;let raw=d<LOD_D[0]?3:d<LOD_D[1]?2:d<LOD_D[2]?1:0;if(cur!=null&&raw<cur){raw=d<LOD_D[0]*k?3:d<LOD_D[1]*k?2:d<LOD_D[2]*k?1:0;raw=Math.min(raw,cur)}return raw}
@@ -4035,17 +4041,19 @@ function selectLot(lot){
 // ===================== MAIN LOOP =====================
 let last=performance.now(),chunkTick=0,uiTick=0;
 function loop(now){
+ if(now-last<GFX.cap-.5){requestAnimationFrame(loop);return}const t0w=performance.now();
  const dt=Math.min(.05,(now-last)/1000);last=now;
  if(FLIGHT){FLIGHT.t+=dt;const k=Math.min(1,FLIGHT.t/FLIGHT.dur);FLIGHT.step(k);if(k>=1){const f=FLIGHT;FLIGHT=null;ui.busy=false;f.then&&f.then()}}
  // the world never pauses: everyone is on the same day, and a day ticks over every DAY_LEN seconds
  if(G&&!G.over&&ui.started&&!ui.catching){const w=worldDay(),wd=Math.floor(w);G.clock=w-wd;
   if(wd-G.day>3&&typeof catchUp==='function')catchUp(wd);else{let n=0;while(G.day<wd&&n<3){n++;simDay();afterDay()}}}
- if(G)$('#clockfill').style.width=(G.clock*100).toFixed(1)+'%';
+ if(G){const cw=(G.clock*100).toFixed(1);if(cw!==loop.cw){loop.cw=cw;$('#clockfill').style.width=cw+'%'}}
  if(VIS.cycle)VIS.phase=(VIS.phase+dt/VIS.period)%1;camTick(dt);zoomTick(dt);updateCamera();updateLights();updateLayers();updatePatch();
- qualityTick(dt,now);updateChunks(now);updateLandmarks();interiorTick(dt,now);trafficTick(dt);tutTick(dt);cashTick(dt);if(!ui.interior)GLOWMAT.opacity=.78+.22*Math.sin(now*.0032);
+ qualityTick(dt*Math.min(1,16.7/GFX.cap),now);updateChunks(now);updateLandmarks();interiorTick(dt,now);trafficTick(dt);tutTick(dt);cashTick(dt);if(!ui.interior)GLOWMAT.opacity=.78+.22*Math.sin(now*.0032);
  renderer.render(scene,camera);
  updateLabels(dt);updateStreetMode();
  if(now-uiTick>1200){uiTick=now;if(G&&ui.started){renderTop();if(ui.street&&!ui.selLot)renderLeftSoft()}}
+ GFX.work=GFX.work*.9+(performance.now()-t0w)*.1;
  requestAnimationFrame(loop);
 }
 function updateStreetMode(){
@@ -4350,7 +4358,7 @@ function mMenu(){return`<div class="mhead"><p class="eyebrow">${esc(G.company||'
  <div class="btnrow"><button class="btn ghost" data-act="goals">Goals</button><button class="btn ghost" data-act="market">Supplier market</button><button class="btn ghost" data-act="bank">Bank &amp; loans</button></div>
  <h3 class="eyebrow">Company</h3><div class="renrow"><input id="corename" type="text" maxlength="40" value="${esc(G.company||'')}" aria-label="Company name"><button class="btn sm" data-act="renameco">Rename</button></div><button class="btn ghost wide" data-act="nextmodal">What should I do next?</button><button class="btn ghost wide" data-act="board">Leaderboard</button>
  <h3 class="eyebrow">Account</h3><div class="renrow"><span class="fine" style="flex:1;margin:0;align-self:center">${authed()?`Signed in as <b>${esc(dispName())}</b>${AUTH.cloud==='off'?' · saving on this device only':' · saved to your account'}`:'Not signed in'}</span><button class="btn sm ghost" data-act="signout">${authed()?'Sign out':'Sign in'}</button></div>
- <h3 class="eyebrow">Settings</h3><label class="tog"><input type="checkbox" data-change="shadows" ${QUAL.shadows?'checked':''}> Sun shadows (turn off if the game feels slow)</label><label class="tog"><input type="checkbox" data-change="vivid" ${VIVID?'checked':''}> Vivid colours (warmer light and richer colour at street level)</label><label class="tog"><input type="checkbox" data-change="cycle" ${VIS.cycle?'checked':''}> Day and night (a full day lasts 10 minutes)</label><label class="tog"><input type="checkbox" data-change="traffic" ${TRAFFIC_ON?'checked':''}> Traffic</label>
+ <h3 class="eyebrow">Settings</h3><label class="tog"><input type="checkbox" data-change="shadows" ${QUAL.shadows?'checked':''}> Sun shadows (turn off if the game feels slow)</label><label class="tog gfxrow">Graphics <select data-change="gfx">${['auto','high','balanced','low'].map(k=>`<option value="${k}" ${GFX.pref===k?'selected':''}>${k==='auto'?'Auto ('+GFX.tier+')':k[0].toUpperCase()+k.slice(1)}</option>`).join('')}</select></label><label class="tog"><input type="checkbox" data-change="fps30" ${GFX.fps30?'checked':''}> Battery saver (30 fps)</label><label class="tog"><input type="checkbox" data-change="vivid" ${VIVID?'checked':''}> Vivid colours (warmer light and richer colour at street level)</label><label class="tog"><input type="checkbox" data-change="cycle" ${VIS.cycle?'checked':''}> Day and night (a full day lasts 10 minutes)</label><label class="tog"><input type="checkbox" data-change="traffic" ${TRAFFIC_ON?'checked':''}> Traffic</label>
  <h3 class="eyebrow">Controls</h3><p class="fine">Drag to move · right-drag (or Shift-drag) to turn and tilt · scroll to zoom · The world runs on a shared clock for every player. Inside a shop, drag to look around and click kit to move it.</p><p class="fine">Real-city streets and buildings: map data © OpenStreetMap contributors, available under the Open Database License (openstreetmap.org/copyright).</p>
  <p class="fine">Saves automatically after every day. Map data: Natural Earth (public domain); London, New York and Paris streets and buildings © OpenStreetMap contributors.</p>
  <div class="box danger"><button class="btn ghost" data-act="newgame">${ui.confirm==='new'?'Yes, delete and start over':'Start a new game'}</button></div></div><div class="mfoot"><button class="btn" data-act="close">Done</button></div>`}
@@ -4460,7 +4468,7 @@ document.addEventListener('click',e=>{
   case 'newgame2':ui.confirm=null;ui.modal=null;$('#modal').hidden=true;if(typeof tutH!=='undefined')tutH='';try{localStorage.removeItem(SKEY)}catch(e){}G=newGame('');G.ts=Date.now();resetRun();Object.assign(ui,{site:null,selLot:null,selKey:null,started:false});restyleAll();renderAll();showFront();break;
  }
 });
-document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='shadows'){QUAL.shadows=t.checked;try{localStorage.setItem('groundfloor.shadows',QUAL.shadows?'1':'0')}catch(_){}return}if(t.dataset.change==='vivid'){VIVID=t.checked;try{localStorage.setItem('ancap.vivid',VIVID?'1':'0')}catch(_){}return}if(t.dataset.change==='cycle'){VIS.cycle=t.checked;try{localStorage.setItem('groundfloor.cycle',VIS.cycle?'1':'0')}catch(_){}return}if(t.dataset.change==='traffic'){TRAFFIC_ON=t.checked;return}const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='gfx'||t.dataset.change==='fps30'){try{if(t.dataset.change==='gfx'){localStorage.setItem('ancap.gfx',t.value);localStorage.removeItem('ancap.vivid')}else localStorage.setItem('ancap.fps30',t.checked?'1':'0')}catch(_){}try{save()}catch(_){}toast('Applying graphics settings…','');setTimeout(()=>location.reload(),400);return}if(t.dataset.change==='shadows'){QUAL.shadows=t.checked;try{localStorage.setItem('groundfloor.shadows',QUAL.shadows?'1':'0')}catch(_){}return}if(t.dataset.change==='vivid'){VIVID=t.checked;try{localStorage.setItem('ancap.vivid',VIVID?'1':'0')}catch(_){}return}if(t.dataset.change==='cycle'){VIS.cycle=t.checked;try{localStorage.setItem('groundfloor.cycle',VIS.cycle?'1':'0')}catch(_){}return}if(t.dataset.change==='traffic'){TRAFFIC_ON=t.checked;return}const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;
  if(t.dataset.change==='price'){const v=parseFloat(t.value);if(v>0)s.prices[t.dataset.id]=Math.round(v*100)/100;renderSite()}
  if(t.dataset.change==='auto')s.auto=t.checked});
 document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;
@@ -4904,6 +4912,7 @@ async function netSync(){
  if(!NET.on||!G||!ui.started)return;const db=NET.db,want=new Map(),r0=NET.resetN||0,stale=()=>(NET.resetN||0)!==r0;
  for(const s of G.sites){if(String(s.key).startsWith('lm#')&&!G.props.some(p=>p.key===s.key))continue;want.set(s.key,{lot_key:s.key,owner:NET.uid,kind:s.tenure==='own'?'own':'lease',biz_type:s.type,name:s.name.slice(0,40),lat:s.lat,lon:s.lon,rep:Math.round(s.rep)})}
  for(const p of G.props)if(!want.has(p.key))want.set(p.key,{lot_key:p.key,owner:NET.uid,kind:p.key.startsWith('lm#')?'landmark':p.floors>0?'own':'plot',biz_type:null,name:null,lat:p.lat,lon:p.lon,rep:0});
+ try{if(typeof window.vtClaims==='function')for(const r of window.vtClaims())want.set(r.lot_key,Object.assign({owner:NET.uid},r))}catch(e){}
  try{
   await db.from('players').upsert({id:NET.uid,company:(G.company||'Free Enterprise Co.').slice(0,40),cash:Math.round(G.cash),net_worth:Math.round(netWorth()),businesses:G.sites.filter(s=>s.status==='open').length,updated_at:new Date().toISOString()});
   if(stale()){await db.from('players').update({cash:0,net_worth:0,businesses:0}).eq('id',NET.uid);return}
@@ -8313,7 +8322,7 @@ function addBtns(){const icons=document.querySelector('#bar .hb-icons');if(!icon
  const mk=(id,ic,title,fn)=>{if(document.getElementById(id))return;const b=document.createElement('button');b.id=id;b.className='hb-ic';b.title=title;b.setAttribute('aria-label',title);b.innerHTML=`<span class="hb-svg">${ic}</span>`;b.addEventListener('click',fn);const ref=document.getElementById('rxbtn');icons.insertBefore(b,ref?ref.nextSibling:icons.lastChild)};
  mk('sxbtn',I_STOCK,'Stock market',()=>openModal('stocks'));mk('lbbtn',I_BOARD,'Leaderboard & weekly league',()=>openModal('board'))}
 setInterval(addBtns,1000);
-window.openStocks=()=>openModal('stocks');
+window.openStocks=()=>openModal('stocks');window.sharePrice=id=>{try{return P(id)?price(id):null}catch(e){return null}};
 
 const st=document.createElement('style');st.textContent=`
 .sx-tk{display:inline-grid;place-items:center;min-width:34px;height:26px;padding:0 6px;border-radius:6px!important;background:rgba(255,222,0,.12);border:1px solid rgba(255,222,0,.3);color:#ffde00;font:700 11px/1 var(--f-mono,monospace);letter-spacing:.04em;vertical-align:middle}
@@ -8470,7 +8479,7 @@ body:has(#modal:not([hidden])) .fl-lvl,body:has(#modal:not([hidden])) .fl-obj{vi
 // Every menu panel can be dragged by its top edge. When a panel opens it finds a spot where it doesn't cover
 // another open panel (the player can still drag panels over each other on purpose; those stay where they are put).
 (function(){
-const LIST=[['#modal .modal',90],['#right',80],['#left',70],['#invp',60],['#mppanel',55],['#elp',52],['#ibar',40],['#flhud',30]];
+const LIST=[['#modal .modal',90],['#right',80],['#left',70],['#invp',60],['#mppanel',55],['#elp',52],['#vtp',50],['#ibar',40],['#flhud',30]];
 const PRIO=new Map(LIST.map(([s,p])=>[s,p]));
 const moved=new WeakSet(),wasVis=new WeakMap();
 const TOP=()=>{const b=document.getElementById('bar');return b?Math.max(52,b.getBoundingClientRect().bottom+6):56};
@@ -8531,8 +8540,7 @@ window.panelPlace=sel=>{const el=document.querySelector(sel);if(el)onShow(sel,el
 </script>
 <script>
 // ANCAP LIFE · ESTATE LAYER
-// Homes (houses, mansions, apartment blocks), building on empty land, rooms to rent for a business, and the landlord game:
-// rooms with rent sliders, furnishing, heaters and a heat map, and hand-written tenants with their own 3D figure.
+// Homes, land, building, landlords and tenants
 (function(){
 // ---------- tenant library: every name, personality and pro/con is written by hand (no generation at runtime) ----------
 const ES_COUNTRIES={
@@ -8945,11 +8953,11 @@ const _rib=renderInteriorBar;renderInteriorBar=function(){if(!IN||!IN.site||!IN.
 
 // ---- the landlord panel ----
 const ESP={open:false,sel:null,heat:false};
-const panel=document.createElement('aside');panel.id='elp';panel.className='panel';panel.hidden=true;document.body.appendChild(panel);
+const panel=document.createElement('aside');panel.id='elp';panel.className='panel';panel.hidden=true;(document.getElementById('app')||document.body).appendChild(panel);
 const PH={r:null,sc:null,cam:null,mat:null,cache:new Map()};
 function tenantPhoto(t){const key=JSON.stringify(t.look);if(PH.cache.has(key))return PH.cache.get(key);let url='';
  try{if(!PH.r){const c=document.createElement('canvas');c.width=200;c.height=240;PH.r=new THREE.WebGLRenderer({canvas:c,alpha:true,antialias:true,preserveDrawingBuffer:true});PH.r.setPixelRatio(1);PH.r.setSize(200,240,false);PH.sc=new THREE.Scene();PH.sc.add(new THREE.AmbientLight('#ffffff',.58));const dl=new THREE.DirectionalLight('#fff1dc',.95);dl.position.set(1.4,2.2,2.6);PH.sc.add(dl);PH.cam=new THREE.PerspectiveCamera(26,200/240,.1,20);PH.mat=new THREE.MeshLambertMaterial({vertexColors:true})}
-  const m=makePerson(t.look);m.traverse(o=>{if(o.isMesh)o.material=PH.mat});m.rotation.y=.42;posePerson(m,'idle',0);PH.sc.add(m);PH.cam.position.set(.15,1.42,2.35);PH.cam.lookAt(0,1.27,0);PH.r.setClearColor(0,0);PH.r.render(PH.sc,PH.cam);url=PH.r.domElement.toDataURL('image/png');PH.sc.remove(m)}catch(e){url=''}
+  const m=makePerson(t.look);m.traverse(o=>{if(o.isMesh)o.material=PH.mat});m.rotation.y=Math.PI-.42;posePerson(m,'idle',0);PH.sc.add(m);PH.cam.position.set(.15,1.42,2.35);PH.cam.lookAt(0,1.27,0);PH.r.setClearColor(0,0);PH.r.render(PH.sc,PH.cam);url=PH.r.domElement.toDataURL('image/png');PH.sc.remove(m)}catch(e){url=''}
  PH.cache.set(key,url);return url}
 function photoHTML(t,big_){const u=tenantPhoto(t);return`<div class="es-photo${big_?' big':''}"><svg viewBox="0 0 200 240" aria-hidden="true">${pFlagBg()}</svg>${u?`<img src="${u}" alt="">`:personSVG('staff',t.seed||1).replace(/<svg[^>]*>/,'<svg viewBox="0 0 200 240" class="es-svgp">')}</div>`}
 function tenantCard(t,act){return`<div class="es-card">${photoHTML(t)}<div class="es-info"><div class="es-nm">${esFlag(t.cc)}<b>${esc(t.name)}</b><small>${t.age} · ${esc(ES_COUNTRIES[t.cc].n)}</small></div><p class="es-type">${esc(t.type)}</p><p class="es-blurb">${esc(t.blurb)}</p>
@@ -9036,7 +9044,452 @@ const css=document.createElement('style');css.textContent=`
 .es-back{display:block;margin:2px 0 4px;background:none!important;border:0!important;color:#ffe866!important;padding:2px 0!important;cursor:pointer;font:600 12.5px var(--f-body,system-ui)!important}
 #elp .link{background:none!important;border:0!important;color:#ffe866!important;padding:0!important;cursor:pointer;text-decoration:underline}`;
 document.head.appendChild(css);
-window.ESTATE={housePrice,plotUnderRay,resOf,estEnter,estStart,ESP,renderESP,splitPark,tenantPhoto,roomTemp,heatersIn,mkTenant};
+window.ESTATE={ES_COUNTRIES,esFlag,housePrice,plotUnderRay,resOf,estEnter,estStart,ESP,renderESP,splitPark,tenantPhoto,roomTemp,heatersIn,mkTenant};
+
+})();
+
+</script>
+<script>
+// ANCAP LIFE · VENTURES LAYER
+// Private military company, private roads, telecom (ISP), VPN, pop-out portfolio and performance tweaks
+(function(){
+const $v=s=>document.querySelector(s);
+const VT=()=>{if(!G)return null;if(!G.vt)G.vt={roads:[],isp:{towers:[],price:null,subs:0,last:0},vpn:null,pmc:null};const v=G.vt;v.roads=v.roads||[];v.isp=v.isp||{towers:[],price:null,subs:0,last:0};v.isp.towers=v.isp.towers||[];return v};
+const INF=()=>Math.max(.25,Math.min(4,typeof infl==='function'?infl():1));
+const vrng=seed=>{let s=(seed>>>0)||1;return()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296}};
+const vpick=(r,a)=>a[Math.floor(r()*a.length)%a.length];
+const kmoney=v=>(v<0?'−':'')+'$'+Math.round(Math.abs(v)).toLocaleString('en-US');
+const ST={tab:'overview',selRoad:null,pmcView:'board'};
+function vmsg(t,k){try{toast(t,k||'')}catch(e){}}
+
+// =====================================================================================================
+// PRIVATE MILITARY COMPANY: operators, kit, vehicles, facilities, licences and a contracts board
+// =====================================================================================================
+const PMC_BG=[
+ {t:'Private security guard',sk:[1,2],sal:110,note:'Door work and site patrols. Cheap and steady.'},
+ {t:'Ex-police officer',sk:[2,3],sal:170,note:'Calm under pressure, good with crowds and paperwork.'},
+ {t:'Ex-infantry',sk:[2,4],sal:210,note:'Six years in the army. Fit, disciplined, used to long shifts.'},
+ {t:'Ex-navy',sk:[3,4],sal:240,mar:1,note:'Served on frigates. The first pick for anything at sea.'},
+ {t:'Combat medic',sk:[2,4],sal:230,med:1,note:'Keeps the team on its feet. Injuries heal faster on their missions.'},
+ {t:'Drone operator',sk:[2,3],sal:200,drone:1,note:'Flies surveillance drones and reads terrain like a map.'},
+ {t:'Close-protection specialist',sk:[3,5],sal:330,vip:1,note:'Has guarded diplomats and film stars. Discreet and sharp.'},
+ {t:'Ex-special forces',sk:[4,5],sal:420,note:'The best there is, and they know it. Expensive.'},
+];
+const GEAR=[{n:'Standard kit',c:0,b:0},{n:'Tactical kit',c:8000,b:.22},{n:'Elite kit',c:22000,b:.45}];
+const VEH={suv:{n:'Armoured SUVs',c:60000,up:60,for:'Close protection'},apc:{n:'Armoured trucks',c:240000,up:180,for:'Convoy escort'},boat:{n:'Patrol boat',c:380000,up:260,for:'Maritime escort'},drone:{n:'Surveillance drones',c:45000,up:35,for:'Surveillance and recon'}};
+const FAC={training:{n:'Training ground',c:[150000,400000,900000],d:['Operators learn 50% faster','Operators learn twice as fast','Operators learn 2.5× as fast']},
+ medical:{n:'Medical bay',c:[100000,300000,700000],d:['Injuries heal 25% faster','Injuries heal 45% faster','Injuries heal 60% faster, fewer career-ending ones']},
+ intel:{n:'Intelligence cell',c:[120000,350000,800000],d:['15% fewer incidents, true risk shown','30% fewer incidents','45% fewer incidents']}};
+const CTYPES=[
+ {k:'site',n:'Site security',ops:[2,4],sk:1,days:[5,10],risk:[1,2],pay:420,clients:['a mining company','an oil terminal','a data centre','a port authority','a film studio','a pharmaceutical lab'],what:['guard the perimeter of the site','secure the main gate and patrol at night','protect the warehouses during a strike']},
+ {k:'vip',n:'Close protection',ops:[2,3],sk:3,days:[3,6],risk:[2,3],pay:900,need:'suv',clients:['a tech billionaire','a touring pop star','a visiting minister','a football club owner','a fashion designer'],what:['escort them between meetings','protect them at a premiere','keep the paparazzi and stalkers away']},
+ {k:'convoy',n:'Convoy escort',ops:[3,6],sk:2,days:[2,5],risk:[2,4],pay:760,need:'apc',clients:['a gold refinery','a medical charity','an electronics importer','a bank','a mining company'],what:['escort a cargo convoy across the region','move high-value freight between two cities','protect a cash transport']},
+ {k:'sea',n:'Maritime escort',ops:[3,5],sk:3,days:[6,12],risk:[3,4],pay:1100,need:'boat',clients:['a container line','an oil tanker operator','a cruise company','a fishing fleet'],what:['ride along through a strait known for piracy','guard a tanker at anchor','escort a yacht convoy']},
+ {k:'event',n:'Event security',ops:[4,8],sk:1,days:[1,2],risk:[1,1],pay:300,clients:['a music festival','a stadium','a trade fair','a royal wedding'],what:['run the gates and the crowd barriers','patrol the backstage area','manage VIP access']},
+ {k:'aid',n:'Disaster response',ops:[3,6],sk:2,days:[4,8],risk:[2,3],pay:620,rep:1.6,clients:['an aid charity','the Red Cross','a UN agency','a relief NGO'],what:['secure aid deliveries after a flood','protect a field hospital','guard food distribution points']},
+ {k:'recon',n:'Surveillance job',ops:[2,3],sk:2,days:[2,5],risk:[1,2],pay:560,need:'drone',clients:['an insurer','a law firm','a logistics company','a shipping broker'],what:['watch a suspected fraud site','map a disputed industrial site','track stolen freight']},
+];
+const INC={site:['Spotted intruders at the fence and turned them away.','A truck tried to drive through the gate. The team stopped it.','Caught thieves stripping copper from a substation.'],vip:['Pushed through an aggressive crowd outside a hotel.','Spotted someone following the car and changed route.','Kept a stalker away at a restaurant.'],convoy:['A roadblock turned out to be a robbery attempt. The convoy reversed out.','Caught someone tampering with a lorry at a rest stop.','Spotted a tail and lost them on the motorway.'],sea:['A fast skiff approached at night. Warning flares sent it away.','Fended off a boarding attempt during a storm.','Spotted suspicious boats and changed course.'],event:['Broke up a fight near the main stage.','Found a crowd crush forming and opened another gate.','Stopped a gatecrasher with a fake pass.'],aid:['Calmed a crowd at a food distribution point.','Stopped looters at the supply depot.','Got trucks through a flooded road safely.'],recon:['A guard dog found the drone team. They moved spots.','Caught on camera, but got the footage out.','The target noticed the drone and went quiet.']};
+const pmcSkill=o=>Math.min(5,o.skill);
+function pmcRecruit(seed){const E2=(window.ESTATE||{}),C=E2.ES_COUNTRIES||{GB:{n:'United Kingdom',m:['Sam'],f:['Alex'],s:['Smith']}},r=vrng(seed),codes=Object.keys(C),cc=vpick(r,codes),bg=PMC_BG[Math.floor(Math.pow(r(),1.35)*PMC_BG.length)],fem=r()<.22,first=vpick(r,fem?C[cc].f:C[cc].m),last=vpick(r,C[cc].s);
+ const skill=bg.sk[0]+Math.floor(r()*(bg.sk[1]-bg.sk[0]+1));return{id:'o'+seed.toString(36),seed,name:first+' '+last,first,cc,bg:bg.t,note:bg.note,mar:bg.mar||0,med:bg.med||0,drone:bg.drone||0,vip:bg.vip||0,skill,xp:0,gear:0,status:'ready',until:0,age:24+Math.floor(r()*22),
+  salary:Math.round(bg.sal*(.85+skill*.08)*INF()),look:{shirt:vpick(r,['#2b2e33','#3d4a3a','#4a4a3e','#1f2a36','#3a3d44']),skin:vpick(r,SKINS),hair:vpick(r,HAIRS),pants:vpick(r,['#1f1f24','#2d3340','#3b3f2e']),hs:Math.floor(r()*3),g:fem?.85:.1,wt:+(r()*.6).toFixed(1),hat:r()<.4?'cap':null,capc:'#2b2e33'}}}
+function pmcCountries(){const s=new Set();for(const c of CITIES)if(c.country)s.add(c.country);return[...s]}
+function pmcContract(seed,rep){const r=vrng(seed),T=vpick(r,CTYPES),cs=CITIES.filter(c=>c.country),city=vpick(r,cs),risk=T.risk[0]+Math.floor(r()*(T.risk[1]-T.risk[0]+1)),ops=T.ops[0]+Math.floor(r()*(T.ops[1]-T.ops[0]+1)),days=T.days[0]+Math.floor(r()*(T.days[1]-T.days[0]+1));
+ const lvl=Math.min(1.8,.7+rep/100);return{id:'c'+seed.toString(36),k:T.k,title:T.n,client:vpick(r,T.clients),what:vpick(r,T.what),country:city.country,place:city.name,risk,ops,skill:Math.min(5,T.sk+(risk>=3?1:0)),days,need:T.need||null,minRep:Math.max(0,(risk-1)*14+(T.k==='vip'?10:0)),
+  pay:Math.round(T.pay*1.6*ops*days*(1+risk*.35)*lvl*INF()/100)*100,bonus:Math.round(T.pay*ops*(.5+risk*.4)*INF()/100)*100,repGain:Math.round((2+risk)*(T.rep||1)),exp:G.day+3+Math.floor(r()*3)}}
+function pmc(){const v=VT();return v&&v.pmc}
+function pmcFound(name,baseKey){const v=VT();if(v.pmc)return;const home=(econAt(G.sites[0]?G.sites[0].lat:51.5,G.sites[0]?G.sites[0].lon:0)||{}).country;
+ v.pmc={name:name||(G.company||'Free Enterprise')+' Security',base:baseKey,made:G.day,rep:20,ops:[],pool:[],poolDay:0,veh:{suv:0,apc:0,boat:0,drone:0},fac:{training:0,medical:0,intel:0},lic:{},board:[],active:[],log:[],guards:{},earned:0,spent:0};
+ const lot=lotByKey(baseKey),E=lot?econAt(lot.lat,lot.lon):null;if(E&&E.country)v.pmc.lic[E.country]=true;pmcRefresh(true);news(`${G.company||'You'} founded ${v.pmc.name}, a private military company`,'');save()}
+function pmcRefresh(force){const P=pmc();if(!P)return;if(force||G.day>=P.poolDay){P.pool=[];for(let i=0;i<4;i++)P.pool.push(pmcRecruit((Math.random()*4294967295)>>>0));P.poolDay=G.day+3}
+ P.board=P.board.filter(c=>c.exp>G.day);while(P.board.length<6)P.board.push(pmcContract((Math.random()*4294967295)>>>0,P.rep))}
+const licCost=()=>Math.round(40000*INF()/1000)*1000;
+function pmcPower(P,ops,c){let p=0;for(const o of ops)p+=pmcSkill(o)*(1+GEAR[o.gear].b)+(c.k==='sea'&&o.mar?1:0)+(c.k==='vip'&&o.vip?1:0)+(c.k==='recon'&&o.drone?1:0);if(c.need&&P.veh[c.need]>0)p+=2;return p+P.fac.intel*1.5}
+function pmcDiff(c){return c.risk*c.ops*1.25+c.risk*2}
+function pmcTeam(P,c){const ready=P.ops.filter(o=>o.status==='ready'&&!Object.values(P.guards).includes(o.id)).sort((a,b)=>pmcSkill(b)*(1+GEAR[b.gear].b)-pmcSkill(a)*(1+GEAR[a.gear].b));const team=ready.slice(0,c.ops),avg=team.length?team.reduce((a,o)=>a+pmcSkill(o),0)/team.length:0;return{ready,team,avg,ok:ready.length>=c.ops&&avg>=c.skill-.01}}
+function pmcAccept(id){const P=pmc();const c=P.board.find(x=>x.id===id);if(!c)return;
+ if(P.rep<c.minRep)return vmsg('Your reputation is too low for this contract','warn');if(!P.lic[c.country])return vmsg(`You need a licence to operate in ${c.country}`,'warn');if(c.need&&!(P.veh[c.need]>0))return vmsg(`This job needs ${VEH[c.need].n.toLowerCase()}`,'warn');
+ const{ready,team,avg}=pmcTeam(P,c);
+ if(ready.length<c.ops)return vmsg(`You need ${c.ops} operators free. You have ${ready.length}.`,'warn');if(avg<c.skill-.01)return vmsg(`The team's average skill is ${avg.toFixed(1)}; this job wants ${c.skill}`,'warn');
+ for(const o of team){o.status='deployed'}P.active.push({c,team:team.map(o=>o.id),day0:G.day,inj:0,lost:0,events:[]});P.board=P.board.filter(x=>x!==c);vmsg(`Team deployed: ${c.title} in ${c.place}`,'good');save();renderVT()}
+function pmcDay(){const P=pmc();if(!P)return 0;let net=0;const medMul=[1,.75,.55,.4][P.fac.medical],intMul=[1,.85,.7,.55][P.fac.intel],trMul=[1,1.5,2,2.5][P.fac.training];
+ for(const o of P.ops)if(o.status==='injured'&&G.day>=o.until){o.status='ready';P.log.unshift({d:G.day,t:`${o.name} is fit for duty again`})}
+ for(const A of P.active.slice()){const c=A.c,team=A.team.map(id=>P.ops.find(o=>o.id===id)).filter(Boolean),pw=pmcPower(P,team,c),df=pmcDiff(c);
+  if(Math.random()<c.risk*.05*clamp(df/Math.max(1,pw),.4,2)*intMul){const ok=Math.random()<pw/(pw+df*.8),line=vpick(Math.random,INC[c.k]||INC.site);
+   if(ok){A.events.push(line);for(const o of team)o.xp+=2*trMul;P.log.unshift({d:G.day,t:`${c.title}, ${c.place}: ${line}`})}
+   else{const o=team[Math.floor(Math.random()*team.length)];if(o){const serious=Math.random()<.15*(1-pw/(pw+df))*(P.fac.medical>=3?.5:1);
+     if(serious){A.lost++;P.ops=P.ops.filter(x=>x!==o);A.team=A.team.filter(id=>id!==o.id);const pay=o.salary*20;G.cash-=pay;net-=pay;P.rep=Math.max(0,P.rep-6);P.log.unshift({d:G.day,t:`${o.name} was badly hurt on the ${c.title.toLowerCase()} job and has retired. Compensation paid: ${kmoney(pay)}.`});news(`${o.name} of ${P.name} retired after being hurt in ${c.place}`,'warn')}
+     else{A.inj++;o.status='injured';o.until=G.day+Math.max(2,Math.round((4+Math.random()*8)*medMul));A.team=A.team.filter(id=>id!==o.id);P.log.unshift({d:G.day,t:`${c.title}, ${c.place}: ${line.replace(/\.$/,'')}, but ${o.first} was injured (out ${o.until-G.day} days).`})}}}}
+  if(G.day-A.day0>=c.days){const clean=!A.inj&&!A.lost,pay=c.pay+(clean?c.bonus:0);G.cash+=pay;net+=pay;P.earned+=pay;P.rep=clamp(P.rep+(clean?c.repGain:Math.max(0,c.repGain-2-A.inj*2-A.lost*4)),0,100);
+   for(const id of A.team){const o=P.ops.find(x=>x.id===id);if(!o)continue;o.status='ready';o.xp+=c.days*c.risk*trMul*2;while(o.skill<5&&o.xp>=40*o.skill){o.xp-=40*o.skill;o.skill++;P.log.unshift({d:G.day,t:`${o.name} is now skill ${o.skill}`})}}
+   P.active=P.active.filter(x=>x!==A);P.log.unshift({d:G.day,t:`Finished: ${c.title} for ${c.client} in ${c.place}. Paid ${kmoney(pay)}${clean?' including the clean-job bonus':''}.`});vmsg(`${P.name} finished a job: +${kmoney(pay)}`,'good')}}
+ // wages, kit upkeep and insurance
+ let wages=0;for(const o of P.ops)wages+=o.salary;let up=0;for(const k in P.veh)up+=P.veh[k]*VEH[k].up*INF();for(const k in P.fac)up+=P.fac[k]*120*INF();
+ const ins=wages*(.02+.01*P.active.reduce((a,A)=>a+A.c.risk,0));const cost=wages+up+ins;G.cash-=cost;net-=cost;P.spent+=cost;
+ // guarding your own shops
+ for(const sid in P.guards){const s=G.sites.find(x=>x.id===sid),o=P.ops.find(x=>x.id===P.guards[sid]);if(!s||!o||o.status!=='ready'){delete P.guards[sid];if(s)s.pmcGuard=null;continue}s.pmcGuard=o.id;s.rep=Math.min(100,s.rep+.1)}
+ if(P.log.length>40)P.log.length=40;pmcRefresh(false);P.today=net;return net}
+// guarded shops can't be broken into
+try{const br=EVENTS.find(e=>e.id==='breakin');if(br){const ok0=br.ok;br.ok=s=>ok0(s)&&!s.pmcGuard}}catch(e){}
+
+
+// =====================================================================================================
+// PRIVATE ROADS: click any street, buy it, set a toll, keep it repaired
+// =====================================================================================================
+const _vi=new THREE.Matrix4(),_vo=new THREE.Vector3(),_vd=new THREE.Vector3();
+function groundLocal(L,y0){L.grp.updateMatrixWorld();_vi.copy(L.grp.matrixWorld).invert();_vo.copy(raycaster.ray.origin).applyMatrix4(_vi);_vd.copy(raycaster.ray.direction).transformDirection(_vi);if(_vd.y>=-1e-6)return null;const t=(y0-_vo.y)/_vd.y;if(t<0)return null;return{x:_vo.x+_vd.x*t,y:-(_vo.z+_vd.z*t),t}}
+function segD(px,py,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;let t=l2?((px-a[0])*dx+(py-a[1])*dy)/l2:0;t=Math.max(0,Math.min(1,t));return Math.hypot(px-a[0]-dx*t,py-a[1]-dy*t)}
+function roadPts(L,r){if(L.kind==='real'){const tl=toLocalOf(L);return r._lp||(r._lp=r.p.map(tl))}return[r.a,r.b]}
+function roadAt(x,y){raycaster.setFromCamera({x:x/innerWidth*2-1,y:-(y/innerHeight)*2+1},camera);let best=null;
+ for(const L of LIVE.values()){if(L.kind==='empty'||!L.grp)continue;const g=groundLocal(L,.2);if(!g)continue;
+  const list=L.kind==='real'?L.cell.roads:L.ch.roads;
+  list.forEach((r,i)=>{if(r.w<3.2||r.c==='track')return;const P=roadPts(L,r);let d=1e9;for(let k=0;k<P.length-1;k++)d=Math.min(d,segD(g.x,g.y,P[k],P[k+1]));
+   if(d>r.w/2+.8)return;const sc=g.t+d;if(!best||sc<best.sc)best={sc,L,r,key:L.kind==='real'?L.C.id+':'+L.C.roads.indexOf(r):L.key+':'+i}})}
+ return best}
+function roadLen(P){let s=0;for(let k=0;k<P.length-1;k++)s+=Math.hypot(P[k+1][0]-P[k][0],P[k+1][1]-P[k][1]);return s}
+function roadMid(P){const tot=roadLen(P);let acc=0;for(let k=0;k<P.length-1;k++){const l=Math.hypot(P[k+1][0]-P[k][0],P[k+1][1]-P[k][1]);if(acc+l>=tot/2){const t=l?(tot/2-acc)/l:0;return[P[k][0]+(P[k+1][0]-P[k][0])*t,P[k][1]+(P[k+1][1]-P[k][1])*t]}acc+=l}return P[0]}
+function localLL(L,p){const v=new THREE.Vector3(p[0],0,-p[1]).applyMatrix4(L.grp.matrixWorld).add(ORIGIN);return v2ll(v)}
+const coreOf=E=>clamp(((E.foot||160)-160)/440,0,1);
+function roadInfo(h){const P=roadPts(h.L,h.r),len=Math.max(8,roadLen(P)),[lat,lon]=localLL(h.L,roadMid(P)),E=econAt(lat,lon),core=coreOf(E),w=h.r.w;
+ const base=w>=14?14000:w>=9?6000:w>=6?1800:400,cars=Math.round(base*(.35+1.3*core)*Math.min(1.6,Math.max(.4,len/180)));
+ return{key:h.key,name:h.r.name||(w>=14?'Unnamed avenue':w>=6?'Unnamed street':'Unnamed lane'),w,len:Math.round(len),lat,lon,place:E.place,country:E.country,core,cars,
+  price:Math.round(len*w*E.rent*8*INF()/1000)*1000,ref:+(E.price*1.6*INF()).toFixed(2),Lkey:h.L.key}}
+const roadUp=r=>Math.round(r.len*r.w*.06*INF()+20);
+function roadDay(){const v=VT();let net=0;for(const r of v.roads){const condF=r.cond>=60?1:.4+r.cond/100,cars=r.cars*condF*(.9+Math.random()*.2),pay=cars*Math.exp(-r.toll/(1.6*(r.ref/1.6))),rev=pay*r.toll,up=roadUp(r);
+ r.cond=Math.max(0,r.cond-(.15+.35*r.cars/6000)*(.8+Math.random()*.4));r.today=Math.round(rev-up);r.paying=Math.round(pay);r.earned=(r.earned||0)+rev-up;G.cash+=rev-up;net+=rev-up;
+ if(r.cond<35&&Math.random()<.04){vmsg(`${r.name} is falling apart. Drivers are avoiding it.`,'warn')}}return net}
+const repairCost=r=>Math.round((100-r.cond)*r.len*r.w*.09*INF());
+function buyRoad(info){const v=VT();if(v.roads.some(r=>r.key===info.key))return;const o=typeof NET!=='undefined'&&NET.on&&NET.claims.get('rd:'+info.key);if(o&&o.owner!==NET.uid)return vmsg('Another player already owns this road','warn');
+ if(G.cash<info.price)return vmsg('Not enough cash to buy this road','warn');G.cash-=info.price;v.roads.push(Object.assign({},info,{toll:+(info.ref*.6).toFixed(2),cond:92,day:G.day,paid:info.price,earned:0,today:0}));
+ news(`${G.company||'You'} bought ${info.name} in ${info.place} and put up a toll booth`,'good');vmsg(`You own ${info.name}. Set the toll in the Ventures panel.`,'good');save();ovDirty=true;renderVT()}
+function sellRoad(key){const v=VT(),r=v.roads.find(x=>x.key===key);if(!r)return;const val=Math.round(r.paid*.7*(.5+r.cond/200));G.cash+=val;v.roads=v.roads.filter(x=>x!==r);vmsg(`Sold ${r.name} for ${kmoney(val)}`,'');save();ovDirty=true;renderVT()}
+
+// overlays: owned roads get a yellow ribbon and a toll booth
+const OVM=new THREE.MeshBasicMaterial({color:'#ffcc33',transparent:true,opacity:.32,depthWrite:false,side:THREE.DoubleSide,fog:false});
+const OVS=new THREE.MeshBasicMaterial({color:'#7fd3ff',transparent:true,opacity:.4,depthWrite:false,side:THREE.DoubleSide,fog:false});
+const VM={white:new THREE.MeshLambertMaterial({color:'#e8e4da'}),red:new THREE.MeshLambertMaterial({color:'#c8463a'}),grey:new THREE.MeshLambertMaterial({color:'#8d939a'}),dark:new THREE.MeshLambertMaterial({color:'#3a3e44'}),glass:new THREE.MeshLambertMaterial({color:'#7fb3cf'}),yel:new THREE.MeshLambertMaterial({color:'#f2c230'}),beige:new THREE.MeshLambertMaterial({color:'#cdbf9f'})};
+const BOX=new THREE.BoxGeometry(1,1,1),CYL=new THREE.CylinderGeometry(1,1,1,8);
+function part(geo,mat,x,y,z,sx,sy,sz,ry){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.scale.set(sx,sy,sz);if(ry)m.rotation.y=ry;m.castShadow=true;return m}
+function ribbonMesh(P,w,y,mat){const a=[];for(let k=0;k<P.length-1;k++){const A=P[k],B=P[k+1],dx=B[0]-A[0],dy=B[1]-A[1],l=Math.hypot(dx,dy)||1,nx=-dy/l*w/2,ny=dx/l*w/2;
+  a.push(A[0]+nx,y,-(A[1]+ny),B[0]+nx,y,-(B[1]+ny),B[0]-nx,y,-(B[1]-ny),A[0]+nx,y,-(A[1]+ny),B[0]-nx,y,-(B[1]-ny),A[0]-nx,y,-(A[1]-ny))}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(a,3));const m=new THREE.Mesh(g,mat);m.renderOrder=6;return m}
+function tollBooth(P,w){const g=new THREE.Group(),A=P[0],B=P[1],dx=B[0]-A[0],dy=B[1]-A[1],l=Math.hypot(dx,dy)||1,ux=dx/l,uy=dy/l,off=w/2+1.6,bx=A[0]+ux*4-uy*off,by=A[1]+uy*4+ux*off,ry=Math.atan2(-uy,ux);
+ const b=new THREE.Group();b.position.set(bx,0,-by);b.rotation.y=ry;b.add(part(BOX,VM.white,0,1.2,0,2.2,2.4,1.8),part(BOX,VM.glass,0,1.5,.92,1.6,1,.05),part(BOX,VM.red,0,2.55,0,2.8,.3,2.4),part(BOX,VM.yel,0,1.05,-1.2-w/4,.12,.12,w/2+.4),part(BOX,VM.dark,0,.5,-1.05,.25,1,.25));g.add(b);return g}
+const OV=new Map();let ovDirty=true,selOv=null;
+function liveRoad(o){if(o.key.includes(':')){const i=o.key.lastIndexOf(':'),a=o.key.slice(0,i),idx=+o.key.slice(i+1);
+  const L=LIVE.get(o.Lkey);if(L&&L.kind==='proc'&&L.ch.roads[idx])return{L,r:L.ch.roads[idx]};
+  for(const L2 of LIVE.values())if(L2.kind==='real'&&L2.C&&L2.C.id===a){const r=L2.C.roads[idx];if(r&&L2.cell.roads.includes(r))return{L:L2,r}}}return null}
+function ovTick(){if(!G||!ui.started)return;const v=VT(),want=new Set();
+ for(const o of v.roads){want.add('r'+o.key);const cur=OV.get('r'+o.key);if(cur&&cur.g.parent&&cur.g.parent.parent)continue;if(cur){cur.g.parent&&cur.g.parent.remove(cur.g);OV.delete('r'+o.key)}
+  const h=liveRoad(o);if(!h)continue;const P=roadPts(h.L,h.r),g=new THREE.Group();g.add(ribbonMesh(P,h.r.w*.92,.34,OVM));if(P.length>1&&roadLen(P)>10)g.add(tollBooth(P,h.r.w));h.L.grp.add(g);OV.set('r'+o.key,{g})}
+ for(const t of v.isp.towers){want.add('t'+t.id+(t.built?'b':''));const id='t'+t.id+(t.built?'b':''),cur=OV.get(id);if(cur&&cur.g.parent&&cur.g.parent.parent)continue;if(cur){OV.delete(id)}
+  const lot=lotByKey(t.pk);if(!lot)continue;const L=liveFor(lot);if(!L||!L.grp||L.kind==='lm')continue;const R=lot.poly.map(toLocalOf(L));let cx=0,cy=0;for(const q of R){cx+=q[0];cy+=q[1]}cx/=R.length;cy/=R.length;
+  const g=towerModel(t.type,t.built);g.position.set(cx,0,-cy);L.grp.add(g);OV.set(id,{g})}
+ for(const[k,o]of[...OV])if(!want.has(k)){o.g.parent&&o.g.parent.remove(o.g);o.g.traverse(m=>{if(m.geometry&&m.geometry!==BOX&&m.geometry!==CYL)m.geometry.dispose()});OV.delete(k)}
+ // the street you clicked but don't own yet
+ if(selOv){selOv.parent&&selOv.parent.remove(selOv);selOv.geometry.dispose();selOv=null}
+ if(ST.selRoad&&!v.roads.some(r=>r.key===ST.selRoad.key)&&!$v('#vtp').hidden){const h=liveRoad(ST.selRoad);if(h){selOv=ribbonMesh(roadPts(h.L,h.r),h.r.w*.95,.36,OVS);h.L.grp.add(selOv)}}}
+setInterval(()=>{try{ovTick()}catch(e){console.warn(e)}},1500);
+
+// clicking a street (not a building or plot) opens it in the Ventures panel
+if(typeof clickAt==='function'){const _ca=clickAt;clickAt=function(x,y){_ca(x,y);try{if(ui.interior||ui.selLot||camAlt()>6000||!G||!ui.started)return;const h=roadAt(x,y);if(!h)return;const own=VT().roads.find(r=>r.key===h.key);ST.selRoad=own||roadInfo(h);ST.tab='roads';openVT();ovTick()}catch(e){console.warn(e)}}}
+
+// =====================================================================================================
+// TELECOM (ISP): radio masts, cell towers and fibre exchanges built on your own land
+// =====================================================================================================
+const TW={mast:{n:'Radio mast',c:240000,r:2.5,cap:1500,days:6,up:90,q:.7,d:'A lattice mast with radio links. Cheap, slow, covers the neighbourhood.'},
+ cell:{n:'4G/5G cell tower',c:650000,r:5,cap:8000,days:14,up:260,q:1,d:'A monopole with mobile antennas. Wide coverage, decent speeds.'},
+ fibre:{n:'Fibre exchange',c:2400000,r:1.5,cap:30000,days:30,up:900,q:1.35,core:.3,d:'A building full of fibre gear. Small area, huge capacity, the fastest internet. City centres only.'}};
+function towerModel(type,built){const g=new THREE.Group();
+ if(type==='mast'){const h=built?32:9;for(let i=0;i<Math.round(h/4);i++)g.add(part(CYL,i%2?VM.white:VM.red,0,i*4+2,0,.9-i*.08,4,.9-i*.08));if(built){g.add(part(BOX,VM.grey,0,h-3,0,.2,1.2,2.2),part(BOX,VM.grey,0,h-6,0,2.2,1,.2),part(CYL,VM.red,0,h+.6,0,.25,1.2,.25))}g.add(part(BOX,VM.beige,3,1.2,2,3,2.4,2.4))}
+ else if(type==='cell'){const h=built?34:10;g.add(part(CYL,VM.grey,0,h/2,0,.7,h,.7));if(built)for(let k=0;k<3;k++){const a=k*2.094;g.add(part(BOX,VM.white,Math.sin(a)*1.4,h-2,Math.cos(a)*1.4,.6,2.6,.3,a))}g.add(part(BOX,VM.beige,3,1,0,2.6,2,2),part(BOX,VM.dark,0,.15,0,9,.3,9))}
+ else{const h=built?7:2.5;g.add(part(BOX,VM.beige,0,h/2,0,16,h,11));if(built){g.add(part(BOX,VM.dark,0,h+.15,0,16.4,.3,11.4),part(CYL,VM.white,4,h+1.6,2,1.4,.25,1.4),part(BOX,VM.glass,0,2.2,5.55,12,1.2,.05),part(CYL,VM.grey,-5,h+2.5,-3,.15,5,.15))}}
+ if(!built)g.add(part(BOX,VM.yel,0,.6,0,12,1.2,.12),part(BOX,VM.yel,0,.6,0,.12,1.2,12));g.traverse(o=>{if(o.isMesh)o.renderOrder=3});return g}
+function ispRef(){const v=VT(),t=v.isp.towers[0];const E=t?econAt(t.lat,t.lon):{price:1};return Math.round(38*E.price*INF())}
+function ownedPlots(){return G.props.filter(p=>p.floors===0&&!p.build&&!p.mine&&!G.sites.some(s=>s.key===p.key))}
+function plotFree(p){return!VT().isp.towers.some(t=>t.pk===p.key)&&!(pmc()&&pmc().base===p.key)}
+function buildTower(pk,type){const v=VT(),p=G.props.find(x=>x.key===pk),T=TW[type];if(!p||!T)return;if(!plotFree(p))return vmsg('Something is already built on this plot','warn');
+ const E=econAt(p.lat,p.lon),core=coreOf(E);if(T.core&&core<T.core)return vmsg('A fibre exchange only pays off in a dense city centre','warn');const cost=Math.round(T.c*INF());if(G.cash<cost)return vmsg('Not enough cash','warn');
+ G.cash-=cost;const dens=300+11000*Math.pow(core,1.3),hh=Math.round(Math.PI*T.r*T.r*dens*.42);v.isp.towers.push({id:'t'+(G.seq++),pk,type,lat:p.lat,lon:p.lon,place:E.place,end:G.day+T.days,built:false,hh,subs:0,cost,core});
+ if(v.isp.price==null)v.isp.price=ispRef();if(v.isp.rep==null)v.isp.rep=55;p.tower=type;news(`${G.company||'You'} started building a ${T.n.toLowerCase()} in ${E.place}`,'');vmsg(`Construction started: ${T.days} days`,'good');save();renderVT();try{renderLeft()}catch(e){}}
+function towerComp(t){if(typeof NET==='undefined'||!NET.on)return 0;let n=0;for(const c of NET.claims.values())if(c.owner!==NET.uid&&String(c.lot_key).startsWith('tw:')&&distM(c.lat,c.lon,t.lat,t.lon)<TW[t.type].r*1000*1.5)n++;return n}
+function ispDay(){const v=VT(),I=v.isp;if(!I.towers.length)return 0;let net=0,dem=0,cap=0;const ref=ispRef(),pf=clamp(Math.pow(ref/Math.max(1,I.price),1.6),.08,2.5),rf=clamp((I.rep||55)/60,.3,1.6);
+ for(const t of I.towers){const T=TW[t.type];if(!t.built){if(G.day>=t.end){t.built=true;news(`Your ${T.n.toLowerCase()} in ${t.place} is live`,'good');vmsg(`${T.n} in ${t.place} is switched on`,'good')}else continue}
+  const d=t.hh*.05*T.q*pf*rf/(1+.6*towerComp(t)),target=Math.min(d,T.cap*1.05);t.dem=Math.round(d);t.subs=Math.max(0,t.subs+(target-t.subs)*.08);dem+=d;cap+=T.cap;
+  const up=T.up*INF();G.cash-=up;net-=up}
+ const subs=I.towers.reduce((a,t)=>a+t.subs,0),rev=subs*I.price/30;G.cash+=rev;net+=rev;I.subs=Math.round(subs);
+ const load=cap?dem/cap:0;I.load=load;I.rep=clamp((I.rep||55)+((60+15*Math.min(1,pf-1)-(load>1?Math.min(30,(load-1)*25):0))-(I.rep||55))*.06,0,100);I.today=Math.round(net);return net}
+
+// =====================================================================================================
+// VPN company: servers around the world, privacy policy, marketing, and a reputation people watch closely
+// =====================================================================================================
+const VREG={na:{n:'North America',pool:900000},eu:{n:'Europe',pool:800000},uk:{n:'United Kingdom',pool:260000},as:{n:'Asia',pool:1200000},sa:{n:'South America',pool:300000},af:{n:'Africa',pool:150000},me:{n:'Middle East',pool:220000},oc:{n:'Oceania',pool:130000}};
+const MKT=[{n:'None',c:0,b:0},{n:'Podcast ads',c:300,b:5},{n:'YouTube sponsorships',c:900,b:10},{n:'Global campaign',c:2200,b:15}];
+const vpnRef=()=>+(9*INF()).toFixed(2);
+function vpnFound(name){const v=VT();if(v.vpn)return;const c=Math.round(250000*INF());if(G.cash<c)return vmsg('Not enough cash','warn');G.cash-=c;
+ v.vpn={name:name||(G.company||'Free Enterprise')+' VPN',made:G.day,servers:{},price:vpnRef(),nolog:true,mkt:0,rep:50,subs:0,reg:{},earned:0};news(`${G.company||'You'} launched ${v.vpn.name}`,'good');save();renderVT()}
+function vpnTarget(V){const own=VT().isp.towers.length>0;let t=50+(V.nolog?18:0)+MKT[V.mkt].b-(own?12:0)-Math.min(25,(V.over||0)*30);return{t:clamp(t,0,100),own}}
+function vpnDay(){const V=VT().vpn;if(!V)return 0;const pf=clamp(Math.pow(vpnRef()/Math.max(.5,V.price),1.5),.1,2.4),rf=Math.pow(clamp(V.rep/60,.1,1.7),2);let subs=0,dem=0,capT=0,net=0;
+ for(const k in VREG){const n=V.servers[k]||0,cap=n*1200,d=VREG[k].pool*.004*rf*pf*(1+MKT[V.mkt].b/25)*(n>0?1:.15),cur=V.reg[k]||0,tgt=Math.min(d,cap>0?cap*1.2:d);
+  V.reg[k]=Math.max(0,cur+(tgt-cur)*.06);subs+=V.reg[k];dem+=d;capT+=cap}
+ V.subs=Math.round(subs);V.over=capT?Math.max(0,subs/capT-1):(subs>0?1:0);const T=vpnTarget(V);V.rep=clamp(V.rep+(T.t-V.rep)*.05,0,100);
+ if(!V.nolog&&Math.random()<.015){V.rep=Math.max(0,V.rep-10);news(`${V.name} handed user logs to investigators. Customers are leaving.`,'warn')}
+ const rev=subs*V.price/30,cost=Object.values(V.servers).reduce((a,n)=>a+n,0)*40*INF()+MKT[V.mkt].c*INF();G.cash+=rev-cost;net=rev-cost;V.earned+=net;V.today=Math.round(net);return net}
+
+// =====================================================================================================
+// daily tick, claims for the shared map, net worth
+// =====================================================================================================
+const _sdv=simDay;simDay=function(){const r=_sdv.apply(this,arguments);try{if(G&&G.vt){let n=0;n+=pmcDay();n+=roadDay();n+=ispDay();n+=vpnDay();G.vt.today=Math.round(n);G.lastProfit=(G.lastProfit||0)+n;if(!$v('#vtp').hidden)renderVT()}}catch(e){console.warn(e)}return r};
+window.vtClaims=()=>{const v=G&&G.vt;if(!v)return[];const o=[];for(const r of v.roads)o.push({lot_key:'rd:'+r.key,kind:'own',biz_type:'road',name:String(r.name).slice(0,40),lat:r.lat,lon:r.lon,rep:Math.round(r.cond)});
+ for(const t of v.isp.towers)o.push({lot_key:'tw:'+t.id+'@'+t.pk,kind:'own',biz_type:'isp',name:TW[t.type].n,lat:t.lat,lon:t.lon,rep:Math.round(v.isp.rep||50)});return o};
+function vtValue(){const v=G&&G.vt;if(!v)return 0;let s=0;for(const r of v.roads)s+=r.paid*.7*(.5+r.cond/200);for(const t of v.isp.towers)s+=t.cost*(t.built?.55:.4);if(v.vpn)s+=Object.values(v.vpn.servers).reduce((a,n)=>a+n,0)*25000*.5+v.vpn.subs*v.vpn.price*2;
+ const P=v.pmc;if(P){for(const k in P.veh)s+=P.veh[k]*VEH[k].c*.5;for(const k in P.fac)for(let i=0;i<P.fac[k];i++)s+=FAC[k].c[i]*.4}return s}
+if(typeof netWorth==='function'){const _nw=netWorth;netWorth=function(){return _nw()+vtValue()}}
+
+
+// =====================================================================================================
+// VENTURES PANEL
+// =====================================================================================================
+const vtp=document.createElement('aside');vtp.id='vtp';vtp.className='panel';vtp.hidden=true;(document.getElementById('app')||document.body).appendChild(vtp);
+const vbtn=document.createElement('button');vbtn.id='vtbtn';vbtn.className='ghost sm';vbtn.dataset.v='toggle';vbtn.hidden=true;vbtn.innerHTML='<span class="hb-svg"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M9 3h6a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v4h-8v-1h-4v1H2V8a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm0 3h6V5H9v1zM2 14h8v1h4v-1h8v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5z"/></svg></span><span>Ventures</span>';vbtn.setAttribute('aria-label','Ventures');vbtn.title='Military company, roads, telecom and VPN';
+{const m=document.querySelector('#bar [data-act="menu"]');if(m)m.before(vbtn);else document.body.appendChild(vbtn)}
+setInterval(()=>{vbtn.hidden=!(G&&ui.started);const ic=document.querySelector('#bar .hb-icons');if(ic&&vbtn.parentNode!==ic){vbtn.classList.add('hb-ic');ic.insertBefore(vbtn,ic.lastChild)}},1000);
+function openVT(){vtp.hidden=false;renderVT()}
+const stars=n=>'<span class="vt-st">'+'★'.repeat(n)+'<i>'+'★'.repeat(5-n)+'</i></span>';
+const bar=(v,col)=>`<div class="vt-bar"><i style="width:${clamp(v,0,100).toFixed(0)}%;background:${col||'#ffde00'}"></i></div>`;
+const riskDots=(n,known)=>`<span class="vt-risk" title="Risk ${n} of 5">${[1,2,3,4,5].map(i=>`<i class="${i<=n?'on':''} ${known?'':'est'}"></i>`).join('')}</span>`;
+const flag=cc=>{try{return window.ESTATE.esFlag(cc,18)}catch(e){return''}};
+function opPhoto(o){let u='';try{u=window.ESTATE.tenantPhoto(o)}catch(e){}return`<div class="es-photo vt-ph"><svg viewBox="0 0 200 240" aria-hidden="true">${typeof pFlagBg==='function'?pFlagBg():''}</svg>${u?`<img src="${u}" alt="">`:''}</div>`}
+const TABS=[['overview','Overview'],['military','Military'],['roads','Roads'],['telecom','Telecom'],['vpn','VPN']];
+function renderVT(){if(vtp.hidden||!G)return;const keep=vtp.scrollTop,act=document.activeElement;if(act&&vtp.contains(act)&&act.tagName==='INPUT'&&act.type==='range'&&act.matches(':active'))return;
+ let body='';try{body={overview:vOverview,military:vMilitary,roads:vRoads,telecom:vTelecom,vpn:vVpn}[ST.tab]()}catch(e){console.warn(e);body='<p class="muted">Something went wrong drawing this tab.</p>'}
+ vtp.innerHTML=`<div class="pad"><button class="ghost sm close" data-v="close" aria-label="Close">✕</button><p class="eyebrow">Ventures</p><h2 class="h">Your other companies</h2>
+ <div class="vt-tabs">${TABS.map(([k,n])=>`<button class="${ST.tab===k?'on':''}" data-v="tab" data-k="${k}">${n}</button>`).join('')}</div>${body}</div>`;vtp.scrollTop=keep}
+function vOverview(){const v=VT(),P=v.pmc,I=v.isp,V=v.vpn,rd=v.roads;
+ const row=(n,sub,val,tab)=>`<button class="vt-row" data-v="tab" data-k="${tab}"><span><b>${n}</b><small>${sub}</small></span><span class="mono ${val>0?'up':val<0?'down':''}">${val?kmoney(val)+'/day':'·'}</span></button>`;
+ return`<p class="muted">Side businesses that run alongside your shops. Each one pays (or costs) money every game day.</p>
+ <div class="vt-big"><small>Ventures yesterday</small><b class="mono ${(v.today||0)>=0?'up':'down'}">${kmoney(v.today||0)}</b></div>
+ ${row('Private military company',P?`${esc(P.name)} · ${P.ops.length} operators · reputation ${Math.round(P.rep)}`:'Not founded yet',P?P.today||0:0,'military')}
+ ${row('Private roads',rd.length?`${rd.length} road${rd.length>1?'s':''} with toll booths`:'Click any street to buy it',rd.reduce((a,r)=>a+(r.today||0),0),'roads')}
+ ${row('Telecom (ISP)',I.towers.length?`${I.towers.length} tower${I.towers.length>1?'s':''} · ${(I.subs||0).toLocaleString()} subscribers`:'Build towers on land you own',I.today||0,'telecom')}
+ ${row('VPN company',V?`${esc(V.name)} · ${V.subs.toLocaleString()} users · reputation ${Math.round(V.rep)}`:'Not launched yet',V?V.today||0:0,'vpn')}
+ <div class="vt-pop"><div><b>Portfolio stats</b><small>Profit and loss on everything you own, in its own browser tab. It keeps updating while you play.</small></div><button class="btn" data-v="pop">Pop out ↗</button></div>`}
+
+// ---------- military ----------
+function vMilitary(){const P=pmc();
+ if(!P){const props=G.props.filter(p=>!VT().isp.towers.some(t=>t.pk===p.key)),c=Math.round(500000*INF());
+  return`<p>Start a <b>private military company</b>: hire operators, kit them out, buy vehicles and take security contracts around the world. Guard your own shops so they can't be robbed.</p>
+  <ul class="vt-ul"><li>Operators have backgrounds, skills, salaries and a career. They get better on every job.</li><li>Contracts pay well but carry risk. Injured operators sit out; badly hurt ones retire with compensation.</li><li>Your reputation decides which clients will hire you.</li></ul>
+  ${props.length?`<label class="vt-lab">Headquarters<select id="vt-hq">${props.map(p=>{const L=lotByKey(p.key);return`<option value="${esc(p.key)}">${L?esc(L.num+' '+L.street)+', ':''}${esc(p.place||'')}</option>`}).join('')}</select></label>
+  <label class="vt-lab">Company name<input id="vt-pmcname" maxlength="34" value="${esc((G.company||'Free Enterprise').replace(/ (Co\.|Ltd|Inc\.?)$/,'')+' Security')}"></label>
+  <button class="btn wide" data-v="pmcfound" ${G.cash<c?'disabled':''}>Found the company · ${big(c)}</button>`:`<p class="warn">You need a property to use as headquarters. Buy a building or an empty plot first.</p>`}`}
+ const sub=ST.pmcView,ready=P.ops.filter(o=>o.status==='ready').length,dep=P.ops.filter(o=>o.status==='deployed').length,inj=P.ops.filter(o=>o.status==='injured').length,wages=P.ops.reduce((a,o)=>a+o.salary,0);
+ const nav=[['board','Contracts'],['team','Operators'],['recruit','Recruit'],['kit','Equipment'],['log','Log']];
+ let h=`<div class="vt-head"><div><b>${esc(P.name)}</b><small>${ready} ready · ${dep} deployed · ${inj} injured · wages ${kmoney(wages)}/day</small></div><div class="vt-rep"><small>Reputation</small><b>${Math.round(P.rep)}</b>${bar(P.rep,P.rep>60?'#7cf59a':P.rep>30?'#ffde00':'#ff7a6b')}</div></div>
+ <div class="es-seg vt-sub">${nav.map(([k,n])=>`<button class="ghost sm ${sub===k?'on':''}" data-v="pv" data-k="${k}">${n}</button>`).join('')}</div>`;
+ if(sub==='board'){const known=P.fac.intel>=1;
+  if(P.active.length)h+=`<h3 class="vt-h3">On a job now</h3>`+P.active.map(A=>{const c=A.c,d=G.day-A.day0;return`<div class="vt-card"><div class="vt-ct"><b>${esc(c.title)}</b><span class="muted">${esc(c.place)}, ${esc(c.country)}</span></div><p class="muted">For ${esc(c.client)}: ${esc(c.what)}.</p>${bar(d/c.days*100,'#7fd3ff')}<small class="muted">Day ${d} of ${c.days} · team: ${A.team.map(id=>{const o=P.ops.find(x=>x.id===id);return o?esc(o.first):''}).filter(Boolean).join(', ')||'none left'}${A.inj?` · ${A.inj} injured`:''}${A.events.length?` · ${A.events.length} incident${A.events.length>1?'s':''} handled`:''}</small></div>`}).join('');
+  h+=`<h3 class="vt-h3">Contracts on offer</h3>`+(P.board.length?P.board.map(c=>{const lic=!!P.lic[c.country],veh=!c.need||P.veh[c.need]>0,rp=P.rep>=c.minRep,tm=pmcTeam(P,c),free=tm.ready.length,ok=lic&&veh&&rp&&tm.ok;
+   const risk=known?c.risk:clamp(c.risk+(((c.id.charCodeAt(2)||0)%3)-1),1,5);
+   return`<div class="vt-card ${ok?'':'dim'}"><div class="vt-ct"><b>${esc(c.title)}</b>${riskDots(risk,known)}</div><p class="muted">${esc(c.client[0].toUpperCase()+c.client.slice(1))} in ${esc(c.place)}, ${esc(c.country)} wants a team to ${esc(c.what)}.</p>
+   <dl class="vt-kv"><dt>Team</dt><dd class="${tm.ok?'':'bad'}">${c.ops} operators, skill ${c.skill}+${tm.ok?'':free<c.ops?` (${free} free)`:` (yours: ${tm.avg.toFixed(1)})`}</dd><dt>Length</dt><dd>${c.days} day${c.days>1?'s':''}</dd><dt>Pay</dt><dd class="mono">${big(c.pay)} <small>+${big(c.bonus)} if nobody is hurt</small></dd>${c.need?`<dt>Needs</dt><dd class="${veh?'':'bad'}">${VEH[c.need].n}</dd>`:''}<dt>Licence</dt><dd class="${lic?'':'bad'}">${lic?'Yes':'Needed for '+esc(c.country)}</dd>${c.minRep?`<dt>Min. reputation</dt><dd class="${rp?'':'bad'}">${c.minRep}</dd>`:''}<dt>Offer ends</dt><dd>in ${c.exp-G.day} day${c.exp-G.day!==1?'s':''}</dd></dl>
+   <div class="btnrow">${!lic?`<button class="btn ghost" data-v="lic" data-k="${esc(c.country)}" ${G.cash<licCost()?'disabled':''}>Buy licence · ${big(licCost())}</button>`:''}<button class="btn" data-v="accept" data-k="${c.id}" ${ok?'':'disabled'}>Send a team</button></div></div>`}).join(''):'<p class="muted">No contracts right now. New ones arrive every day.</p>');
+  if(!known)h+=`<p class="muted small">Risk shown is an estimate. An intelligence cell shows the real risk.</p>`}
+ else if(sub==='team'){if(!P.ops.length)h+=`<p class="muted">Nobody on the payroll yet. Hire operators in the Recruit tab.</p>`;
+  const shops=G.sites.filter(s=>s.status==='open');
+  h+=P.ops.map(o=>{const gs=Object.keys(P.guards).find(k=>P.guards[k]===o.id),st=o.status==='deployed'?'On a job':o.status==='injured'?`Injured · back in ${o.until-G.day} days`:gs?'Guarding a shop':'Ready';
+   return`<div class="es-card vt-op">${opPhoto(o)}<div class="es-info"><div class="es-nm">${flag(o.cc)}<b>${esc(o.name)}</b><small>${o.age} · ${esc(o.bg)}</small></div>${stars(o.skill)}${o.skill<5?bar(o.xp/(40*o.skill)*100,'#7fd3ff'):''}
+   <small class="muted">${esc(o.note)}</small><dl class="vt-kv"><dt>Status</dt><dd class="${o.status==='injured'?'bad':o.status==='deployed'?'info':''}">${st}</dd><dt>Pay</dt><dd class="mono">${kmoney(o.salary)}/day</dd><dt>Kit</dt><dd>${GEAR[o.gear].n}</dd></dl>
+   <div class="btnrow">${o.gear<2?`<button class="ghost sm" data-v="gear" data-k="${o.id}" ${G.cash<GEAR[o.gear+1].c*INF()?'disabled':''}>${GEAR[o.gear+1].n} · ${big(GEAR[o.gear+1].c*INF())}</button>`:''}
+   ${o.status==='ready'&&shops.length?`<select data-vi="guard" data-k="${o.id}"><option value="">Guard a shop…</option>${shops.map(s=>`<option value="${s.id}" ${P.guards[s.id]===o.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`:''}
+   ${o.status!=='deployed'?`<button class="ghost sm" data-v="fire" data-k="${o.id}">Let go</button>`:''}</div></div></div>`}).join('')}
+ else if(sub==='recruit'){h+=`<p class="muted">Candidates change every three days (next in ${Math.max(0,P.poolDay-G.day)}). Hiring costs ten days' pay up front.</p>`+P.pool.map(o=>`<div class="es-card vt-op">${opPhoto(o)}<div class="es-info"><div class="es-nm">${flag(o.cc)}<b>${esc(o.name)}</b><small>${o.age} · ${esc(o.bg)}</small></div>${stars(o.skill)}<small class="muted">${esc(o.note)}</small><dl class="vt-kv"><dt>Asks for</dt><dd class="mono">${kmoney(o.salary)}/day</dd></dl><button class="btn" data-v="hire" data-k="${o.id}" ${G.cash<o.salary*10?'disabled':''}>Hire · ${kmoney(o.salary*10)}</button></div></div>`).join('')+
+  `<button class="ghost wide" data-v="repool" ${G.cash<5000*INF()?'disabled':''}>Pay a headhunter for new candidates · ${big(5000*INF())}</button>`}
+ else if(sub==='kit'){h+=`<h3 class="vt-h3">Vehicles</h3>`+Object.entries(VEH).map(([k,V])=>`<div class="vt-line"><span><b>${V.n}</b><small>${V.for} · upkeep ${kmoney(V.up*INF())}/day each</small></span><span class="mono">×${P.veh[k]}</span><button class="ghost sm" data-v="vbuy" data-k="${k}" ${G.cash<V.c*INF()?'disabled':''}>Buy ${big(V.c*INF())}</button>${P.veh[k]?`<button class="ghost sm" data-v="vsell" data-k="${k}">Sell</button>`:''}</div>`).join('')+
+  `<h3 class="vt-h3">Facilities at headquarters</h3>`+Object.entries(FAC).map(([k,F])=>{const lv=P.fac[k];return`<div class="vt-line"><span><b>${F.n} ${lv?'· level '+lv:''}</b><small>${lv?F.d[lv-1]:'Not built'}${lv<3?` → next: ${F.d[lv]}`:''}</small></span>${lv<3?`<button class="ghost sm" data-v="fac" data-k="${k}" ${G.cash<F.c[lv]*INF()?'disabled':''}>${lv?'Upgrade':'Build'} ${big(F.c[lv]*INF())}</button>`:'<span class="pill">Max</span>'}</div>`}).join('')+
+  `<h3 class="vt-h3">Operating licences</h3><p class="muted small">You can only take contracts in countries where you hold a licence (${big(licCost())} each).</p><div class="vt-lics">${pmcCountries().map(c=>P.lic[c]?`<span class="pill on">✓ ${esc(c)}</span>`:`<button class="ghost sm" data-v="lic" data-k="${esc(c)}" ${G.cash<licCost()?'disabled':''}>${esc(c)}</button>`).join('')}</div>`}
+ else h+=P.log.length?`<ul class="vt-log">${P.log.map(l=>`<li><small>Day ${l.d}</small>${esc(l.t)}</li>`).join('')}</ul>`:'<p class="muted">Nothing has happened yet.</p>';
+ return h}
+
+// ---------- roads ----------
+function vRoads(){const v=VT(),s=ST.selRoad;let h='';
+ if(s){const own=v.roads.find(r=>r.key===s.key),other=typeof NET!=='undefined'&&NET.on&&(()=>{const c=NET.claims.get('rd:'+s.key);return c&&c.owner!==NET.uid?c:null})();
+  if(own){const r=own,mx=+(r.ref*3).toFixed(2),pay=Math.round(r.cars*(r.cond>=60?1:.4+r.cond/100)*Math.exp(-r.toll/r.ref));
+   h+=`<div class="vt-card sel"><div class="vt-ct"><b>${esc(r.name)}</b><span class="pill on">Yours</span></div><p class="muted">${esc(r.place)}, ${esc(r.country)} · ${r.len} m long, ${r.w} m wide</p>
+   <label class="vt-lab">Toll per car <b class="mono" id="vt-tollv">${money(r.toll,2)}</b></label><input type="range" class="esl-r" style="--trk:linear-gradient(90deg,#7cf59a,#ffde00,#ff7a6b)" min="0" max="${mx}" step="0.05" value="${r.toll}" data-vi="toll" data-k="${esc(r.key)}">
+   <p class="muted small">Higher tolls earn more per car, but drivers take another route. The sweet spot here is around ${money(r.ref,2)}.</p>
+   <dl class="vt-kv"><dt>Traffic</dt><dd class="mono">${r.cars.toLocaleString()} cars/day</dd><dt>Paying the toll</dt><dd class="mono" id="vt-pay">${pay.toLocaleString()}/day</dd><dt>Upkeep</dt><dd class="mono">${kmoney(roadUp(r))}/day</dd><dt>Yesterday</dt><dd class="mono ${r.today>=0?'up':'down'}">${kmoney(r.today||0)}</dd><dt>Earned so far</dt><dd class="mono">${kmoney(r.earned||0)}</dd><dt>Condition</dt><dd>${Math.round(r.cond)}%${bar(r.cond,r.cond>60?'#7cf59a':r.cond>35?'#ffde00':'#ff7a6b')}</dd></dl>
+   ${r.cond<60?`<p class="warn">Below 60% drivers start avoiding the road.</p>`:''}
+   <div class="btnrow"><button class="btn" data-v="repair" data-k="${esc(r.key)}" ${r.cond>98||G.cash<repairCost(r)?'disabled':''}>Resurface · ${big(repairCost(r))}</button><button class="btn ghost" data-v="sellroad" data-k="${esc(r.key)}">Sell · ${big(r.paid*.7*(.5+r.cond/200))}</button></div></div>`}
+  else{const est=Math.round(s.cars*s.ref*.6*Math.exp(-.6)-roadUp(s));
+   h+=`<div class="vt-card sel"><div class="vt-ct"><b>${esc(s.name)}</b>${other?`<span class="pill">Owned</span>`:'<span class="pill">Public road</span>'}</div><p class="muted">${esc(s.place)}, ${esc(s.country)} · ${s.len} m long, ${s.w} m wide</p>
+   <dl class="vt-kv"><dt>Traffic</dt><dd class="mono">≈${s.cars.toLocaleString()} cars/day</dd><dt>Upkeep</dt><dd class="mono">${kmoney(roadUp(s))}/day</dd><dt>Likely profit</dt><dd class="mono ${est>0?'up':'down'}">≈${kmoney(est)}/day</dd></dl>
+   ${other?`<p class="warn">${esc(typeof netCompany==='function'?netCompany(other.owner):'Another player')} owns this road.</p>`:`<button class="btn wide" data-v="buyroad" ${G.cash<s.price?'disabled':''}>Buy the road · ${big(s.price)}</button>`}</div>`}}
+ else h+=`<div class="vt-hint">🛣️ <span>Zoom into a city and <b>click any street</b> to see what it would cost to own. Owners put up a toll booth and keep the road repaired.</span></div>`;
+ if(v.roads.length)h+=`<h3 class="vt-h3">Your roads</h3>`+v.roads.map(r=>`<button class="vt-row ${s&&s.key===r.key?'on':''}" data-v="selroad" data-k="${esc(r.key)}"><span><b>${esc(r.name)}</b><small>${esc(r.place)} · toll ${money(r.toll,2)} · ${Math.round(r.cond)}% condition</small></span><span class="mono ${r.today>=0?'up':'down'}">${kmoney(r.today||0)}</span></button>`).join('');
+ return h}
+
+// ---------- telecom ----------
+function vTelecom(){const v=VT(),I=v.isp,ref=ispRef();let h=`<p class="muted">Sell home internet. Build towers on empty plots you own; each one covers the homes around it. More competitors nearby means a smaller share.</p>`;
+ if(I.towers.length){const pr=I.price||ref;h+=`<div class="vt-head"><div><b>${(I.subs||0).toLocaleString()} subscribers</b><small>${I.load>1?`<span class="bad">Network overloaded (${Math.round(I.load*100)}% of capacity). Build more towers.</span>`:`Network at ${Math.round((I.load||0)*100)}% of capacity`}</small></div><div class="vt-rep"><small>Reputation</small><b>${Math.round(I.rep||55)}</b>${bar(I.rep||55,'#7fd3ff')}</div></div>
+  <label class="vt-lab">Monthly price <b class="mono" id="vt-ispv">${money(pr)}</b></label><input type="range" class="esl-r" style="--trk:linear-gradient(90deg,#7cf59a,#ffde00,#ff7a6b)" min="${Math.round(ref*.4)}" max="${Math.round(ref*2.5)}" step="1" value="${pr}" data-vi="ispprice"><p class="muted small">The going rate around here is about ${money(ref)} a month.</p>
+  <h3 class="vt-h3">Towers</h3>`+I.towers.map(t=>{const T=TW[t.type],L=lotByKey(t.pk);return`<div class="vt-line"><span><b>${T.n}</b><small>${L?esc(L.num+' '+L.street)+', ':''}${esc(t.place)} · ${t.built?`${Math.round(t.subs).toLocaleString()} of ${T.cap.toLocaleString()} lines used`:`being built, ready in ${t.end-G.day} days`}</small></span>${t.built?bar(t.subs/T.cap*100,t.subs>T.cap*.97?'#ff7a6b':'#7fd3ff'):''}</div>`}).join('')}
+ const plots=ownedPlots().filter(plotFree);
+ h+=`<h3 class="vt-h3">Build a tower</h3>`+(plots.length?plots.map(p=>{const L=lotByKey(p.key),E=econAt(p.lat,p.lon),core=coreOf(E);return`<div class="vt-card"><div class="vt-ct"><b>${L?esc(L.num+' '+L.street):'Your plot'}</b><span class="muted">${esc(p.place||'')}</span></div><div class="es-tiers">${Object.entries(TW).map(([k,T])=>{const c=Math.round(T.c*INF()),off=T.core&&core<T.core;return`<div class="es-tier ${off?'off':''}"><b>${T.n}</b><small>${T.r} km radius · ${T.cap.toLocaleString()} lines</small><span class="mono">${big(c)}</span><button class="btn sm" data-v="tower" data-k="${esc(p.key)}" data-t="${k}" ${off||G.cash<c?'disabled':''}>${off?'City centre only':'Build'}</button></div>`}).join('')}</div></div>`}).join(''):`<div class="vt-hint">📡 <span>Buy an empty plot (click bare land in a city), then come back here to put a tower on it.</span></div>`);
+ if(v.vpn)h+=`<p class="warn small">Owning an ISP is hurting ${esc(v.vpn.name)}'s reputation: privacy fans don't trust a VPN run by an internet provider.</p>`;
+ return h}
+
+// ---------- VPN ----------
+function vVpn(){const v=VT(),V=v.vpn;
+ if(!V){const c=Math.round(250000*INF());return`<p>Launch a <b>VPN company</b>: rent servers around the world, set a monthly price and win over privacy-minded customers. Reputation is everything here.</p>
+  <ul class="vt-ul"><li>A strict no-logs policy builds trust.</li><li>Marketing brings in new users, but costs money every day.</li><li>Too few servers and the service slows down.</li><li><b>If you also own an ISP</b>, customers trust you less (−12 reputation).</li></ul>
+  <label class="vt-lab">Brand name<input id="vt-vpnname" maxlength="30" value="${esc((G.company||'Free Enterprise').split(' ')[0]+'VPN')}"></label><button class="btn wide" data-v="vpnfound" ${G.cash<c?'disabled':''}>Launch · ${big(c)}</button>`}
+ const T=vpnTarget(V),ov=Math.min(25,(V.over||0)*30);
+ return`<div class="vt-head"><div><b>${esc(V.name)}</b><small>${V.subs.toLocaleString()} users · yesterday ${kmoney(V.today||0)}</small></div><div class="vt-rep"><small>Reputation</small><b>${Math.round(V.rep)}</b>${bar(V.rep,V.rep>60?'#7cf59a':V.rep>35?'#ffde00':'#ff7a6b')}</div></div>
+ <div class="vt-why"><small>Where reputation is heading: <b>${Math.round(T.t)}</b></small><span>Base 50</span>${V.nolog?'<span class="up">No-logs policy +18</span>':''}${MKT[V.mkt].b?`<span class="up">Marketing +${MKT[V.mkt].b}</span>`:''}${T.own?'<span class="down">You own an ISP −12</span>':''}${ov>0.5?`<span class="down">Slow servers −${Math.round(ov)}</span>`:''}</div>
+ ${T.own?`<p class="warn small">Your telecom company makes people suspicious. Sell your towers to lose the penalty.</p>`:''}
+ <label class="vt-lab">Monthly price <b class="mono" id="vt-vpnv">${money(V.price,2)}</b></label><input type="range" class="esl-r" style="--trk:linear-gradient(90deg,#7cf59a,#ffde00,#ff7a6b)" min="${(vpnRef()*.3).toFixed(2)}" max="${(vpnRef()*3).toFixed(2)}" step="0.25" value="${V.price}" data-vi="vpnprice">
+ <label class="tog"><input type="checkbox" data-vi="nolog" ${V.nolog?'checked':''}> Strict no-logs policy</label>
+ <label class="vt-lab">Marketing<select data-vi="mkt">${MKT.map((m,i)=>`<option value="${i}" ${V.mkt===i?'selected':''}>${m.n}${m.c?' · '+kmoney(m.c*INF())+'/day':''}</option>`).join('')}</select></label>
+ <h3 class="vt-h3">Servers</h3><p class="muted small">${big(25000*INF())} each, ${kmoney(40*INF())}/day to run, 1,200 users per server.</p>
+ ${Object.entries(VREG).map(([k,R])=>{const n=V.servers[k]||0,u=Math.round(V.reg[k]||0);return`<div class="vt-line"><span><b>${R.n}</b><small>${u.toLocaleString()} users${n?` · ${Math.round(u/(n*1200)*100)}% load`:''}</small></span><span class="mono">×${n}</span><button class="ghost sm" data-v="srv" data-k="${k}" data-n="1" ${G.cash<25000*INF()?'disabled':''}>+</button>${n?`<button class="ghost sm" data-v="srv" data-k="${k}" data-n="-1">−</button>`:''}</div>`}).join('')}`}
+
+// ---------- actions ----------
+function pay(c){c=Math.round(c);if(G.cash<c){vmsg('Not enough cash','warn');return false}G.cash-=c;return true}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-v]');if(!t||!G)return;const a=t.dataset.v,k=t.dataset.k,P=pmc(),v=VT();
+ switch(a){
+  case'toggle':vtp.hidden?openVT():(vtp.hidden=true);break;
+  case'close':vtp.hidden=true;break;
+  case'tab':ST.tab=k;openVT();break;
+  case'pv':ST.pmcView=k;break;
+  case'pop':popStats();break;
+  case'pmcfound':{const c=500000*INF();if(!pay(c))break;pmcFound(($v('#vt-pmcname')||{}).value,($v('#vt-hq')||{}).value);break}
+  case'accept':pmcAccept(k);break;
+  case'lic':if(P&&!P.lic[k]&&pay(licCost())){P.lic[k]=true;vmsg(`Licensed to operate in ${k}`,'good')}break;
+  case'hire':{const o=P&&P.pool.find(x=>x.id===k);if(o&&pay(o.salary*10)){P.pool=P.pool.filter(x=>x!==o);P.ops.push(o);P.log.unshift({d:G.day,t:`Hired ${o.name}, ${o.bg.toLowerCase()}`});vmsg(`${o.name} joined ${P.name}`,'good')}break}
+  case'repool':if(P&&pay(5000*INF())){P.poolDay=0;pmcRefresh(false)}break;
+  case'fire':{const o=P&&P.ops.find(x=>x.id===k);if(o&&o.status!=='deployed'){P.ops=P.ops.filter(x=>x!==o);for(const s in P.guards)if(P.guards[s]===o.id)delete P.guards[s];P.log.unshift({d:G.day,t:`${o.name} left the company`})}break}
+  case'gear':{const o=P&&P.ops.find(x=>x.id===k);if(o&&o.gear<2&&pay(GEAR[o.gear+1].c*INF()))o.gear++;break}
+  case'vbuy':if(P&&pay(VEH[k].c*INF()))P.veh[k]++;break;
+  case'vsell':if(P&&P.veh[k]>0){P.veh[k]--;G.cash+=Math.round(VEH[k].c*INF()*.5)}break;
+  case'fac':if(P&&P.fac[k]<3&&pay(FAC[k].c[P.fac[k]]*INF()))P.fac[k]++;break;
+  case'buyroad':if(ST.selRoad)buyRoad(ST.selRoad);break;
+  case'sellroad':sellRoad(k);ST.selRoad=null;break;
+  case'selroad':ST.selRoad=v.roads.find(r=>r.key===k)||null;try{const r=ST.selRoad;if(r&&typeof flyTo==='function')flyTo(r.lat,r.lon,Math.min(CAM.dist,900))}catch(e){}ovTick();break;
+  case'repair':{const r=v.roads.find(x=>x.key===k);if(r&&pay(repairCost(r))){r.cond=100;vmsg(`${r.name} resurfaced`,'good')}break}
+  case'tower':buildTower(k,t.dataset.t);break;
+  case'vpnfound':vpnFound(($v('#vt-vpnname')||{}).value);break;
+  case'srv':{const V=v.vpn;if(!V)break;const n=+t.dataset.n;if(n>0){if(pay(25000*INF()))V.servers[k]=(V.servers[k]||0)+1}else if(V.servers[k]>0){V.servers[k]--;G.cash+=Math.round(25000*INF()*.4)}break}
+  default:return}
+ e.preventDefault();save();renderVT();try{renderTop()}catch(_){}});
+vtp.addEventListener('input',e=>{const t=e.target,a=t.dataset.vi,v=VT();if(!a||!G)return;
+ if(a==='toll'){const r=v.roads.find(x=>x.key===t.dataset.k);if(!r)return;r.toll=+t.value;$v('#vt-tollv').textContent=money(r.toll,2);const p=$v('#vt-pay');if(p)p.textContent=Math.round(r.cars*(r.cond>=60?1:.4+r.cond/100)*Math.exp(-r.toll/r.ref)).toLocaleString()+'/day'}
+ else if(a==='ispprice'){v.isp.price=+t.value;$v('#vt-ispv').textContent=money(v.isp.price)}
+ else if(a==='vpnprice'&&v.vpn){v.vpn.price=+t.value;$v('#vt-vpnv').textContent=money(v.vpn.price,2)}});
+vtp.addEventListener('change',e=>{const t=e.target,a=t.dataset.vi,v=VT(),P=pmc();if(!a||!G)return;
+ if(a==='nolog'&&v.vpn)v.vpn.nolog=t.checked;
+ else if(a==='mkt'&&v.vpn)v.vpn.mkt=+t.value;
+ else if(a==='guard'&&P){const id=t.dataset.k;for(const s in P.guards)if(P.guards[s]===id){delete P.guards[s];const S=G.sites.find(x=>x.id===s);if(S)S.pmcGuard=null}
+  if(t.value){const old=P.guards[t.value];P.guards[t.value]=id;const S=G.sites.find(x=>x.id===t.value);if(S){S.pmcGuard=id;vmsg(`${P.ops.find(o=>o.id===id).first} is now guarding ${S.name}. No more break-ins.`,'good')}}}
+ save();renderVT()});
+
+// owned empty plots offer telecom towers right in the lot panel
+if(typeof lotPanel==='function'){const _lpv=lotPanel;lotPanel=function(lot){let h=_lpv(lot);try{if(!G||!lot||lot.landmark)return h;const p=G.props.find(x=>x.key===lot.key);if(!p)return h;const v=VT(),tw=v.isp.towers.find(t=>t.pk===p.key);let box='';
+ if(tw){const T=TW[tw.type];box=`<div class="box mine vt-lb"><p><b>${T.n}</b><br>${tw.built?`Live · ${Math.round(tw.subs).toLocaleString()} subscribers on this tower`:`Being built · ready in ${tw.end-G.day} days`}</p><button class="btn" data-v="tab" data-k="telecom">Open telecom</button></div>`}
+ else if(pmc()&&pmc().base===p.key)box=`<div class="box mine vt-lb"><p><b>Headquarters of ${esc(pmc().name)}</b></p><button class="btn" data-v="tab" data-k="military">Open the company</button></div>`;
+ else if(p.floors===0&&!p.build&&!p.mine&&!G.sites.some(s=>s.key===p.key))box=`<div class="box vt-lb"><p><b>Telecom</b><br>Put a radio mast, cell tower or fibre exchange here and sell internet to the homes around it.</p><button class="btn ghost" data-v="tab" data-k="telecom">Build a tower</button></div>`;
+ if(box){const i=h.lastIndexOf('</div>');h=i<0?h+box:h.slice(0,i)+box+h.slice(i)}}catch(e){console.warn(e)}return h}}
+
+// =====================================================================================================
+// POP-OUT PORTFOLIO: profit and loss on what you own, in its own browser tab
+// =====================================================================================================
+let POP=null;
+const POPCSS=`:root{color-scheme:dark;--bg:#111317;--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--fg:#e9eaee;--mut:#9a9da5;--up:#7cf59a;--down:#ff7a6b;--acc:#ffde00}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 10% -10%,#23262d,transparent),var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;padding:20px 16px 40px}
+.wrap{max-width:980px;margin:0 auto}h1{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);margin:0 0 4px}.sub{color:var(--mut);margin:0 0 18px;font-size:12.5px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:18px}.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;backdrop-filter:blur(10px)}.tile small{display:block;color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.08em}.tile b{font-size:22px;font-variant-numeric:tabular-nums}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px;overflow-x:auto}h2{font-size:14px;margin:0 0 8px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:520px}th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);text-align:right;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+td{padding:7px 8px;text-align:right;border-bottom:1px solid rgba(255,255,255,.04)}tfoot td{font-weight:700;border-top:1px solid var(--line)}.up{color:var(--up)}.down{color:var(--down)}.mut{color:var(--mut)}.empty{color:var(--mut);font-size:13px;margin:4px 0}`;
+const pm=v=>`<span class="${v>0.5?'up':v<-0.5?'down':''}">${v>0?'+':''}${kmoney(v)}</span>`,pct=(a,b)=>b?`<span class="${a>0?'up':a<0?'down':''}">${a>0?'+':''}${(a/b*100).toFixed(1)}%</span>`:'';
+function statsHTML(){if(!G)return'<p class="empty">Waiting for the game…</p>';const nw=netWorth();let h=`<div class="tiles"><div class="tile"><small>Cash</small><b>${kmoney(G.cash)}</b></div><div class="tile"><small>Net worth</small><b>${kmoney(nw)}</b></div><div class="tile"><small>Profit yesterday</small><b>${pm(G.lastProfit||0)}</b></div><div class="tile"><small>Game day</small><b>${G.day}</b></div></div>`;
+ // resources
+ let rows='',tc=0,tv=0;try{const X=G.rx;if(X)for(const k in X.hold){const q=X.hold[k];if(!(q>0))continue;const avg=(X.avg&&X.avg[k])||0,pr=window.resPrice?window.resPrice(k):0,cost=avg*q,val=pr*q;tc+=cost;tv+=val;
+  rows+=`<tr><td>${esc(window.resName?window.resName(k):k)}</td><td>${q.toLocaleString()} ${esc(window.resUnit?window.resUnit(k):'')}</td><td>${money(avg,2)}</td><td>${money(pr,2)}</td><td>${kmoney(val)}</td><td>${pm(val-cost)}</td><td>${pct(val-cost,cost)}</td></tr>`}}catch(e){}
+ h+=`<section><h2>Resources</h2>${rows?`<table><thead><tr><th>Resource</th><th>Holding</th><th>Avg cost</th><th>Price</th><th>Value</th><th>Profit / loss</th><th>%</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>Total</td><td></td><td></td><td></td><td>${kmoney(tv)}</td><td>${pm(tv-tc)}</td><td>${pct(tv-tc,tc)}</td></tr></tfoot></table>`:'<p class="empty">You don\'t hold any resources.</p>'}</section>`;
+ // stocks
+ rows='';tc=0;tv=0;try{const S=G.soc&&G.soc.sh;if(S)for(const id in S){const s=S[id];if(!(s.q>0))continue;let pr=window.sharePrice?window.sharePrice(id):null;if(pr==null)pr=s.last||0;const cost=s.cost||0,val=pr*s.q;tc+=cost;tv+=val;
+  rows+=`<tr><td>${esc(s.name||id)}</td><td>${s.q.toLocaleString()}</td><td>${money(s.q?cost/s.q:0,2)}</td><td>${money(pr,2)}</td><td>${kmoney(val)}</td><td>${pm(val-cost)}</td><td>${pct(val-cost,cost)}</td></tr>`}}catch(e){}
+ h+=`<section><h2>Stocks</h2>${rows?`<table><thead><tr><th>Company</th><th>Shares</th><th>Avg cost</th><th>Price</th><th>Value</th><th>Profit / loss</th><th>%</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td>Total</td><td></td><td></td><td></td><td>${kmoney(tv)}</td><td>${pm(tv-tc)}</td><td>${pct(tv-tc,tc)}</td></tr></tfoot></table>`:'<p class="empty">You don\'t own any shares.</p>'}</section>`;
+ // businesses
+ rows='';for(const s of G.sites){const l=s.last||{},hist=(s.hist||[]).slice(-7),wk=hist.reduce((a,d)=>a+(d.profit||0),0);rows+=`<tr><td>${esc(s.name)}</td><td class="mut">${esc((s.p&&s.p.place)||'')}</td><td>${esc(s.status||'')}</td><td>${Math.round(s.rep||0)}</td><td>${pm(l.profit||0)}</td><td>${pm(wk)}</td></tr>`}
+ h+=`<section><h2>Businesses</h2>${rows?`<table><thead><tr><th>Shop</th><th>Place</th><th>Status</th><th>Rep</th><th>Yesterday</th><th>Last 7 days</th></tr></thead><tbody>${rows}</tbody></table>`:'<p class="empty">No shops yet.</p>'}</section>`;
+ // property & ventures
+ const v=G.vt||{roads:[],isp:{towers:[]}};rows='';
+ if(v.pmc)rows+=`<tr><td>Military · ${esc(v.pmc.name)}</td><td>${v.pmc.ops.length} operators</td><td>${pm(v.pmc.today||0)}</td><td>${pm((v.pmc.earned||0)-(v.pmc.spent||0))}</td></tr>`;
+ for(const r of v.roads)rows+=`<tr><td>Road · ${esc(r.name)}</td><td>${esc(r.place)}</td><td>${pm(r.today||0)}</td><td>${pm((r.earned||0)-r.paid)}</td></tr>`;
+ if(v.isp&&v.isp.towers.length)rows+=`<tr><td>Telecom</td><td>${(v.isp.subs||0).toLocaleString()} subscribers</td><td>${pm(v.isp.today||0)}</td><td class="mut">·</td></tr>`;
+ if(v.vpn)rows+=`<tr><td>VPN · ${esc(v.vpn.name)}</td><td>${v.vpn.subs.toLocaleString()} users</td><td>${pm(v.vpn.today||0)}</td><td>${pm(v.vpn.earned||0)}</td></tr>`;
+ let pr='';for(const p of G.props){let val=0;try{val=propValue(p)}catch(e){}pr+=`<tr><td>${esc(p.place||'Property')}</td><td>${p.floors?p.floors+' floors':'Plot'}</td><td>${kmoney(val)}</td><td>${pm(val-(p.price||0))}</td></tr>`}
+ h+=`<section><h2>Property</h2>${pr?`<table><thead><tr><th>Where</th><th>Type</th><th>Value</th><th>Gain</th></tr></thead><tbody>${pr}</tbody></table>`:'<p class="empty">No property.</p>'}</section>`;
+ h+=`<section><h2>Ventures</h2>${rows?`<table><thead><tr><th>Venture</th><th></th><th>Yesterday</th><th>Total profit</th></tr></thead><tbody>${rows}</tbody></table>`:'<p class="empty">No ventures yet.</p>'}</section>`;
+ return h}
+function popStats(){let w=null;try{w=window.open('','ancap-stats','width=820,height=860')}catch(e){}if(!w){vmsg('Your browser blocked the new tab. Allow pop-ups for this site and try again.','warn');return}
+ POP=w;try{if(!w.document.getElementById('root')){w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ANCAP LIFE · Portfolio</title><style>${POPCSS}</style></head><body><div class="wrap"><h1>ANCAP LIFE · Portfolio</h1><p class="sub" id="sub"></p><div id="root"></div></div></body></html>`);w.document.close()}popTick();w.focus()}catch(e){console.warn(e)}}
+function popTick(){if(!POP||POP.closed){POP=null;return}try{const d=POP.document;d.getElementById('root').innerHTML=statsHTML();d.getElementById('sub').textContent=`${G?esc(G.company||''):''} · live, updates every 2 seconds · keep the game tab open`}catch(e){}}
+setInterval(popTick,2000);
+// pop-out buttons in the stocks and resource market windows
+if(typeof renderModal==='function'){const _rmv=renderModal;renderModal=function(){const r=_rmv.apply(this,arguments);try{const m=ui.modal;if(m&&(m.kind==='stocks'||m.kind==='resmkt')){const box=$v('#modal .modal');if(box&&!box.querySelector('.vt-popbtn')){const b=document.createElement('button');b.className='ghost sm vt-popbtn';b.dataset.v='pop';b.textContent='Pop out ↗';b.title='Open your profit and loss in a new tab';box.appendChild(b)}}}catch(e){}return r}}
+
+// =====================================================================================================
+// PERFORMANCE: resolution that follows the frame rate, cheaper glass on slow machines
+// =====================================================================================================
+try{const gl=renderer.getContext(),ext=gl.getExtension('WEBGL_debug_renderer_info'),name=ext?String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)):'';GFX.gpu=name;
+ if(GFX.auto&&/swiftshader|llvmpipe|softpipe|basic render/i.test(name)&&GFX.tier!=='low'){GFX.tier='low';GFX.maxDpr=1;if(QUAL.shadows){try{if(localStorage.getItem('groundfloor.shadows')==null)QUAL.shadows=false}catch(e){}}QUAL.q=Math.min(QUAL.q,.75);try{const vv=localStorage.getItem('ancap.vivid');if(vv==null)VIVID=false}catch(e){}}}catch(e){}
+document.body.classList.add('gfx-'+GFX.tier);
+{const dev=window.devicePixelRatio||1,lo=GFX.tier==='low'?.6:.75;let good=0;
+ setInterval(()=>{if(document.hidden)return;const ft=QUAL.ema/Math.min(1,16.7/GFX.cap),top=Math.min(GFX.maxDpr,dev);let d=GFX.dpr;
+  if(ft>34&&d>lo){d=Math.max(lo,+(d-.1).toFixed(2));good=0}else if(ft<20&&d<top){if(++good>=2){d=Math.min(top,+(d+.05).toFixed(2));good=0}}else good=0;
+  if(d!==GFX.dpr){GFX.dpr=d;renderer.setPixelRatio(d);try{renderer.setSize(innerWidth,innerHeight,false)}catch(e){}}},1500)}
+
+const vcss=document.createElement('style');vcss.textContent=`
+#vtp{position:fixed;z-index:21;top:62px;right:14px;bottom:52px;width:min(420px,calc(100vw - 28px));overflow:auto;overscroll-behavior:contain}
+#vtp .close{position:absolute;top:12px;right:12px}
+#vtbtn{white-space:nowrap;display:inline-flex;align-items:center;gap:5px}#vtbtn.hb-ic{display:grid}
+.vt-tabs{display:flex;gap:4px;margin:8px 0 12px;flex-wrap:wrap}.vt-tabs button{flex:1 1 auto;padding:7px 8px!important;font-size:12.5px!important;border-radius:7px!important;background:rgba(255,255,255,.04)!important;border:1px solid rgba(255,255,255,.08)!important}
+.vt-tabs button.on{background:rgba(255,222,0,.16)!important;border-color:rgba(255,222,0,.5)!important;color:#ffe866!important}
+.vt-sub{margin:10px 0;flex-wrap:wrap}.vt-sub button{flex:1 1 auto}.vt-sub button{font-size:12px!important}
+.vt-row{display:flex;width:100%;justify-content:space-between;align-items:center;gap:10px;text-align:left;padding:10px 12px!important;margin:6px 0;border-radius:8px!important;background:rgba(255,255,255,.04)!important;border:1px solid rgba(255,255,255,.08)!important}
+.vt-row.on{border-color:rgba(255,222,0,.5)!important}.vt-row span:first-child{min-width:0}.vt-row b{display:block;font-size:13.5px}.vt-row small,.vt-line small,.vt-head small{display:block;color:var(--hb-mut,#9a9da5);font-size:11.5px;font-weight:500;line-height:1.35}
+.vt-big{display:flex;justify-content:space-between;align-items:baseline;padding:10px 12px;border-radius:8px;background:rgba(255,222,0,.07);border:1px solid rgba(255,222,0,.25);margin:10px 0}.vt-big small{color:#d6c97a}.vt-big b{font-size:22px}
+.vt-pop{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:14px;padding:12px;border-radius:8px;border:1px dashed rgba(255,255,255,.18)}.vt-pop small{display:block;color:var(--hb-mut,#9a9da5);font-size:12px}
+.vt-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}.vt-head>div:first-child{min-width:0}
+.vt-rep{min-width:96px;text-align:right}.vt-rep small{display:block}.vt-rep b{font-size:20px}
+.vt-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin:4px 0}.vt-bar i{display:block;height:100%;border-radius:4px}
+.vt-card{padding:10px 12px;margin:8px 0;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}.vt-card.dim{opacity:.72}.vt-card.sel{border-color:rgba(127,211,255,.45)}
+.vt-card p{margin:4px 0 6px;font-size:12.5px}.vt-ct{display:flex;justify-content:space-between;gap:8px;align-items:center}.vt-ct b{font-size:14px}
+.vt-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;margin:6px 0;font-size:12.5px}.vt-kv dt{color:var(--hb-mut,#9a9da5)}.vt-kv dd{margin:0;text-align:right}.vt-kv dd small{color:var(--hb-mut,#9a9da5)}.vt-kv .bad,.bad{color:#ff8a7a}.vt-kv .info{color:#7fd3ff}
+.vt-risk{display:inline-flex;gap:3px}.vt-risk i{width:8px;height:8px;border-radius:2px;background:rgba(255,255,255,.12)}.vt-risk i.on{background:#ff7a6b}.vt-risk i.on.est{background:#ffb36b}
+.vt-st{color:#ffde00;letter-spacing:1px;font-size:12px}.vt-st i{color:rgba(255,255,255,.18);font-style:normal}
+.vt-h3{font:700 11.5px/1.2 var(--f-body,system-ui);letter-spacing:.1em;text-transform:uppercase;color:var(--hb-mut,#9a9da5);margin:16px 0 6px}
+.vt-line{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}.vt-line>span:first-child{flex:1;min-width:0}.vt-line .vt-bar{width:70px}
+.vt-lics{display:flex;flex-wrap:wrap;gap:5px}.vt-lics .pill.on{background:rgba(124,245,154,.14);color:#9dffb5;padding:4px 8px;border-radius:999px;font-size:11.5px}
+.vt-log{list-style:none;padding:0;margin:8px 0;font-size:12.5px}.vt-log li{padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)}.vt-log small{display:block;color:var(--hb-mut,#9a9da5);font-size:11px}
+.vt-ul{padding-left:18px;font-size:12.5px;color:#cfd2d8}.vt-ul li{margin:3px 0}
+.vt-lab{display:flex;flex-direction:column;gap:4px;margin:10px 0 6px;font-size:12.5px;color:var(--hb-mut,#9a9da5)}.vt-lab b{color:#fff;font-size:16px}.vt-lab input,.vt-lab select{width:100%}
+.vt-hint{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:8px;background:rgba(127,211,255,.07);border:1px solid rgba(127,211,255,.25);font-size:12.5px}
+.vt-why{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0;font-size:11.5px}.vt-why small{flex-basis:100%;color:var(--hb-mut,#9a9da5)}.vt-why span{padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.06)}
+.vt-op .es-info{min-width:0}.vt-op select{max-width:100%;font-size:12px}.vt-op .btnrow{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.vt-ph{width:84px;height:102px}.vt-op.es-card{grid-template-columns:84px minmax(0,1fr)}
+.vt-popbtn{position:absolute;top:12px;right:52px;z-index:3}
+#vtp .small,.vt-card .small{font-size:11.5px}#vtp .up{color:#7cf59a}#vtp .down{color:#ff8a7a}
+/* cheaper glass on slower machines: blur behind panels is the most expensive thing on a weak GPU */
+html body.gfx-balanced{--gl-blur:blur(6px)}
+html body.gfx-low{--gl-blur:none;--gl-bg:rgba(22,24,28,.95)}
+html body.gfx-low *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+html body.gfx-low .toast,html body.gfx-low #ticker{transition:none!important}`;document.head.appendChild(vcss);
+window.VENTURES={pmcAccept,pmcTeam,roadAt,renderVT,openVT,popStats,statsHTML,VT,pmc,TW,ispDay,vpnDay,pmcDay,roadDay};
 
 })();
 
