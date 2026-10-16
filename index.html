@@ -9399,7 +9399,8 @@ if(typeof lotPanel==='function'){const _lpv=lotPanel;lotPanel=function(lot){let 
  if(tw){const T=TW[tw.type];box=`<div class="box mine vt-lb"><p><b>${T.n}</b><br>${tw.built?`Live · ${Math.round(tw.subs).toLocaleString()} subscribers on this tower`:`Being built · ready in ${tw.end-G.day} days`}</p><button class="btn" data-v="tab" data-k="telecom">Open telecom</button></div>`}
  else if(pmc()&&pmc().base===p.key)box=`<div class="box mine vt-lb"><p><b>Headquarters of ${esc(pmc().name)}</b></p><button class="btn" data-v="tab" data-k="military">Open the company</button></div>`;
  else if(p.floors===0&&!p.build&&!p.mine&&!G.sites.some(s=>s.key===p.key))box=`<div class="box vt-lb"><p><b>Telecom</b><br>Put a radio mast, cell tower or fibre exchange here and sell internet to the homes around it.</p><button class="btn ghost" data-v="tab" data-k="telecom">Build a tower</button></div>`;
- if(box){const i=h.lastIndexOf('</div>');h=i<0?h+box:h.slice(0,i)+box+h.slice(i)}}catch(e){console.warn(e)}return h}}
+ if(tw||(pmc()&&pmc().base===p.key&&p.floors===0)){h=h.replace(/<button class="btn" data-act="construct">Plan a building<\/button>/,'<small class="muted">Something already stands here, so you can\'t build on it.</small>').replace(/<button class="btn" data-res="mine"[^>]*>[^<]*<\/button>/,'')}
+ if(box){const j=h.indexOf('You own this plot'),k=j<0?-1:h.indexOf('</div>',j);if(k>=0)h=h.slice(0,k+6)+box+h.slice(k+6);else{const i=h.lastIndexOf('</div>');h=i<0?h+box:h.slice(0,i)+box+h.slice(i)}}}catch(e){console.warn(e)}return h}}
 
 // =====================================================================================================
 // POP-OUT PORTFOLIO: profit and loss on what you own, in its own browser tab
@@ -9463,7 +9464,7 @@ const vcss=document.createElement('style');vcss.textContent=`
 .vt-row{display:flex;width:100%;justify-content:space-between;align-items:center;gap:10px;text-align:left;padding:10px 12px!important;margin:6px 0;border-radius:8px!important;background:rgba(255,255,255,.04)!important;border:1px solid rgba(255,255,255,.08)!important}
 .vt-row.on{border-color:rgba(255,222,0,.5)!important}.vt-row span:first-child{min-width:0}.vt-row b{display:block;font-size:13.5px}.vt-row small,.vt-line small,.vt-head small{display:block;color:var(--hb-mut,#9a9da5);font-size:11.5px;font-weight:500;line-height:1.35}
 .vt-big{display:flex;justify-content:space-between;align-items:baseline;padding:10px 12px;border-radius:8px;background:rgba(255,222,0,.07);border:1px solid rgba(255,222,0,.25);margin:10px 0}.vt-big small{color:#d6c97a}.vt-big b{font-size:22px}
-.vt-pop{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:14px;padding:12px;border-radius:8px;border:1px dashed rgba(255,255,255,.18)}.vt-pop small{display:block;color:var(--hb-mut,#9a9da5);font-size:12px}
+.vt-pop .btn{white-space:nowrap;flex:none}.vt-pop{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:14px;padding:12px;border-radius:8px;border:1px dashed rgba(255,255,255,.18)}.vt-pop small{display:block;color:var(--hb-mut,#9a9da5);font-size:12px}
 .vt-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}.vt-head>div:first-child{min-width:0}
 .vt-rep{min-width:96px;text-align:right}.vt-rep small{display:block}.vt-rep b{font-size:20px}
 .vt-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin:4px 0}.vt-bar i{display:block;height:100%;border-radius:4px}
@@ -9489,7 +9490,7 @@ html body.gfx-balanced{--gl-blur:blur(6px)}
 html body.gfx-low{--gl-blur:none;--gl-bg:rgba(22,24,28,.95)}
 html body.gfx-low *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 html body.gfx-low .toast,html body.gfx-low #ticker{transition:none!important}`;document.head.appendChild(vcss);
-window.VENTURES={pmcAccept,pmcTeam,roadAt,renderVT,openVT,popStats,statsHTML,VT,pmc,TW,ispDay,vpnDay,pmcDay,roadDay};
+window.VENTURES={OV,ovTick,pmcAccept,pmcTeam,roadAt,renderVT,openVT,popStats,statsHTML,VT,pmc,TW,ispDay,vpnDay,pmcDay,roadDay};
 
 })();
 
