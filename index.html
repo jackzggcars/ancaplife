@@ -2743,15 +2743,21 @@ const YARDC=[FC('#8fc06a'),FC('#9cc874'),FC('#86b862')];
 // ---------- roads: asphalt, raised kerbs and pavements, lane markings and zebra crossings ----------
 const PAVE=[FC('#b8ad94'),FC('#bcb198'),FC('#b5aa91')],CURB=FC('#9a8f78'),MARKW=FC('#f6f3ea'),MARKY=FC('#f0c63a'),ASPH=FC('#42464e'),ASPH2=FC('#4c5058');
 function ribbonFlat(gb,a,b,w,y,col){const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<.01)return;const nx=-dy/L*w/2,ny=dx/L*w/2;gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]+nx,y,-(b[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],UPN,col,col,col);gb.tri([a[0]+nx,y,-(a[1]+ny)],[b[0]-nx,y,-(b[1]-ny)],[a[0]-nx,y,-(a[1]-ny)],UPN,col,col,col)}
-function markRoad(gb,a,b,w,c,amer,y){
- const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<14)return;const ux=dx/L,uy=dy/L,nx=-uy,ny=ux;
+function markRoad(gb,a,b,w,c,amer,y,j0,j1){
+ // j0/j1: whether each end is a real junction (crossings and stop lines go only there); undefined = both ends
+ if(j0===undefined)j0=true;if(j1===undefined)j1=true;
+ const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<((j0||j1)?14:2))return;const ux=dx/L,uy=dy/L,nx=-uy,ny=ux,m0=j0?6:0,m1=j1?6:0;
  const Q=(t0,t1,o0,o1,col)=>{const P=(t,o)=>[a[0]+ux*t+nx*o,y,-(a[1]+uy*t+ny*o)];gb.quad(P(t0,o0),P(t1,o0),P(t1,o1),P(t0,o1),UPN,col,15)};
- const solid=(o,wd,col,m)=>Q(m,L-m,o-wd/2,o+wd/2,col),dashed=(o,col,m)=>{for(let t=m;t<L-m-2;t+=9)Q(t,Math.min(t+3,L-m),o-.07,o+.07,col)};
+ const solid=(o,wd,col)=>{if(L-m1>m0)Q(m0,L-m1,o-wd/2,o+wd/2,col)},dashed=(o,col)=>{for(let t=m0;t<L-m1-2;t+=9)Q(t,Math.min(t+3,L-m1),o-.07,o+.07,col)};
  const zebra=(t0)=>{for(let o=-w/2+.7;o<w/2-.5;o+=1.05)Q(t0,t0+3,o,o+.55,MARKW)};
- if(c==='ave'){const cc=amer?MARKY:MARKW;solid(.18,.13,cc,6);solid(-.18,.13,cc,6);dashed(w/4,MARKW,6);dashed(-w/4,MARKW,6);zebra(1.4);zebra(L-4.4);Q(4.6,5,-w/2+.3,0,MARKW);Q(L-5,L-4.6,0,w/2-.3,MARKW)}
- else if(c==='st'){if(amer)solid(0,.13,MARKY,6);else dashed(0,MARKW,6);if(w>=10.5){zebra(1.4);zebra(L-4.4)}}
- else if(c==='lane'){solid(w/2-.35,.12,MARKW,0);solid(-w/2+.35,.12,MARKW,0);dashed(0,MARKW,2)}
+ if(c==='ave'){const cc=amer?MARKY:MARKW;solid(.18,.13,cc);solid(-.18,.13,cc);dashed(w/4,MARKW);dashed(-w/4,MARKW);if(j0){zebra(1.4);Q(4.6,5,-w/2+.3,0,MARKW)}if(j1){zebra(L-4.4);Q(L-5,L-4.6,0,w/2-.3,MARKW)}}
+ else if(c==='st'){if(amer)solid(0,.13,MARKY);else dashed(0,MARKW);if(w>=10.5){if(j0)zebra(1.4);if(j1)zebra(L-4.4)}}
+ else if(c==='lane'){solid(w/2-.35,.12,MARKW);solid(-w/2+.35,.12,MARKW);dashed(0,MARKW)}
 }
+// which road ends in a real city are junctions (three or more road arms meet there)
+function cityJunctions(C){if(C._jn)return C._jn;const g=new Map(),k=p=>Math.round(p[0]/3)+','+Math.round(p[1]/3);
+ C.roads.forEach((r,i)=>{if(r.w<3)return;r.p.forEach((p,j)=>{const key=k(p);let o=g.get(key);if(!o)g.set(key,o={n:0,last:-1});if(o.last!==i){o.last=i;o.n+=(j===0||j===r.p.length-1)?1:2}})});
+ const J=key=>{const o=g.get(key);return!!o&&o.n>=3};return C._jn={at:p=>J(k(p))}}
 function procGround(ch){const gb=new GB();
  for(const f of ch.fields||[])fieldGround(gb,f);
  const bases=ch.bases||[];
@@ -2781,7 +2787,7 @@ function realGround(C,cell){const gb=new GB(),toL=p=>[p[0]-cell.cx,p[1]-cell.cy]
  for(const p of cell.parks)groundPoly(gb,p.map(r=>r.map(toL)),.035,ROADCOL.park);
  for(const p of cell.water)groundPoly(gb,p.map(r=>r.map(toL)),.06,ROADCOL.water);
  for(const r of cell.roads.slice().sort((a,b)=>a.w-b.w))ribbon(gb,r.p.map(toL),r.w,r.w<=3?.09:r.w>=14?.21:.15,r.w<=3?ROADCOL.path:r.w>=14?ROADCOL.major:ROADCOL.minor);
- for(const r of cell.roads)if(r.w>=9){const P=r.p.map(toL);for(let k=0;k<P.length-1;k++)markRoad(gb,P[k],P[k+1],r.w,r.w>=14?'ave':'st',C.id==='nyc',r.w>=14?.27:.19)}
+ {const JN=cityJunctions(C);for(const r of cell.roads)if(r.w>=9){const P=r.p.map(toL),n=P.length-1;for(let k=0;k<n;k++)markRoad(gb,P[k],P[k+1],r.w,r.w>=14?'ave':'st',C.id==='nyc',r.w>=14?.27:.19,k===0&&JN.at(r.p[0]),k===n-1&&JN.at(r.p[n]))}}
  return gb.tris?new THREE.Mesh(hugSphere(gb.geo()),MATS.flat):null}
 // ---------- buildings at a level of detail ----------
 function lotsOf(L){return L.kind==='proc'?L.ch.lots:L.cell.lots}
