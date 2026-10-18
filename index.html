@@ -9533,7 +9533,7 @@ try{const gl=renderer.getContext(),ext=gl.getExtension('WEBGL_debug_renderer_inf
  if(GFX.auto&&/swiftshader|llvmpipe|softpipe|basic render/i.test(name)&&GFX.tier!=='low'){GFX.tier='low';GFX.maxDpr=1;if(QUAL.shadows){try{if(localStorage.getItem('groundfloor.shadows')==null)QUAL.shadows=false}catch(e){}}QUAL.q=Math.min(QUAL.q,.75);try{const vv=localStorage.getItem('ancap.vivid');if(vv==null)VIVID=false}catch(e){}}}catch(e){}
 document.body.classList.add('gfx-'+GFX.tier);
 {const dev=window.devicePixelRatio||1,lo=GFX.tier==='low'?.6:.75;let good=0;
- setInterval(()=>{if(document.hidden)return;const ft=QUAL.ema/Math.min(1,16.7/GFX.cap),top=Math.min(GFX.maxDpr,dev);let d=GFX.dpr;
+ setInterval(()=>{if(document.hidden||window.__PROMO)return;const ft=QUAL.ema/Math.min(1,16.7/GFX.cap),top=Math.min(GFX.maxDpr,dev);let d=GFX.dpr;
   if(ft>34&&d>lo){d=Math.max(lo,+(d-.1).toFixed(2));good=0}else if(ft<20&&d<top){if(++good>=2){d=Math.min(top,+(d+.05).toFixed(2));good=0}}else good=0;
   if(d!==GFX.dpr){GFX.dpr=d;renderer.setPixelRatio(d);try{renderer.setSize(innerWidth,innerHeight,false)}catch(e){}}},1500)}
 

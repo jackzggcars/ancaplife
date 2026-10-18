@@ -1,5 +1,5 @@
 // Virtual clock for frame-by-frame capture: the page only advances when the recorder calls __step(ms).
-(()=>{let fake=1000;const q=[];const realRAF=window.requestAnimationFrame.bind(window);
+(()=>{window.__PROMO=true;let fake=1000;const q=[];const realRAF=window.requestAnimationFrame.bind(window);
  performance.now=()=>fake;
  window.requestAnimationFrame=cb=>{q.push(cb);return q.length};window.cancelAnimationFrame=()=>{};
  window.__step=ms=>{fake+=ms;const c=q.splice(0);for(const f of c){try{f(fake)}catch(e){console.error(e)}}};

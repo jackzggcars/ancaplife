@@ -96,10 +96,15 @@ SHAKE = [(20.0, .35, 14)]                            # (time, seconds, pixels)
 
 # -------------------------------------------------------------------------------- frames
 def shot_frames(name):
+    if name in _good: return _good[name]
     d = FR / name; fs = sorted(d.glob('*.jpg'))[1:]   # the first frame of a shot can be caught mid-rebuild
+    lum = [np.asarray(Image.open(f).convert('L').resize((16, 28))).mean() for f in fs]
+    med = float(np.median(lum)); fs = [f for f, l in zip(fs, lum) if l > med * .45]   # blank frames are dropped
+    _good[name] = fs
     if not fs: raise SystemExit(f'missing frames for {name}: run capture.py first')
     return fs
 _cache = {}
+_good = {}
 def load(path):
     im = _cache.get(path)
     if im is None:
@@ -115,11 +120,10 @@ def source_frame(name, u):
 
 # -------------------------------------------------------------------------------- captions
 def font(sz): return ImageFont.truetype(FONT, sz)
-def draw_caption(img, text, style, k):
+def draw_caption_raw(img, text, style, k):
     """k: 0..1 progress through this caption (for the pop-in)"""
     d = ImageDraw.Draw(img)
-    pop = min(1, k * 7) if k < .15 else 1
-    scale = .82 + .18 * (1 - (1 - pop) ** 3) + (.04 * math.sin(min(1, k * 7) * math.pi) if k < .15 else 0)
+    scale = 1.0
     if style == 'cta':
         lines = text.split('|')
         y = int(H * .40)
@@ -156,6 +160,23 @@ def put(d, img, text, y, sz, highlight_all=False):
             x += ww
         y += lh
     return y
+
+_layers = {}
+def caption_layer(text, style):
+    key = (text, style)
+    if key not in _layers:
+        L = Image.new('RGBA', (W, H), (0, 0, 0, 0)); draw_caption_raw(L, text, style, 1.0)
+        bb = L.getbbox() or (0, 0, 1, 1); _layers[key] = (L.crop(bb), bb)
+    return _layers[key]
+def draw_caption(img, text, style, k):
+    L, bb = caption_layer(text, style)
+    q = min(1, k / .12) if k < .12 else 1
+    sc = .8 + .2 * (1 - (1 - q) ** 3) + .05 * math.sin(q * math.pi)      # quick pop with a small overshoot
+    if abs(sc - 1) > .002:
+        w, h = max(1, round(L.width * sc)), max(1, round(L.height * sc)); Ls = L.resize((w, h), Image.LANCZOS)
+    else: Ls, w, h = L, L.width, L.height
+    cx, cy = (bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2
+    img.paste(Ls, (round(cx - w / 2), round(cy - h / 2)), Ls)
 
 # -------------------------------------------------------------------------------- render
 def render(hook_i=0, out=None):
