@@ -8565,7 +8565,7 @@ addEventListener('beforeunload',()=>{if(pend)push(true)});
 // ---------- patch notes ----------
 const NOTES=[
  ['2026-10-19','Better models',['Cars are rebuilt as chunky sedans with wheel arches, tinted glass, mirrors, lights and the odd FOR SALE sign','People can now wear glasses, wrap-around shades, waistcoats and belts, and have heavier eyebrows','Shop equipment and street props have rounded edges and shaded bases instead of flat blocks']],
- ['2026-10-18','Fair play, safety & comfort',['Leaderboard numbers are now checked by the server, so nobody can type in a fortune','Chat: report a message, mute or block a player, and a filter for slurs and swearing','Saves keep a backup copy you can restore from the Menu','New: Comfort & access settings (volume, key bindings, reduced motion, colour-blind-safe colours, larger text)','Short tips the first time you open the exchange, contracts, the corporation or ventures','Bankrupt? Restructure the debt or start again with a legacy bonus','Better layout on phones']],
+ ['2026-10-18','Fair play, safety & comfort',['Leaderboard numbers are now checked by the server, so nobody can type in a fortune','Chat: report a message, mute or block a player, and a filter for slurs and swearing','Saves are versioned and checked, so an old tab or device can no longer overwrite newer progress','New: Comfort & access settings (volume, key bindings, reduced motion, colour-blind-safe colours, larger text)','Short tips the first time you open the exchange, contracts, the corporation or ventures','Bankrupt? Restructure the debt or start again with a legacy bonus','Better layout on phones']],
  ['2026-10-17','Street food',['Start with a food cart: cook in a timing mini-game, set your price, upgrade it and hire a cook','New round-button dock and Layers menu']],
  ['2026-10-15','Accounts & rewards',['Account portal with player number, member since and days as player','Loyalty points from active play unlock avatar skins','Invite links, a monthly referral race and trophies that boost loyalty','Download your data or delete your account at any time']],
  ['2026-10-15','Markets & leagues',['Stock market for every player company, with dividends','Player profiles, 17 achievements and visible badges','Weekly growth league and daily login rewards','Sign-in is now required: guest play has been removed']],
@@ -10108,8 +10108,7 @@ function settingsHTML(){
  <label class="cs-row" for="cs-text"><span>Text size</span><select id="cs-text" data-cs="text">${[[1,'Normal'],[1.15,'Large'],[1.3,'Extra large']].map(([v,n])=>`<option value="${v}" ${PREF.text==v?'selected':''}>${n}</option>`).join('')}</select></label>
  <label class="tog"><input type="checkbox" data-cs="intros" ${PREF.intros?'checked':''}> Show tips the first time I open a new feature</label>
  <details class="cs-keys"><summary>Key bindings</summary><div>${kb}</div><button class="ghost sm" data-cs="keyreset">Reset keys to defaults</button></details>
- <h3 class="eyebrow">Your save</h3><p class="fine">Your game is saved every few seconds, and a backup copy of an earlier save is kept (on the server and on this device). If something went wrong, you can roll back to it.</p>
- <button class="ghost sm" data-cs="restore">Restore last backup</button></div>`}
+ </div>`}
 if(typeof mMenu==='function'){const _mm=mMenu;mMenu=function(){const h=_mm.apply(this,arguments);const i=h.lastIndexOf('</div><div class="mfoot">');return i>0?h.slice(0,i)+settingsHTML()+h.slice(i):h.replace(/<\/div>\s*$/,settingsHTML()+'</div>')}}
 let BIND=null;
 document.addEventListener('input',e=>{const t=e.target;if(t.dataset.cs==='vol'){PREF.vol=+t.value;savePref();applyPrefs();const b=t.parentElement.querySelector('b');if(b)b.textContent=Math.round(PREF.vol*100)+'%';t.setAttribute('aria-valuetext',Math.round(PREF.vol*100)+'%')}});
@@ -10117,8 +10116,7 @@ document.addEventListener('change',e=>{const t=e.target,k=t.dataset.cs;if(!k)ret
  if(k==='motion'){PREF.motion=t.checked}else if(k==='cb'){PREF.cb=t.checked}else if(k==='text'){PREF.text=+t.value}else if(k==='intros'){PREF.intros=t.checked;if(t.checked)LS.set('ancap.introsSeen',{})}else return;savePref();applyPrefs()});
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-cs]');if(!t)return;const k=t.dataset.cs;
  if(k==='bind'||k==='bindx'){BIND={a:t.dataset.a,x:k==='bindx',btn:t};window.KEYCAPTURE=true;t.textContent='Press a key…';t.classList.add('on')}
- else if(k==='keyreset'){Object.assign(KEYS,KEYDEF);try{localStorage.removeItem('ancap.keys');localStorage.removeItem('ancap.xkeys')}catch(_){}XKEYS=Object.assign({},...Object.entries(EXTRA).map(([a,[,k2]])=>({[a]:k2})));renderModal()}
- else if(k==='restore')restoreBackup()});
+ else if(k==='keyreset'){Object.assign(KEYS,KEYDEF);try{localStorage.removeItem('ancap.keys');localStorage.removeItem('ancap.xkeys')}catch(_){}XKEYS=Object.assign({},...Object.entries(EXTRA).map(([a,[,k2]])=>({[a]:k2})));renderModal()}});
 document.addEventListener('keydown',e=>{if(!BIND)return;e.preventDefault();e.stopImmediatePropagation();const key=e.key;window.KEYCAPTURE=false;
  if(key!=='Escape'||BIND.a==='back'){const used=[...Object.entries(KEYS),...Object.entries(XKEYS)].find(([a,v])=>v===key&&a!==BIND.a);if(used){try{toast(`${keyName(key)} is already used for ${ACTN[used[0]]||EXTRA[used[0]][0]}`,'warn')}catch(_){} }else if(BIND.x){XKEYS[BIND.a]=key;LS.set('ancap.xkeys',XKEYS)}else{KEYS[BIND.a]=key;const diff={};for(const a in KEYS)if(KEYS[a]!==KEYDEF[a])diff[a]=KEYS[a];LS.set('ancap.keys',diff)}}
  BIND=null;try{renderModal()}catch(_){}},true);
@@ -10128,23 +10126,6 @@ document.addEventListener('keydown',e=>{if(window.KEYCAPTURE||e.ctrlKey||e.metaK
  if(hit('layers')){const b=$q('#crlayers');b&&!b.hidden&&b.click()}else if(hit('carts')){const b=$q('#cartbtn');b&&b.click()}else if(hit('ventures')){const b=$q('#vtbtn');b&&b.click()}else if(hit('chat')){const b=$q('#mpbtn');b&&b.click();e.preventDefault()}});
 
 // ------------------------------------------------------------------ restore a backup
-async function restoreBackup(){
- const db=typeof AUTH!=='undefined'&&AUTH.db;let info=null;
- if(db&&AUTH.user){try{const r=await db.rpc('my_backup_info');if(!r.error&&r.data){info=Array.isArray(r.data)?r.data[0]:r.data}}catch(e){}}
- const local=(()=>{try{const s=localStorage.getItem(SKEY+'.bak');return s?JSON.parse(s):null}catch(e){return null}})();
- if(!(info&&info.backup_at)&&!local){toast('There is no backup yet. One is made about every 10 minutes while you play.','warn');return}
- CONFIRM={info,local};renderConfirm()}
-let CONFIRM=null;const CF=document.createElement('div');CF.id='care-confirm';CF.hidden=true;CF.setAttribute('role','dialog');CF.setAttribute('aria-modal','true');CF.setAttribute('aria-label','Restore backup');document.body.appendChild(CF);
-function renderConfirm(){const{info,local}=CONFIRM,when=info&&info.backup_at?new Date(info.backup_at).toLocaleString():null;
- CF.innerHTML=`<div class="care-box"><h2>Restore your backup?</h2><p>${when?`The server backup is from <b>${esc(when)}</b>${info.backup_day!=null?` (game day ${info.backup_day}; you are on day ${info.current_day})`:''}.`:`There is a backup on this device${local&&local.day?` from game day ${local.day}`:''}.`} Your current save becomes the backup, so you can switch back.</p>
- <div class="care-acts"><button class="ghost" data-cf="no">Cancel</button><button class="btn" data-cf="yes">Restore it</button></div></div>`;CF.hidden=false;CF.querySelector('[data-cf="no"]').focus()}
-CF.addEventListener('click',async e=>{const t=e.target.closest('[data-cf]');if(!t){if(e.target===CF)CF.hidden=true;return}if(t.dataset.cf==='no'){CF.hidden=true;return}
- const{info,local}=CONFIRM;let data=null;
- if(info&&info.backup_at){try{const r=await AUTH.db.rpc('restore_my_backup');if(r.error)throw r.error;data=r.data}catch(err){toast('Could not restore from the server: '+(err.message||err),'warn')}}
- if(!data&&local){data=local;try{const cur=localStorage.getItem(SKEY);localStorage.setItem(SKEY,JSON.stringify(local));if(cur)localStorage.setItem(SKEY+'.bak',cur)}catch(_){}}
- if(!data){CF.hidden=true;return}
- try{localStorage.setItem(SKEY,JSON.stringify(data))}catch(_){}toast('Backup restored. Reloading…','good');setTimeout(()=>location.reload(),700)});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!CF.hidden){CF.hidden=true;e.stopPropagation()}},true);
 
 // ------------------------------------------------------------------ accessibility: names for icon buttons, landmarks, focus
 function a11yPass(){
@@ -10234,7 +10215,7 @@ body.text-xl #bar,body.text-xl .panel,body.text-xl #left,body.text-xl #right,bod
 body.cb-safe .cr-warn{color:#e69f00!important}body.cb-safe .vt-kv .bad,body.cb-safe .bad,body.cb-safe .down{color:#e69f00!important}body.cb-safe .up{color:#56b4e9!important}
 @media (max-width:640px){.cs-row span{min-width:84px}}
 `;document.head.appendChild(css);
-window.CARE={PREF,applyPrefs,INTROS,restoreBackup,restructOffer,legacyBonus};
+window.CARE={PREF,applyPrefs,INTROS,restructOffer,legacyBonus};
 })();
 
 </script>

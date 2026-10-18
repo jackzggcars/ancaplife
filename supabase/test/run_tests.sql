@@ -46,8 +46,9 @@ update public.saves set data='{"v":2,"sv":3,"ts":2000000,"day":9,"company":"Bob"
 select version, revision, backup->>'day' as backup_day, data->>'day' as day from public.saves where user_id=auth.uid();
 update public.saves set data='{"v":2,"sv":3,"ts":1500000,"day":7,"company":"Bob"}' where user_id=auth.uid();
 update public.saves set data='{"v":2,"sv":2,"ts":3000000,"day":7,"company":"Bob"}' where user_id=auth.uid();
-select * from public.my_backup_info();
+\echo '--- players may not restore backups themselves'
 select public.restore_my_backup()->>'day' as restored_day;
+select * from public.my_backup_info();
 select data->>'day' as day, backup->>'day' as backup_day from public.saves where user_id=auth.uid();
 \echo '--- chat filter, reports, mutes, blocks'
 insert into public.chat_messages(player,company,body) values (auth.uid(),'Bob','what the fuck is this');
