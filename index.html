@@ -1308,7 +1308,7 @@ const gauss=()=>(Math.random()+Math.random()+Math.random()-1.5)*1.15;
 let G=null;
 
 function newGame(company){
- const wd=Math.floor(worldDay());const g={v:2,company:company||'',day:wd,day0:wd,clock:0,cash:(typeof window.startCash==='function'?window.startCash():START_CASH),seq:1,sites:[],props:[],loans:[],mkt:{},news:[],ov:{},goals:{},neg:0,over:false,nw:[],lastProfit:0,cam:null};
+ const wd=Math.floor(worldDay());const g={v:2,sv:SAVE_V,company:company||'',day:wd,day0:wd,clock:0,cash:(typeof window.startCash==='function'?window.startCash():START_CASH),seq:1,sites:[],props:[],loans:[],mkt:{},news:[],ov:{},goals:{},neg:0,over:false,nw:[],lastProfit:0,cam:null};
  for(const k in SUP)g.mkt[k]={m:1+gauss()*.04,h:[]};
  return g;
 }
@@ -1655,7 +1655,7 @@ async function ensureGameData(){
  const ps=[];for(const k of[...G.sites.map(s=>s.key),...G.props.map(p=>p.key)]){const zone=k.split('#')[0];if(zone==='lm')continue;
   if(zone[0]==='c'){const[cx,cy]=zone.slice(1).split(':').map(Number);const[la,lo]=chunkCenter(cx,cy);ps.push(ensureTilesAround(la,lo,0))}else ps.push(loadCity(zone))}
  await Promise.all(ps);
- migrateLotKeys();
+ if(G.lotKeysPending!==false){migrateLotKeys();G.lotKeysPending=false}
 }
 // Saves made before lot ids became stable use 'cX:Y#<index>'. Re-point them at the generated lot standing at the saved position.
 function migrateLotKeys(){
@@ -3973,9 +3973,26 @@ const altLabel=a=>a>=1e6?Math.round(a/1e3).toLocaleString('en-US')+' km':a>=1e4?
 
 const ui={selLot:null,selKey:null,site:null,tab:'overview',speed:1,busy:false,modal:null,show:{lease:1,sale:1,rival:0,rooms:1,plot:1},confirm:null,wiz:null,floors:null,street:false};
 const SKEY0='groundfloor.save.v2';let SKEY=SKEY0;
-function save(){if(!G)return;G.cam={lat:CAM.lat,lon:CAM.lon,dist:CAM.dist,heading:CAM.heading};G.ts=Date.now();try{localStorage.setItem(SKEY,JSON.stringify(G))}catch(e){}cloudQueue()}
-function fixSave(g){if(g&&g.v===2){for(const k in SUP)if(!g.mkt[k])g.mkt[k]={m:1,h:[]};return g}return null}
-function loadSave(key){try{const s=localStorage.getItem(key||SKEY);if(s)return fixSave(JSON.parse(s))}catch(e){}return null}
+// ---------- saves: a version number with step-by-step upgrades, and a last-known-good backup ----------
+// SAVE_V is the save format. Bump it and add an entry to SAVE_MIG whenever the shape of G changes; each step takes a save
+// from version n to n+1, so a save from any older build is brought up to date in order.
+const SAVE_V=3;
+const SAVE_MIG={
+ 1:g=>{ // early saves: make sure every list and table the game expects exists
+  for(const k of['sites','props','loans','news','nw'])if(!Array.isArray(g[k]))g[k]=[];
+  for(const k of['mkt','ov','goals'])if(!g[k]||typeof g[k]!=='object')g[k]={};
+  if(typeof g.cash!=='number'||!isFinite(g.cash))g.cash=0;if(typeof g.day!=='number')g.day=0;g.seq=g.seq||1},
+ 2:g=>{ // lot ids became stable: old 'cX:Y#<index>' keys are re-pointed by migrateLotKeys() once the map data is loaded
+  g.lotKeysPending=[...g.sites,...g.props].some(x=>/^c-?\d+:-?\d+#\d+$/.test(String(x.key||'')));
+  if(!Array.isArray(g.carts))g.carts=[]},
+};
+function saveOK(g){return!!(g&&g.v===2&&Array.isArray(g.sites)&&Array.isArray(g.props)&&typeof g.cash==='number'&&isFinite(g.cash))}
+function fixSave(g){if(!g||g.v!==2)return null;try{let n=g.sv||1;if(n>SAVE_V){g.fromNewer=true}while(n<SAVE_V){if(SAVE_MIG[n])SAVE_MIG[n](g);n++}g.sv=Math.max(g.sv||1,SAVE_V);g.mkt=g.mkt||{};for(const k in SUP)if(!g.mkt[k])g.mkt[k]={m:1,h:[]}}catch(e){console.warn('Save upgrade failed',e);return null}return saveOK(g)?g:null}
+let lastBak=0;
+function save(){if(!G)return;G.cam={lat:CAM.lat,lon:CAM.lon,dist:CAM.dist,heading:CAM.heading};G.ts=Date.now();G.sv=Math.max(G.sv||1,SAVE_V);
+ try{const now=Date.now();if(now-lastBak>600000){const prev=localStorage.getItem(SKEY);if(prev){try{if(saveOK(JSON.parse(prev))){localStorage.setItem(SKEY+'.bak',prev);lastBak=now}}catch(e){}}else lastBak=now}
+  localStorage.setItem(SKEY,JSON.stringify(G))}catch(e){}cloudQueue()}
+function loadSave(key){key=key||SKEY;for(const k of[key,key+'.bak']){try{const s=localStorage.getItem(k);if(!s)continue;const g=fixSave(JSON.parse(s));if(g){if(k!==key)setTimeout(()=>{try{toast('Your save was damaged, so the last good copy was loaded','warn')}catch(e){}},4000);return g}}catch(e){}}return null}
 
 // ===================== CAMERA CONTROL =====================
 // Pan is 1:1 (the point you grab stays under the cursor), zoom eases toward a target, and inside a shop the camera orbits the room.
@@ -4127,7 +4144,7 @@ function renderTop(){
  const sb=$('#shopsbtn');sb.hidden=!G.sites.length&&!G.props.length;sb.textContent=G.sites.length?`My shops (${G.sites.length})`:'My property';
  $('#mapctl').hidden=!!ui.interior||!ui.started;$('#northbtn').style.transform=`rotate(${-CAM.heading}rad)`;
  const lg=$('#legend');lg.hidden=!ui.street||!!ui.interior;
- if(ui.street){const lh=[['lease','For lease','#ffde00'],['sale','For sale','#2fd3e6'],['rooms','Rooms to rent','#ff7ac8'],['plot','Build land','#4fd36a'],['rival','Competitors','#ff4b3e']].map(([k,t,c])=>`<button data-act="legend" data-id="${k}" class="${ui.show[k]?'on':''}" aria-pressed="${!!ui.show[k]}"><i style="background:${c}"></i>${t}</button>`).join('');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
+ if(ui.street){const lh=[['lease','For lease','#ffde00'],['sale','For sale','#2fd3e6'],['rooms','Rooms to rent','#ff7ac8'],['plot','Build land','#4fd36a'],['rival','Competitors','#ff4b3e']].map(([k,t,c])=>`<button data-act="legend" data-id="${k}" class="${ui.show[k]?'on':''}" aria-pressed="${!!ui.show[k]}"><i style="background:${(window.LEGC&&LEGC[k])||c}" aria-hidden="true"></i>${t}</button>`).join('');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
  const hint=$('#hint'),showHint=ui.started&&ui.street&&!ui.interior&&!ui.selLot&&!G.sites.length&&!ui.modal&&!G.tut;hint.hidden=!showHint;
  if(showHint){const hh=`Buildings glowing <b style="color:#ffde00">yellow</b> have a shop for lease. Click one to see the rent.`;if(hint._h!==hh){hint._h=hh;hint.innerHTML=hh}}
  renderShops();
@@ -4488,14 +4505,18 @@ document.addEventListener('click',e=>{
 document.addEventListener('change',e=>{const t=e.target;if(t.dataset.change==='gfx'||t.dataset.change==='fps30'){try{if(t.dataset.change==='gfx'){localStorage.setItem('ancap.gfx',t.value);localStorage.removeItem('ancap.vivid')}else localStorage.setItem('ancap.fps30',t.checked?'1':'0')}catch(_){}try{save()}catch(_){}toast('Applying graphics settings…','');setTimeout(()=>location.reload(),400);return}if(t.dataset.change==='shadows'){QUAL.shadows=t.checked;try{localStorage.setItem('groundfloor.shadows',QUAL.shadows?'1':'0')}catch(_){}return}if(t.dataset.change==='vivid'){VIVID=t.checked;try{localStorage.setItem('ancap.vivid',VIVID?'1':'0')}catch(_){}return}if(t.dataset.change==='cycle'){VIS.cycle=t.checked;try{localStorage.setItem('groundfloor.cycle',VIS.cycle?'1':'0')}catch(_){}return}if(t.dataset.change==='traffic'){TRAFFIC_ON=t.checked;return}const s=G&&G.sites.find(x=>x.id===ui.site);if(!s)return;
  if(t.dataset.change==='price'){const v=parseFloat(t.value);if(v>0)s.prices[t.dataset.id]=Math.round(v*100)/100;renderSite()}
  if(t.dataset.change==='auto')s.auto=t.checked});
-document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;
+// key bindings: defaults here, players can change them in Menu → Controls (stored in ancap.keys)
+const KEYDEF={rotL:'q',rotR:'e',zoomIn:'=',zoomOut:'-',rotate:'r',lvUp:'PageUp',lvDown:'PageDown',back:'Escape'};
+let KEYS=Object.assign({},KEYDEF);try{Object.assign(KEYS,JSON.parse(localStorage.getItem('ancap.keys')||'{}'))}catch(e){}
+const keyIs=(e,a)=>{const k=KEYS[a];if(!k)return false;return e.key===k||(k.length===1&&e.key.toLowerCase()===k.toLowerCase())||(a==='zoomIn'&&k==='='&&e.key==='+')};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT'||window.KEYCAPTURE)return;
 
- if(ui.interior&&!ui.modal&&(e.key==='PageUp'||e.key==='PageDown')){const I=ui.interior,Ls=lvList(I.site).filter(l=>lvOpen(I.site,l)),n=Ls.indexOf(I.lv)+(e.key==='PageUp'?1:-1);if(Ls[n]!=null)setLevel(Ls[n]);e.preventDefault();return}
- if((e.key==='r'||e.key==='R')&&ui.interior&&ui.interior.placing){interiorRotate();return}
- if(e.key==='Escape'&&ui.interior&&!ui.modal){if(ui.interior.placing)cancelPlacing();else{exitInterior();renderSite()}return}
- if(e.key==='Escape'){if(ui.modal&&!['intro','over','event'].includes(ui.modal.kind))closeModal();else if(ui.selLot)selectLot(null)}
- if(e.key==='+'||e.key==='=')zoomBy(innerWidth/2,innerHeight/2,.6);if(e.key==='-')zoomBy(innerWidth/2,innerHeight/2,1.6);
- if(e.key==='q')rotBy(-35,0);if(e.key==='e')rotBy(35,0);});
+ if(ui.interior&&!ui.modal&&(keyIs(e,'lvUp')||keyIs(e,'lvDown'))){const I=ui.interior,Ls=lvList(I.site).filter(l=>lvOpen(I.site,l)),n=Ls.indexOf(I.lv)+(keyIs(e,'lvUp')?1:-1);if(Ls[n]!=null)setLevel(Ls[n]);e.preventDefault();return}
+ if(keyIs(e,'rotate')&&ui.interior&&ui.interior.placing){interiorRotate();return}
+ if((e.key==='Escape'||keyIs(e,'back'))&&ui.interior&&!ui.modal){if(ui.interior.placing)cancelPlacing();else{exitInterior();renderSite()}return}
+ if(e.key==='Escape'||keyIs(e,'back')){if(ui.modal&&!['intro','over','event'].includes(ui.modal.kind))closeModal();else if(ui.selLot)selectLot(null)}
+ if(keyIs(e,'zoomIn'))zoomBy(innerWidth/2,innerHeight/2,.6);if(keyIs(e,'zoomOut'))zoomBy(innerWidth/2,innerHeight/2,1.6);
+ if(keyIs(e,'rotL'))rotBy(-35,0);if(keyIs(e,'rotR'))rotBy(35,0);});
 function goToKey(key,lat,lon,siteId){if(siteId){ui.site=siteId;ui.tab='overview';renderSite()}flyTo(lat,lon,520,()=>{const L=lotByKey(key);if(L)selectLot(L);else{ui.selKey=key}})}
 function doSign(){
  const w=ui.wiz,lot=lotByKey(w.key),b=BIZ[w.type];if(!b||!lot)return;const E=econAt(lot.lat,lot.lon);
@@ -4799,6 +4820,9 @@ function mSkip(){const S=ui.lastSkip;if(!S)return'';const net=G.cash-S.c0;
 
 // ANCAP LIFE · shared online world (Supabase): other players' buildings, leaderboard, who's online
 const SB_URL='https://uolpjgwtppuyxmlppmek.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvbHBqZ3d0cHB1eXhtbHBwbWVrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE2NzA2MjcsImV4cCI6MjEwNzI0NjYyN30.P98sDl852x71QvKo38AZDwteQMVh8gZvCusBQCqlj-M';
+// writes to the shared players row go through server functions (supabase/migrations/0008); if a project hasn't run
+// that migration yet, fall back to the old direct write so the game keeps working
+async function rpcOr(db,fn,args,fallback){try{const r=await db.rpc(fn,args);if(!r.error)return r.data;const c=r.error.code||'';if(c==='PGRST202'||c==='42883'||/could not find|does not exist/i.test(r.error.message||'')){if(fallback)await fallback();return null}console.warn(fn,r.error.message)}catch(e){console.warn(fn,e)}return null}
 const NET={on:false,db:null,uid:null,claims:new Map(),players:new Map(),online:1,pushed:new Map(),ch:null,restyle:0};
 // ---- accounts (Supabase Auth) ----
 const AUTH={db:null,user:null,mode:'in',busy:false,cloud:'unknown',timer:0,warned:false};
@@ -4830,10 +4854,11 @@ async function pickSave(){
  }
  return loc;
 }
-function cloudQueue(){if(!authed()||AUTH.cloud==='off'||AUTH.timer)return;AUTH.timer=setTimeout(cloudPush,6000)}
+function cloudQueue(){if(!authed()||AUTH.cloud==='off'||AUTH.cloud==='stale'||AUTH.timer)return;AUTH.timer=setTimeout(cloudPush,6000)}
 async function cloudPush(){
  clearTimeout(AUTH.timer);AUTH.timer=0;if(!authed()||!G||AUTH.cloud==='off'||!ui.started&&!G.company)return;
- try{const r=await AUTH.db.from('saves').upsert({user_id:AUTH.user.id,data:G,updated_at:new Date().toISOString()});if(r.error)throw r.error;AUTH.cloud='ok'}
+ if(G.fromNewer){if(!AUTH.newerWarn){AUTH.newerWarn=1;toast('This save comes from a newer version of the game. Refresh the page to update before playing on.','warn')}return}
+ try{const r=await AUTH.db.from('saves').upsert({user_id:AUTH.user.id,data:G,updated_at:new Date().toISOString()});if(r.error){if(/stale save/i.test(r.error.message||'')){AUTH.cloud='stale';toast('Newer progress was saved from another device or tab. Reload to continue from it.','warn');return}if(/older game version/i.test(r.error.message||'')){AUTH.cloud='stale';toast('Your account has a save from a newer version. Refresh the page.','warn');return}throw r.error}AUTH.cloud='ok'}
  catch(e){AUTH.cloud='off';console.warn('Cloud save failed',e);if(!AUTH.warned){AUTH.warned=true;toast('Cloud save is not set up yet, so progress is kept on this device only','warn')}}
 }
 // starting over: wipe the old run from the server too (map claims, cloud save, leaderboard numbers), so nothing is left behind
@@ -4844,7 +4869,7 @@ async function resetRun(){
  if(!ok){ // the reset function is not installed yet: do the same with plain deletes (allowed by the row policies)
   try{await db.from('claims').delete().eq('owner',uid)}catch(e){}
   try{await db.from('saves').delete().eq('user_id',uid)}catch(e){}
-  try{await db.from('players').update({cash:0,net_worth:0,businesses:0,updated_at:new Date().toISOString()}).eq('id',uid)}catch(e){}}
+  await rpcOr(db,'submit_player',{p_company:(G&&G.company||'Free Enterprise Co.').slice(0,40),p_cash:0,p_net_worth:0,p_businesses:0},async()=>{try{await db.from('players').update({cash:0,net_worth:0,businesses:0,updated_at:new Date().toISOString()}).eq('id',uid)}catch(e){}})}
  if(typeof netDirty==='function')netDirty()}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&AUTH.timer)cloudPush()});
 addEventListener('pagehide',()=>{if(AUTH.timer)cloudPush()});
@@ -4931,8 +4956,9 @@ async function netSync(){
  for(const p of G.props)if(!want.has(p.key))want.set(p.key,{lot_key:p.key,owner:NET.uid,kind:p.key.startsWith('lm#')?'landmark':p.floors>0?'own':'plot',biz_type:null,name:null,lat:p.lat,lon:p.lon,rep:0});
  try{if(typeof window.vtClaims==='function')for(const r of window.vtClaims())want.set(r.lot_key,Object.assign({owner:NET.uid},r))}catch(e){}
  try{
-  await db.from('players').upsert({id:NET.uid,company:(G.company||'Free Enterprise Co.').slice(0,40),cash:Math.round(G.cash),net_worth:Math.round(netWorth()),businesses:G.sites.filter(s=>s.status==='open').length,updated_at:new Date().toISOString()});
-  if(stale()){await db.from('players').update({cash:0,net_worth:0,businesses:0}).eq('id',NET.uid);return}
+  {const row={id:NET.uid,company:(G.company||'Free Enterprise Co.').slice(0,40),cash:Math.round(G.cash),net_worth:Math.round(netWorth()),businesses:G.sites.filter(s=>s.status==='open').length};
+   const res=await rpcOr(db,'submit_player',{p_company:row.company,p_cash:row.cash,p_net_worth:row.net_worth,p_businesses:row.businesses},async()=>{await db.from('players').upsert(Object.assign(row,{updated_at:new Date().toISOString()}))});if(res&&res.capped&&!NET.cappedWarn){NET.cappedWarn=1;console.warn('Leaderboard net worth was capped by the server',res)}}
+  if(stale()){await rpcOr(db,'submit_player',{p_company:(G.company||'').slice(0,40),p_cash:0,p_net_worth:0,p_businesses:0},async()=>{await db.from('players').update({cash:0,net_worth:0,businesses:0}).eq('id',NET.uid)});return}
   const up=[];for(const[k,r]of want){const o=NET.pushed.get(k);if(!o||o.name!==r.name||o.biz_type!==r.biz_type||o.kind!==r.kind||Math.abs(o.rep-r.rep)>3)up.push(r)}
   if(up.length){const{error}=await db.from('claims').upsert(up);if(stale()){if(!error)await db.from('claims').delete().in('lot_key',up.map(r=>r.lot_key));return}if(!error)for(const r of up)NET.pushed.set(r.lot_key,r)}
   const gone=[...NET.pushed.keys()].filter(k=>!want.has(k));if(gone.length){await db.from('claims').delete().in('lot_key',gone);for(const k of gone)NET.pushed.delete(k)}
@@ -5494,7 +5520,7 @@ function ac(){
  if(!AC){try{
   AC=new(window.AudioContext||window.webkitAudioContext)();
   const comp=AC.createDynamicsCompressor();comp.threshold.value=-14;comp.knee.value=18;comp.ratio.value=5;comp.attack.value=.003;comp.release.value=.2;
-  master=AC.createGain();master.gain.value=.62;master.connect(comp);comp.connect(AC.destination);
+  master=AC.createGain();master.gain.value=.62*(window.SNDVOL!=null?SNDVOL:1);window.SNDMASTER=master;master.connect(comp);comp.connect(AC.destination);
   const len=Math.floor(AC.sampleRate*1.3),buf=AC.createBuffer(2,len,AC.sampleRate);
   for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2)}
   const cv=AC.createConvolver();cv.buffer=buf;const wet=AC.createGain();wet.gain.value=.2;master.connect(cv);cv.connect(wet);wet.connect(comp);
@@ -7570,8 +7596,35 @@ if(typeof lotPanel==='function'){const _lp=lotPanel;lotPanel=function(lot){let h
   return h.replace(/(<div class="box)/,box+'$1')}catch(e){return h}}}
 
 // ---------- 4. the world panel: chat, live activity, who is online ----------
-let OPEN=false,TAB='chat',UNREAD=0,LASTSEND=0;const CHAT=[],FEED=[];let MUTE=new Set();try{MUTE=new Set(JSON.parse(localStorage.getItem('ancap.mute')||'[]'))}catch(e){}
-const saveMute=()=>{try{localStorage.setItem('ancap.mute',JSON.stringify([...MUTE]))}catch(e){}};
+let OPEN=false,TAB='chat',UNREAD=0,LASTSEND=0;const CHAT=[],FEED=[];let MUTE=new Set();try{const v=JSON.parse(localStorage.getItem('ancap.chatmute')||'[]');if(Array.isArray(v))MUTE=new Set(v)}catch(e){}
+const saveMute=()=>{try{localStorage.setItem('ancap.chatmute',JSON.stringify([...MUTE]));localStorage.setItem('ancap.tmute',JSON.stringify(TMUTE))}catch(e){}};
+// chat safety: a word filter (same list as the server's), timed mutes on this device, server-side blocks and reports
+let TMUTE={};try{TMUTE=JSON.parse(localStorage.getItem('ancap.tmute')||'{}')||{}}catch(e){}
+const BLOCK=new Set();let MENU=null;
+const BADW1=['fuck','fucking','fucker','motherfucker','shit','bullshit','bitch','bastard','cunt','dick','cock','pussy','twat','wanker','asshole','arsehole','slut','whore','bollocks','prick','douchebag','jackass'];
+const BADW2=['nigger','nigga','faggot','fag','retard','chink','spic','kike','wetback','tranny','paki','gook','coon','raghead','beaner','dyke','kys','killyourself'];
+const chatNorm=t=>String(t).toLowerCase().replace(/[013457@$!|]/g,c=>({'0':'o','1':'i','3':'e','4':'a','5':'s','7':'t','@':'a','$':'s','!':'i','|':'i'})[c]).replace(/[^a-z ]/g,'');
+function chatBlocked(t){const n=chatNorm(t),flat=n.replace(/ /g,'');return BADW2.some(w=>new RegExp('\\b'+w+'s?\\b').test(n)||(w.length>=6&&flat.includes(w)))}
+function chatMask(t){let out=String(t);for(const w of BADW1)out=out.replace(new RegExp('\\b'+w+'\\b','gi'),'*'.repeat(w.length));return out}
+const isMuted=id=>MUTE.has(id)||(TMUTE[id]&&TMUTE[id]>Date.now())||BLOCK.has(id);
+async function loadBlocks(){const db=dbx();if(!db||!NET.uid)return;try{const r=await db.from('chat_blocks').select('blocked').eq('blocker',NET.uid);if(!r.error&&r.data){BLOCK.clear();for(const x of r.data)BLOCK.add(x.blocked)}}catch(e){}}
+function closeMenu(){if(MENU){MENU.remove();MENU=null}}
+function chatMenu(btn,kind,id,msg){closeMenu();const m=document.createElement('div');m.className='mp-menu';m.setAttribute('role','menu');
+ const name=(CHAT.find(x=>x.player===id)||{}).company||'this player';
+ m.innerHTML=kind==='report'?`<b>Report this message</b>${[['abuse','Bullying or harassment'],['hate','Hate speech'],['sexual','Sexual content'],['threat','Threats or self-harm'],['spam','Spam or scams'],['other','Something else']].map(([k,n])=>`<button role="menuitem" data-mm="report" data-r="${k}">${n}</button>`).join('')}<small>Three reports from different players hide a message for everyone. Repeat offenders are muted for a day.</small>`
+  :`<b>${esc(name)}</b>${MUTE.has(id)||TMUTE[id]>Date.now()?`<button role="menuitem" data-mm="unmute">Unmute</button>`:`<button role="menuitem" data-mm="mute1">Mute for 1 hour</button><button role="menuitem" data-mm="mute24">Mute for 24 hours</button><button role="menuitem" data-mm="mute">Mute until I unmute</button>`}${BLOCK.has(id)?`<button role="menuitem" data-mm="unblock">Unblock</button>`:`<button role="menuitem" data-mm="block" class="bad">Block</button>`}<small>Muting is on this device. Blocking hides them on every device you sign in on.</small>`;
+ m.dataset.id=id||'';m.dataset.msg=msg||'';const r=btn.getBoundingClientRect(),P=document.getElementById('mppanel').getBoundingClientRect();m.style.left=Math.max(8,Math.min(P.width-230,r.left-P.left))+'px';m.style.top=(r.bottom-P.top+4)+'px';document.getElementById('mppanel').appendChild(m);MENU=m;const f=m.querySelector('button');f&&f.focus()}
+document.addEventListener('click',async e=>{if(!MENU)return;const t=e.target.closest('[data-mm]');if(!t){if(!e.target.closest('.mp-menu,[data-mp="who"],[data-mp="rep"]'))closeMenu();return}
+ const a=t.dataset.mm,id=MENU.dataset.id,msg=+MENU.dataset.msg,db=dbx();closeMenu();
+ if(a==='mute1'||a==='mute24'){TMUTE[id]=Date.now()+(a==='mute1'?3600e3:86400e3);toast(a==='mute1'?'Muted for an hour':'Muted for 24 hours','')}
+ else if(a==='mute'){MUTE.add(id);toast('Muted. You will not see their messages.','')}
+ else if(a==='unmute'){MUTE.delete(id);delete TMUTE[id];toast('Unmuted','')}
+ else if(a==='block'){BLOCK.add(id);if(db){const r=await db.from('chat_blocks').insert({blocker:NET.uid,blocked:id});if(r.error&&!/duplicate/i.test(r.error.message))toast('Blocked on this device (the server is not set up for blocks yet)','warn');else toast('Blocked. Their messages are hidden everywhere you sign in.','')}}
+ else if(a==='unblock'){BLOCK.delete(id);if(db)try{await db.from('chat_blocks').delete().eq('blocker',NET.uid).eq('blocked',id)}catch(e){}toast('Unblocked','')}
+ else if(a==='report'&&msg){if(db){const r=await db.rpc('report_message',{p_id:msg,p_reason:t.dataset.r});if(r.error)toast(/yourself/i.test(r.error.message)?'You can\'t report your own message':'Report could not be sent: '+r.error.message,'warn');else{toast('Thanks. The report was sent.','good');REPORTED.add(msg)}}}
+ saveMute();draw()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&MENU)closeMenu()});
+const REPORTED=new Set();
 function addFeed(t,lat,lon){FEED.unshift({t,lat,lon,at:new Date().toISOString()});if(FEED.length>60)FEED.pop();if(OPEN&&TAB==='feed')draw();
  const n=performance.now();if(G&&ui.started&&n-(addFeed.last||0)>20000){addFeed.last=n;try{news(t,'city')}catch(e){}}}
 function dock(){if(document.getElementById('mppanel'))return;const el=document.createElement('div');el.id='mppanel';el.hidden=true;el.setAttribute('role','dialog');el.setAttribute('aria-label','World');
@@ -7583,7 +7636,7 @@ function addBtn(){const icons=document.querySelector('#bar .hb-icons');if(!icons
 function draw(){const body=document.getElementById('mpbody');if(!body)return;document.querySelectorAll('#mppanel .mp-tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===TAB));
  const f=document.getElementById('mpform');if(f)f.hidden=TAB!=='chat';const sub=document.getElementById('mp-sub');if(sub)sub.textContent=`${NET.online||1} online · ${dayName(G?G.day:worldDay())}`;
  if(!dbx()){body.innerHTML='<div class="mp-empty">Sign in to chat and see other players.</div>';return}
- if(TAB==='chat'){const rows=CHAT.filter(m=>!MUTE.has(m.player)).slice(-80);body.innerHTML=rows.length?rows.map(m=>`<div class="mp-msg ${m.player===NET.uid?'me':''}"><button class="mp-n" data-mp="who" data-id="${esc(m.player)}" title="${m.player===NET.uid?'You':'Mute or unmute'}">${esc(m.company||'Player')}</button><span>${esc(m.body)}</span><small>${ago(m.at)}</small></div>`).join(''):'<div class="mp-empty">No messages yet. Say hello.</div>';body.scrollTop=body.scrollHeight}
+ if(TAB==='chat'){const rows=CHAT.filter(m=>!isMuted(m.player)&&!(m.hidden&&m.player!==NET.uid)).slice(-80);body.innerHTML=rows.length?rows.map(m=>{const me=m.player===NET.uid;return`<div class="mp-msg ${me?'me':''} ${m.hidden?'hid':''}"><button class="mp-n" data-mp="who" data-id="${esc(m.player)}" ${me?'disabled':''} aria-haspopup="menu" title="${me?'You':'Mute, block'}">${esc(m.company||'Player')}</button><span>${esc(chatMask(m.body))}${m.hidden?' <em>(hidden after reports)</em>':''}</span><small>${ago(m.at)}${!me&&m.id&&!REPORTED.has(m.id)?` <button class="mp-rep" data-mp="rep" data-id="${esc(m.player)}" data-msg="${m.id}" aria-label="Report message" title="Report">⚑</button>`:''}</small></div>`}).join(''):'<div class="mp-empty">No messages yet. Say hello. Be kind: abusive messages are filtered, and players can report and block.</div>';body.scrollTop=body.scrollHeight}
  else if(TAB==='feed'){body.innerHTML=FEED.length?FEED.map(e=>`<div class="mp-ev"><span>${esc(e.t)}</span><small>${ago(e.at)}</small>${e.lat!=null?`<button class="ghost sm" data-act="flyll" data-lat="${e.lat}" data-lon="${e.lon}">Go</button>`:''}</div>`).join(''):'<div class="mp-empty">When players open businesses, buy land or make big trades, it shows up here.</div>'}
  else{let st={};try{st=NET.ch?NET.ch.presenceState():{}}catch(e){}const rows=Object.entries(st).map(([id,a])=>Object.assign({id},a&&a[0]||{}));
   body.innerHTML=rows.length?rows.map(r=>{const p=NET.players.get(r.id)||{},rk=rankOf(r.id);return`<div class="mp-ev"><i class="ldot"></i><span><b>${esc(r.company||p.company||'Player')}</b>${r.id===NET.uid?' (you)':''}<br><small>${rk?'#'+rk+' · ':''}${p.net_worth?fmt(p.net_worth):''}${r.place?' · '+esc(r.place):''}</small></span>${r.lat!=null&&r.id!==NET.uid?`<button class="ghost sm" data-act="flyll" data-lat="${r.lat}" data-lon="${r.lon}">Visit</button>`:''}</div>`}).join(''):'<div class="mp-empty">Just you right now.</div>'}}
@@ -7591,16 +7644,20 @@ function setBadge(){const b=document.getElementById('mpbadge');if(!b)return;b.hi
 function toggle(v){dock();OPEN=v==null?!OPEN:v;document.getElementById('mppanel').hidden=!OPEN;const b=document.getElementById('mpbtn');if(b)b.classList.toggle('on',OPEN);if(OPEN){if(TAB==='chat')UNREAD=0;setBadge();draw();if(TAB==='chat')setTimeout(()=>{const i=document.getElementById('mpin');i&&i.focus()},30)}}
 document.addEventListener('click',e=>{const t=e.target.closest('[data-mp]');if(!t)return;e.preventDefault();const a=t.dataset.mp;
  if(a==='toggle')toggle();else if(a==='close')toggle(false);else if(a==='tab'){TAB=t.dataset.t;if(TAB==='chat'){UNREAD=0;setBadge()}draw()}
- else if(a==='who'){const id=t.dataset.id;if(!id||id===NET.uid)return;if(MUTE.has(id)){MUTE.delete(id);toast('Unmuted','')}else{MUTE.add(id);toast('Muted. You will not see their messages.','')}saveMute();draw()}});
+ else if(a==='who'){const id=t.dataset.id;if(!id||id===NET.uid)return;chatMenu(t,'who',id)}
+ else if(a==='rep'){chatMenu(t,'report',t.dataset.id,t.dataset.msg)}});
 document.addEventListener('keydown',e=>{if(e.target&&e.target.id==='mpin')e.stopPropagation()},true);
 document.addEventListener('submit',async e=>{if(e.target.id!=='mpform')return;e.preventDefault();const i=document.getElementById('mpin'),db=dbx();if(!i||!db)return;
  const body=i.value.replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,200);if(!body)return;
- const n=Date.now();if(n-LASTSEND<2500){toast('Slow down a little','warn');return}LASTSEND=n;i.value='';
- const row={player:NET.uid,company:(G&&G.company||'Player').slice(0,40),body};const r=await db.from('chat_messages').insert(row);if(r.error){toast('Chat is not set up yet on the server','warn');i.value=body}});
+ const n=Date.now();if(n-LASTSEND<2500){toast('Slow down a little','warn');return}
+ if(chatBlocked(body)){toast('That message breaks the chat rules and was not sent','warn');return}
+ LASTSEND=n;i.value='';
+ const row={player:NET.uid,company:(G&&G.company||'Player').slice(0,40),body:chatMask(body)};const r=await db.from('chat_messages').insert(row);
+ if(r.error){const m=r.error.message||'';i.value=body;toast(/muted until/i.test(m)?'You are muted after reports from other players ('+m.replace(/^.*muted until/i,'until')+')':/message blocked/i.test(m)?'That message breaks the chat rules and was not sent':/slow down/i.test(m)?'Slow down a little':/no repeats/i.test(m)?'You just said that':'Chat is not set up yet on the server','warn')}});
 
 // ---------- 5. realtime: chat, activity, presence with your HQ ----------
 let started=false;
-async function start(){const db=dbx();if(!db||started)return;started=true;
+async function start(){const db=dbx();if(!db||started)return;started=true;loadBlocks();
  try{const r=await db.from('chat_messages').select('*').order('at',{ascending:false}).limit(60);if(!r.error&&r.data){CHAT.push(...r.data.reverse())}}catch(e){}
  db.channel('mp').on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},e=>{const m=e.new;CHAT.push(m);if(CHAT.length>200)CHAT.shift();if(MUTE.has(m.player))return;if(!(OPEN&&TAB==='chat')&&m.player!==NET.uid){UNREAD++;setBadge()}if(OPEN)draw()})
   .on('postgres_changes',{event:'INSERT',schema:'public',table:'claims'},e=>{const c=e.new;if(!c||c.owner===NET.uid)return;const who=netCompany(c.owner),pl=placeOf(c.lat,c.lon);addFeed(c.biz_type?`${who} opened ${c.name?c.name+', ':''}a ${BN(c.biz_type)}${pl?' in '+pl:''}`:c.kind==='landmark'?`${who} bought a landmark${pl?' in '+pl:''}`:`${who} bought ${c.kind==='plot'?'land':'a building'}${pl?' in '+pl:''}`,c.lat,c.lon)})
@@ -7634,7 +7691,10 @@ html body #bar .hb-right .hb-search{flex:0 1 230px!important;width:auto!importan
 .mp-tabs{display:flex;gap:4px;padding:0 10px 8px;border-bottom:1px solid rgba(255,255,255,.08)}.mp-tabs button{all:unset;cursor:pointer;padding:6px 10px;border-radius:7px;color:#9a9ca4;font-weight:600}.mp-tabs button.on{background:rgba(255,222,0,.1);color:#ffde00}
 #mpbody{flex:1;overflow:auto;padding:8px 12px;display:flex;flex-direction:column;gap:6px;min-height:0}
 .mp-msg{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;line-height:1.35}.mp-msg span{word-break:break-word;min-width:0}.mp-msg small,.mp-ev small{color:#7d8088;font-size:11px}
-.mp-n{all:unset;cursor:pointer;font-weight:700;color:#ffde00;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mp-msg.me .mp-n{color:#8fd0ff}.mp-n:hover{text-decoration:underline}
+.mp-n{all:unset;cursor:pointer;font-weight:700;color:#ffde00;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mp-msg.me .mp-n{color:#8fd0ff}
+.mp-msg.hid span{opacity:.55}.mp-rep{background:none!important;border:0!important;color:#7d8088!important;padding:0 2px!important;cursor:pointer;opacity:0;font-size:11px}.mp-msg:hover .mp-rep,.mp-rep:focus{opacity:1}
+.mp-menu{position:absolute;z-index:5;width:220px;display:flex;flex-direction:column;gap:2px;padding:8px;border-radius:8px;background:#1f2124;border:1px solid #3a3d42;box-shadow:0 10px 26px rgba(0,0,0,.5)}.mp-menu b{font-size:12.5px;margin:0 4px 4px}.mp-menu button{text-align:left;background:none!important;border:0!important;color:#e7e8ea!important;padding:7px 8px!important;border-radius:5px!important;font-size:12.5px}.mp-menu button:hover,.mp-menu button:focus{background:rgba(255,255,255,.07)!important}.mp-menu button.bad{color:#ff8a7a!important}.mp-menu small{color:#8b8f97;font-size:10.5px;margin:4px 4px 0;line-height:1.35}
+#mppanel{position:fixed}.mp-n:hover{text-decoration:underline}
 .mp-ev{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07)}.mp-ev span{flex:1;min-width:0}
 .mp-empty{margin:auto;text-align:center;color:#8d9098;padding:20px}
 #mpform{display:flex;gap:8px;padding:10px 12px 12px;border-top:1px solid rgba(255,255,255,.08)}#mpform[hidden]{display:none}
@@ -8287,7 +8347,7 @@ let lastPush=0;async function pushProfile(force){const db=dbx();if(!db||!G||!ui.
  if(s.league.week!==wk){// a new week: was I on the podium last week?
   if(s.league.week&&s.league.rank>0&&s.league.rank<=3){s.flags.league=(s.flags.league||0)+1;toast(`🏆 You finished #${s.league.rank} in last week's league!`,'good')}s.league={week:wk,base:nw,rank:0};save()}
  const site=G.sites.find(x=>x.status==='open')||G.sites[0];
- try{await db.from('players').update({badges:Object.keys(s.ach),week_id:wk,week_nw:s.league.base,hq_lat:site?+site.lat:null,hq_lon:site?+site.lon:null}).eq('id',me())}catch(e){}
+ await rpcOr(db,'submit_league',{p_badges:Object.keys(s.ach),p_hq_lat:site?+site.lat:null,p_hq_lon:site?+site.lon:null},async()=>{try{await db.from('players').update({badges:Object.keys(s.ach),week_id:wk,week_nw:s.league.base,hq_lat:site?+site.lat:null,hq_lon:site?+site.lon:null}).eq('id',me())}catch(e){}});
  try{const L=league(),k=L.findIndex(p=>p.id===me());if(k>=0)s.league.rank=k+1}catch(e){}}
 setInterval(()=>pushProfile(false),5000);
 
@@ -8397,13 +8457,14 @@ async function load(){const db=dbx();if(!db)return;
  try{const r=await db.rpc('account_summary');if(!r.error&&r.data){const d=Array.isArray(r.data)?r.data[0]:r.data;Object.assign(ACC,{no:d.player_no,since:d.member_since,refMonth:d.ref_month||0,refTotal:d.ref_total||0})}}catch(e){}
  try{const r=await db.from('players').select('loyalty,avatar,trophies').eq('id',uid()).maybeSingle();if(!r.error&&r.data){ACC.loyalty=+r.data.loyalty||0;ACC.avatar=r.data.avatar||'white';ACC.trophies=Array.isArray(r.data.trophies)?r.data.trophies:[]}}catch(e){}
  try{const r=await db.rpc('referral_race');if(!r.error&&r.data){ACC.race=r.data;ACC.raceN=r.data.length}}catch(e){}
- ACC.loaded=true;checkMonth();topBtn()}
+ let srv=false;try{const r=await db.rpc('claim_referral_trophies');if(!r.error&&Array.isArray(r.data)){srv=true;const had=new Set(ACC.trophies.map(x=>x.m));for(const t of r.data)if(!had.has(t.m)&&ACC.loaded)toast(`${tier(t.tier)[2]} You won a ${tier(t.tier)[1]} trophy in the ${monthLabel(t.m)} referral race`,'good');ACC.trophies=r.data}}catch(e){}
+ ACC.loaded=true;if(!srv)checkMonth();topBtn()}
 let pend=0,lastAct=Date.now(),lastPush=0;
 ['pointerdown','keydown','wheel'].forEach(ev=>addEventListener(ev,()=>{lastAct=Date.now()},{passive:true}));
 // loyalty: one point per minute of active play (tab visible, input in the last two minutes), boosted by trophies
 setInterval(()=>{if(!dbx()||!G||!ui.started||document.hidden||Date.now()-lastAct>120000)return;const n=1+boost();ACC.loyalty+=n;ACC.today+=n;pend+=n;push()},60000);
 async function push(force){const db=dbx();if(!db)return;const t=Date.now();if(!force&&t-lastPush<120000)return;lastPush=t;
- try{await db.from('players').update({loyalty:Math.round(ACC.loyalty),avatar:ACC.avatar,trophies:ACC.trophies}).eq('id',uid());pend=0}catch(e){}}
+ const p0=pend;const v=await rpcOr(db,'add_loyalty',{p_points:Math.round(p0)},async()=>{try{await db.from('players').update({loyalty:Math.round(ACC.loyalty),avatar:ACC.avatar,trophies:ACC.trophies}).eq('id',uid())}catch(e){}});pend=Math.max(0,pend-p0);if(v!=null&&isFinite(+v))ACC.loyalty=Math.max(+v,0)+pend}
 function checkMonth(){try{const k='ancap.refm.'+uid(),prev=JSON.parse(localStorage.getItem(k)||'null'),m=monthId();
   if(prev&&prev.m!==m&&prev.rank>0&&prev.n>0){const N=Math.max(1,prev.size||1),r=prev.rank,t=r<=10?'diamond':r<=Math.ceil(N*.01)?'gold':r<=Math.ceil(N*.1)?'silver':r<=Math.ceil(N*.25)?'bronze':null;
    if(t&&!ACC.trophies.some(x=>x.m===prev.m)){ACC.trophies.push({m:prev.m,tier:t});toast(`${tier(t)[2]} You won a ${tier(t)[1]} trophy in the ${monthLabel(prev.m)} referral race`,'good');push(true)}}
@@ -8413,6 +8474,8 @@ setInterval(()=>{if(dbx())load()},300000);
 addEventListener('beforeunload',()=>{if(pend)push(true)});
 // ---------- patch notes ----------
 const NOTES=[
+ ['2026-10-18','Fair play, safety & comfort',['Leaderboard numbers are now checked by the server, so nobody can type in a fortune','Chat: report a message, mute or block a player, and a filter for slurs and swearing','Saves keep a backup copy you can restore from the Menu','New: Comfort & access settings (volume, key bindings, reduced motion, colour-blind-safe colours, larger text)','Short tips the first time you open the exchange, contracts, the corporation or ventures','Bankrupt? Restructure the debt or start again with a legacy bonus','Better layout on phones']],
+ ['2026-10-17','Street food',['Start with a food cart: cook in a timing mini-game, set your price, upgrade it and hire a cook','New round-button dock and Layers menu']],
  ['2026-10-15','Accounts & rewards',['Account portal with player number, member since and days as player','Loyalty points from active play unlock avatar skins','Invite links, a monthly referral race and trophies that boost loyalty','Download your data or delete your account at any time']],
  ['2026-10-15','Markets & leagues',['Stock market for every player company, with dividends','Player profiles, 17 achievements and visible badges','Weekly growth league and daily login rewards','Sign-in is now required: guest play has been removed']],
  ['2026-10-14','Front page',['New glass title screen over real in-game New York footage','Live world ticker with real numbers']],
@@ -8447,7 +8510,7 @@ function mAccount(){const name=G&&G.company||'Your company',em=AUTH.user&&AUTH.u
 function copy(text,msg){try{navigator.clipboard.writeText(text).then(()=>toast(msg,'good'),()=>toast(text,''))}catch(e){toast(text,'')}}
 document.addEventListener('click',async e=>{const t=e.target.closest('[data-ac]');if(!t||t.disabled)return;const a=t.dataset.ac;
  if(a==='tab'){TAB=t.dataset.t;renderModal()}
- else if(a==='skin'){ACC.avatar=t.dataset.id;push(true);renderModal();topBtn()}
+ else if(a==='skin'){const prev=ACC.avatar;ACC.avatar=t.dataset.id;renderModal();topBtn();const db=dbx();if(db){try{const r=await db.rpc('set_avatar',{p_avatar:ACC.avatar});if(r.error){if(/not unlocked/i.test(r.error.message)){ACC.avatar=prev;renderModal();topBtn();toast('That skin is not unlocked yet','warn')}else if(r.error.code==='PGRST202'||r.error.code==='42883')push(true)}}catch(e){}}}
  else if(a==='copyid')copy(uid()||'','Player ID copied');
  else if(a==='copylink')copy($('#aclink').value,'Invite link copied');
  else if(a==='download'){const data={exported_at:new Date().toISOString(),account:{id:uid(),email:AUTH.user&&AUTH.user.email,username:dispName(),player_no:ACC.no,member_since:ACC.since,loyalty:ACC.loyalty,avatar:ACC.avatar,trophies:ACC.trophies,referrals:{month:ACC.refMonth,lifetime:ACC.refTotal}},save:G};
@@ -8512,7 +8575,7 @@ function setPos(el,x,y){
 function resetPos(el){if(isModal(el)){el.dataset.dx=0;el.dataset.dy=0;el.style.removeProperty('transform');return}for(const k of['box-sizing','left','top','right','bottom','height','width','margin','transform'])el.style.removeProperty(k)}
 // move el somewhere it overlaps the other open panels as little as possible, as close to where it wanted to be
 function place(el,sel){
- if(moved.has(el)||!isVis(el))return;
+ if(moved.has(el)||!isVis(el))return;if(innerWidth<=640&&el.classList.contains('cr-win'))return;   // phone sheets keep their CSS position
  resetPos(el);const r=el.getBoundingClientRect(),others=els().filter(([s,o])=>o!==el&&isVis(o)).map(([,o])=>o.getBoundingClientRect());
  if(!others.some(o=>ov(r,o)>40))return;
  const W=innerWidth,H=innerHeight,top=TOP(),w=r.width,h=Math.min(r.height,H-top-8);let best=null;
@@ -9600,6 +9663,31 @@ html body .vt-tabs button.on,html body .cr-tabs button.on{color:#fff!important;b
 html body .vt-tabs{border-bottom:1px solid var(--cr-line);gap:10px!important}
 html body .btn:not(.ghost):not([disabled]){background:var(--cr-green)!important;border-color:var(--cr-green)!important;color:#111111!important}
 html body .btn:not(.ghost):not([disabled]):hover{background:#fff06a!important;filter:none!important}
+
+/* ---------------- phones ---------------- */
+@media (max-width:640px){
+ html body #bar{gap:8px!important;padding:0 8px!important;padding-top:env(safe-area-inset-top,0px)!important}
+ html body #bar .hb-left{gap:8px!important;flex:0 0 auto!important;min-width:0}
+ html body #bar .brand{font-size:0!important;gap:0!important}
+ html body #bar #hbrank,html body #bar #hblvl,html body #bar #crumb,html body #bar #livebox,html body #bar .hb-search,html body #bar #spark{display:none!important}
+ html body #bar .hb-mid{flex:1 1 auto!important;min-width:0!important;justify-content:center}
+ html body #bar .tcenter{min-width:0}html body #bar .clockbox b{font-size:10.5px!important;white-space:nowrap}
+ html body #bar .hb-right{flex:0 1 auto!important;min-width:0!important;overflow:hidden}
+ html body #bar .hb-icons{overflow-x:auto!important;max-width:42vw;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+ html body #bar .hb-icons::-webkit-scrollbar{display:none}
+ html body #bar .hb-icons .hb-ic{width:34px!important;height:34px!important;flex:0 0 auto}
+ html body #cash{font-size:16px!important}
+ #crfps{display:none!important}
+ #crdock{gap:10px;bottom:46px}#crdock button{width:46px!important;height:46px!important}#crdock button.main{width:56px!important;height:56px!important}
+ #crlayers{top:auto;bottom:332px;right:8px;padding:0;width:40px;height:40px;justify-content:center;font-size:0;letter-spacing:0;border-radius:8px}#crlayers svg{width:18px;height:18px}
+ html body #legend{width:180px!important;max-width:180px!important;top:auto!important;bottom:380px!important;right:8px!important}
+ /* the tutorial card sits under the top bar so it never covers the dock */
+ html body #tut .tut-card{top:calc(var(--bar-h,48px) + 8px)!important;bottom:auto!important;left:10px!important;right:10px!important;width:auto!important;max-width:none!important}
+ html body #tut .tut-arrow{display:none!important}
+ html body #care-intro .ci-card{left:10px!important;right:10px!important;width:auto!important;top:auto!important;bottom:110px!important}
+ html body #mapctl{bottom:116px!important;right:8px!important}
+ html body #ticker{height:30px!important;font-size:10.5px!important}
+}
 `;document.head.appendChild(css);
 // the dock: round buttons that work the real controls, wherever those live
 const DOCK=[{id:'shopsbtn',tip:'My businesses',svg:'<path d="M4 4h16l1 5a3 3 0 0 1-2 2.8V20H5v-8.2A3 3 0 0 1 3 9zm3 9v5h4v-5zm6 0v5h4v-5z"/>'},
@@ -9614,7 +9702,7 @@ const lb=document.createElement('button');lb.id='crlayers';lb.hidden=true;lb.inn
 lb.addEventListener('click',()=>document.body.classList.toggle('cr-layers'));document.body.appendChild(lb);
 const fps=document.createElement('div');fps.id='crfps';fps.hidden=true;document.body.appendChild(fps);
 let fr=0,ft=performance.now();(function f(now){fr++;if(now-ft>1000){fps.textContent=Math.round(fr*1000/(now-ft))+' fps';fr=0;ft=now}requestAnimationFrame(f)})(ft);
-setInterval(()=>{const on=!!(typeof G!=='undefined'&&G&&ui.started);lb.hidden=!(on&&ui.street);fps.hidden=!on;dock.hidden=!on;for(const b of dock.querySelectorAll('[data-for]')){const t=document.getElementById(b.dataset.for);b.style.display=t?'':'none';b.dataset.n=t&&t.dataset.n?t.dataset.n:''}
+setInterval(()=>{const on=!!(typeof G!=='undefined'&&G&&ui.started);lb.hidden=!(on&&ui.street);fps.hidden=!on;dock.hidden=!on||!!ui.modal||(innerWidth<=640&&[...document.querySelectorAll('#cartp,#crlist,#vtp,#elp')].some(x=>!x.hidden))||!!(document.getElementById('crgame')&&!document.getElementById('crgame').hidden)||!!(document.getElementById('crpick')&&!document.getElementById('crpick').hidden);for(const b of dock.querySelectorAll('[data-for]')){const t=document.getElementById(b.dataset.for);b.style.display=t?'':'none';b.dataset.n=t&&t.dataset.n?t.dataset.n:''}
  const bar=document.getElementById('bar');if(bar)document.documentElement.style.setProperty('--bar-h',bar.offsetHeight+'px');
  for(const b of document.querySelectorAll('#bar .hb-icons .hb-ic'))if(!b.dataset.tip)b.dataset.tip=b.getAttribute('aria-label')||b.title||'';
  for(const b of document.querySelectorAll('#bar .hb-icons .hb-ic[title]'))b.removeAttribute('title')},800);
@@ -9844,6 +9932,9 @@ const css=document.createElement('style');css.textContent=`
 .cr-pc{text-align:left;padding:11px 12px!important;background:#26282c!important;border:1px solid #33363b!important;border-radius:7px!important;color:#e7e8ea!important;cursor:pointer}.cr-pc.on{border-color:#e5534b!important;box-shadow:0 0 0 1px #e5534b}.cr-pc b{font-size:14px;margin-left:6px}.cr-pc small{display:block;color:#8b8f97;font-size:11.5px;margin-top:5px;line-height:1.35}
 .cr-go{width:100%;margin-top:14px;padding:13px!important;background:#f1f1ef!important;color:#111!important;border:0!important;border-radius:7px!important;font:700 15px/1 var(--f-body,system-ui)!important;cursor:pointer}.cr-go[disabled]{opacity:.5}
 body.cr-placing #gl{cursor:crosshair!important}
+@media (max-width:640px){.cr-win{left:8px!important;right:8px!important;width:auto!important;top:auto!important;bottom:104px;max-height:58vh;border-radius:12px 12px 9px 9px!important}
+ .cr-upg{grid-template-columns:repeat(2,1fr)}.cr-rings .cr-ring svg{width:72px;height:72px}.cr-ring b{top:22px;font-size:16px}.cr-ring small{top:42px}.cr-big{font-size:24px}
+ .cr-acts{grid-template-columns:1fr 1fr 1fr;gap:6px}.cr-acts small{display:none}.cr-gm,.cr-pk{padding:16px}.cr-pk h2{font-size:20px}}
 `;document.head.appendChild(css);
 // ---------------------------------------------------------------- the first-run tutorial starts you with a food cart
 const GOAL=25000;
@@ -9878,6 +9969,178 @@ if(typeof tutTick==='function'){const _tt=tutTick;tutTick=function(dt,force){
  tutDraw(el,{title:st.t,text:st.p(),target:st.hide?null:st.el(),label:`Food cart · ${G.tut.step+1} of ${TUTC.length}`,n:G.tut.step+1,pc:(G.tut.step+1)/TUTC.length,next:canNext,wait:!!st.done&&!st.hide,modal:!!st.modal,btn:st.hide?['crtuthide','Hide until then']:null})}}
 document.addEventListener('click',e=>{const t=e.target.closest('[data-act="crtuthide"]');if(!t||!G||!G.tut)return;e.stopPropagation();G.tut.hidden=true;$c('#tut').hidden=true;save();try{toast(`The tutorial comes back when you reach ${k0(GOAL)}`,'')}catch(_){}},true);
 window.CARTS={ST,C,tick,openCart,openPicker,startPlace,pavementAt,grill,gStop,CT,LIVEC,sync3d};
+})();
+
+</script>
+<script>
+// ANCAP LIFE · CARE LAYER
+// Settings for comfort and access (volume, key bindings, reduced motion, colour-blind-safe colours, larger text),
+// accessibility fixes, save backup restore, short guided intros for the bigger systems, and a way back from bankruptcy.
+(function(){
+const $q=s=>document.querySelector(s);
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const PREF=Object.assign({vol:1,motion:null,cb:false,text:1,intros:true},LS.get('ancap.prefs',{}));
+const savePref=()=>LS.set('ancap.prefs',PREF);
+const sysReduce=()=>!!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+const reduced=()=>PREF.motion==null?sysReduce():!!PREF.motion;
+
+// ------------------------------------------------------------------ apply settings
+const CBPAL={lease:'#f0e442',sale:'#56b4e9',rooms:'#cc79a7',plot:'#009e73',rival:'#d55e00',other:'#0072b2'};
+const STDPAL={lease:'#ffde00',sale:'#2fd3e6',rooms:'#ff7ac8',plot:'#4fd36a',rival:'#ff4b3e',other:'#c86bff'};
+function applyPrefs(){
+ window.SNDVOL=PREF.vol;if(window.SNDMASTER)try{SNDMASTER.gain.value=.62*PREF.vol}catch(e){}
+ document.body.classList.toggle('reduce-motion',reduced());
+ document.body.classList.toggle('cb-safe',!!PREF.cb);
+ document.body.classList.remove('text-l','text-xl');if(PREF.text>=1.3)document.body.classList.add('text-xl');else if(PREF.text>1)document.body.classList.add('text-l');
+ const pal=PREF.cb?CBPAL:STDPAL;window.LEGC=pal;
+ try{if(typeof GLOWC!=='undefined'){for(const k of['lease','sale','rival','other'])if(GLOWC[k])GLOWC[k].set(pal[k]);if(GLOWC.rooms)GLOWC.rooms.set(pal.rooms)}if(typeof recolorAll==='function'&&typeof G!=='undefined'&&G)recolorAll();const lg=$q('#legend');if(lg)lg._h=''}catch(e){}
+}
+applyPrefs();
+// a camera flight with reduced motion becomes an instant cut
+if(typeof flyTo==='function'){const _fly=flyTo;flyTo=function(){const r=_fly.apply(this,arguments);try{if(reduced()&&FLIGHT){FLIGHT.dur=.05}}catch(e){}return r}}
+
+// ------------------------------------------------------------------ settings section in the Menu
+const ACTN={rotL:'Turn left',rotR:'Turn right',zoomIn:'Zoom in',zoomOut:'Zoom out',rotate:'Rotate item while placing',lvUp:'Floor up (inside)',lvDown:'Floor down (inside)',back:'Back / close'};
+const EXTRA={layers:['Show map layers','l'],carts:['Food carts','c'],ventures:['Ventures','v'],chat:['World chat','t']};
+const keyName=k=>({' ':'Space','Escape':'Esc','PageUp':'Page Up','PageDown':'Page Down','ArrowUp':'↑','ArrowDown':'↓','ArrowLeft':'←','ArrowRight':'→'})[k]||(k&&k.length===1?k.toUpperCase():k||'—');
+let XKEYS=Object.assign({},...Object.entries(EXTRA).map(([a,[,k]])=>({[a]:k})),LS.get('ancap.xkeys',{}));
+function settingsHTML(){
+ const kb=Object.keys(ACTN).map(a=>`<div class="cs-key"><span>${ACTN[a]}</span><button class="ghost sm" data-cs="bind" data-a="${a}" aria-label="Change key for ${ACTN[a]}, currently ${keyName(KEYS[a])}">${keyName(KEYS[a])}</button></div>`).join('')+
+  Object.entries(EXTRA).map(([a,[n]])=>`<div class="cs-key"><span>${n}</span><button class="ghost sm" data-cs="bindx" data-a="${a}" aria-label="Change key for ${n}, currently ${keyName(XKEYS[a])}">${keyName(XKEYS[a])}</button></div>`).join('');
+ return`<div class="cs-sec" id="care-settings"><h3 class="eyebrow">Comfort &amp; access</h3>
+ <label class="cs-row" for="cs-vol"><span>Sound volume</span><input id="cs-vol" type="range" min="0" max="1" step="0.05" value="${PREF.vol}" data-cs="vol" aria-valuetext="${Math.round(PREF.vol*100)}%"><b>${Math.round(PREF.vol*100)}%</b></label>
+ <label class="tog"><input type="checkbox" data-cs="motion" ${reduced()?'checked':''}> Reduce motion (no camera flights, fewer animations)</label>
+ <label class="tog"><input type="checkbox" data-cs="cb" ${PREF.cb?'checked':''}> Colour-blind-safe map colours</label>
+ <label class="cs-row" for="cs-text"><span>Text size</span><select id="cs-text" data-cs="text">${[[1,'Normal'],[1.15,'Large'],[1.3,'Extra large']].map(([v,n])=>`<option value="${v}" ${PREF.text==v?'selected':''}>${n}</option>`).join('')}</select></label>
+ <label class="tog"><input type="checkbox" data-cs="intros" ${PREF.intros?'checked':''}> Show tips the first time I open a new feature</label>
+ <details class="cs-keys"><summary>Key bindings</summary><div>${kb}</div><button class="ghost sm" data-cs="keyreset">Reset keys to defaults</button></details>
+ <h3 class="eyebrow">Your save</h3><p class="fine">Your game is saved every few seconds, and a backup copy of an earlier save is kept (on the server and on this device). If something went wrong, you can roll back to it.</p>
+ <button class="ghost sm" data-cs="restore">Restore last backup</button></div>`}
+if(typeof mMenu==='function'){const _mm=mMenu;mMenu=function(){const h=_mm.apply(this,arguments);const i=h.lastIndexOf('</div><div class="mfoot">');return i>0?h.slice(0,i)+settingsHTML()+h.slice(i):h.replace(/<\/div>\s*$/,settingsHTML()+'</div>')}}
+let BIND=null;
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset.cs==='vol'){PREF.vol=+t.value;savePref();applyPrefs();const b=t.parentElement.querySelector('b');if(b)b.textContent=Math.round(PREF.vol*100)+'%';t.setAttribute('aria-valuetext',Math.round(PREF.vol*100)+'%')}});
+document.addEventListener('change',e=>{const t=e.target,k=t.dataset.cs;if(!k)return;
+ if(k==='motion'){PREF.motion=t.checked}else if(k==='cb'){PREF.cb=t.checked}else if(k==='text'){PREF.text=+t.value}else if(k==='intros'){PREF.intros=t.checked;if(t.checked)LS.set('ancap.introsSeen',{})}else return;savePref();applyPrefs()});
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-cs]');if(!t)return;const k=t.dataset.cs;
+ if(k==='bind'||k==='bindx'){BIND={a:t.dataset.a,x:k==='bindx',btn:t};window.KEYCAPTURE=true;t.textContent='Press a key…';t.classList.add('on')}
+ else if(k==='keyreset'){Object.assign(KEYS,KEYDEF);try{localStorage.removeItem('ancap.keys');localStorage.removeItem('ancap.xkeys')}catch(_){}XKEYS=Object.assign({},...Object.entries(EXTRA).map(([a,[,k2]])=>({[a]:k2})));renderModal()}
+ else if(k==='restore')restoreBackup()});
+document.addEventListener('keydown',e=>{if(!BIND)return;e.preventDefault();e.stopImmediatePropagation();const key=e.key;window.KEYCAPTURE=false;
+ if(key!=='Escape'||BIND.a==='back'){const used=[...Object.entries(KEYS),...Object.entries(XKEYS)].find(([a,v])=>v===key&&a!==BIND.a);if(used){try{toast(`${keyName(key)} is already used for ${ACTN[used[0]]||EXTRA[used[0]][0]}`,'warn')}catch(_){} }else if(BIND.x){XKEYS[BIND.a]=key;LS.set('ancap.xkeys',XKEYS)}else{KEYS[BIND.a]=key;const diff={};for(const a in KEYS)if(KEYS[a]!==KEYDEF[a])diff[a]=KEYS[a];LS.set('ancap.keys',diff)}}
+ BIND=null;try{renderModal()}catch(_){}},true);
+// extra shortcuts
+document.addEventListener('keydown',e=>{if(window.KEYCAPTURE||e.ctrlKey||e.metaKey||e.altKey)return;const tg=e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;if(typeof G==='undefined'||!G||!ui.started||ui.modal)return;
+ const hit=a=>{const k=XKEYS[a];return k&&(e.key===k||(k.length===1&&e.key.toLowerCase()===k.toLowerCase()))};
+ if(hit('layers')){const b=$q('#crlayers');b&&!b.hidden&&b.click()}else if(hit('carts')){const b=$q('#cartbtn');b&&b.click()}else if(hit('ventures')){const b=$q('#vtbtn');b&&b.click()}else if(hit('chat')){const b=$q('#mpbtn');b&&b.click();e.preventDefault()}});
+
+// ------------------------------------------------------------------ restore a backup
+async function restoreBackup(){
+ const db=typeof AUTH!=='undefined'&&AUTH.db;let info=null;
+ if(db&&AUTH.user){try{const r=await db.rpc('my_backup_info');if(!r.error&&r.data){info=Array.isArray(r.data)?r.data[0]:r.data}}catch(e){}}
+ const local=(()=>{try{const s=localStorage.getItem(SKEY+'.bak');return s?JSON.parse(s):null}catch(e){return null}})();
+ if(!(info&&info.backup_at)&&!local){toast('There is no backup yet. One is made about every 10 minutes while you play.','warn');return}
+ CONFIRM={info,local};renderConfirm()}
+let CONFIRM=null;const CF=document.createElement('div');CF.id='care-confirm';CF.hidden=true;CF.setAttribute('role','dialog');CF.setAttribute('aria-modal','true');CF.setAttribute('aria-label','Restore backup');document.body.appendChild(CF);
+function renderConfirm(){const{info,local}=CONFIRM,when=info&&info.backup_at?new Date(info.backup_at).toLocaleString():null;
+ CF.innerHTML=`<div class="care-box"><h2>Restore your backup?</h2><p>${when?`The server backup is from <b>${esc(when)}</b>${info.backup_day!=null?` (game day ${info.backup_day}; you are on day ${info.current_day})`:''}.`:`There is a backup on this device${local&&local.day?` from game day ${local.day}`:''}.`} Your current save becomes the backup, so you can switch back.</p>
+ <div class="care-acts"><button class="ghost" data-cf="no">Cancel</button><button class="btn" data-cf="yes">Restore it</button></div></div>`;CF.hidden=false;CF.querySelector('[data-cf="no"]').focus()}
+CF.addEventListener('click',async e=>{const t=e.target.closest('[data-cf]');if(!t){if(e.target===CF)CF.hidden=true;return}if(t.dataset.cf==='no'){CF.hidden=true;return}
+ const{info,local}=CONFIRM;let data=null;
+ if(info&&info.backup_at){try{const r=await AUTH.db.rpc('restore_my_backup');if(r.error)throw r.error;data=r.data}catch(err){toast('Could not restore from the server: '+(err.message||err),'warn')}}
+ if(!data&&local){data=local;try{const cur=localStorage.getItem(SKEY);localStorage.setItem(SKEY,JSON.stringify(local));if(cur)localStorage.setItem(SKEY+'.bak',cur)}catch(_){}}
+ if(!data){CF.hidden=true;return}
+ try{localStorage.setItem(SKEY,JSON.stringify(data))}catch(_){}toast('Backup restored. Reloading…','good');setTimeout(()=>location.reload(),700)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!CF.hidden){CF.hidden=true;e.stopPropagation()}},true);
+
+// ------------------------------------------------------------------ accessibility: names for icon buttons, landmarks, focus
+function a11yPass(){
+ for(const b of document.querySelectorAll('button:not([aria-label])')){if((b.textContent||'').trim().replace(/[^\w]/g,'').length>0)continue;const n=b.title||b.dataset.tip||b.getAttribute('data-act')||'';if(n)b.setAttribute('aria-label',n.replace(/^[a-z]/,c=>c.toUpperCase()))}
+ for(const[sel,role,label]of[['#left','region','Info panel'],['#right','region','Business panel'],['#vtp','dialog','Ventures'],['#cartp','dialog','Food cart'],['#crlist','dialog','Food carts'],['#elp','dialog','Landlord'],['#legend','group','Map layers'],['#bar','banner',''],['#ticker','marquee','News ticker'],['#crdock','navigation','Main tools']]){const el=$q(sel);if(el&&!el.getAttribute('role')){el.setAttribute('role',role);if(label)el.setAttribute('aria-label',label)}}
+ const gl=$q('#gl');if(gl&&!gl.getAttribute('role')){gl.setAttribute('role','img');gl.setAttribute('tabindex','0')}
+ for(const i of document.querySelectorAll('input[type=range]:not([aria-label])')){const l=i.closest('label');const t=l?l.textContent.trim().split('\n')[0]:'';i.setAttribute('aria-label',t||'Slider')}}
+setInterval(a11yPass,1500);a11yPass();
+// Escape closes the newest floating window
+document.addEventListener('keydown',e=>{if(e.key!=='Escape'||BIND)return;if(typeof ui!=='undefined'&&ui.modal)return;for(const id of['crgame','crpick','cartp','crlist','vtp','elp']){const el=document.getElementById(id);if(el&&!el.hidden){el.hidden=true;e.stopPropagation();return}}});
+
+// ------------------------------------------------------------------ guided intros the first time each system is opened
+const SEEN=Object.assign({},LS.get('ancap.introsSeen',{}));
+const tabOn=t=>{const b=$q('#modal .tabs button.on, #modal .tabs button[aria-selected="true"]');return!!(b&&b.textContent.trim().startsWith(t))};
+const INTROS=[
+ {id:'rx',when:()=>ui.modal&&ui.modal.kind==='resmkt',steps:[
+  {t:'The resource exchange',p:'A live market shared by every player. Prices move only when someone buys or sells, so a big order shifts the price for everyone.',el:'#modal .modal'},
+  {t:'Buy low, sell high',p:'Pick a resource to see its price history. Buy when it\'s cheap and sell into spikes, or sell what your own mines dig up.',el:'#modal .rx-list, #modal table, #modal .mbody'},
+  {t:'Your warehouse',p:'Everything you buy or mine sits in your warehouse until you sell it or use it to build. Storage costs nothing.',el:'#modal .tabs'}]},
+ {id:'contracts',when:()=>ui.modal&&ui.modal.kind==='empire'&&tabOn('Contracts'),steps:[
+  {t:'Contracts',p:'Clients buy in bulk. A contract is filled from spare capacity: what your businesses could make beyond walk-in customers.',el:'#modal .mbody'},
+  {t:'Make room to deliver',p:'If walk-in demand already uses all your kit and staff, there is nothing left for contracts. Add kit and staff so production outruns demand, then take a contract you can fill.',el:'#modal .mbody'},
+  {t:'Slots grow with rank',p:'You can run more contracts at once as your rank rises. Missing a delivery costs reputation, so don\'t take more than you can make.',el:'#modal .cxloop, #modal .mbody'}]},
+ {id:'corp',when:()=>ui.modal&&ui.modal.kind==='empire'&&tabOn('Corporation'),steps:[
+  {t:'Your corporation',p:'Once you\'re an Entrepreneur you can incorporate. Departments are permanent upgrades that boost every business you own.',el:'#modal .mbody'},
+  {t:'Going public (IPO)',p:'At Corporate CEO rank you can take the company public. Other players can then buy your shares, your share price follows how the company does, and you report quarterly earnings.',el:'#modal .mbody'},
+  {t:'Shares go both ways',p:'You can also sell shares in your own company to raise cash, or buy into rivals who are growing. The Stock market button in the top bar has the full market.',el:'#sxbtn, #modal .mbody'}]},
+ {id:'ventures',when:()=>{const v=$q('#vtp');return v&&!v.hidden},steps:[
+  {t:'Ventures',p:'Side companies that run next to your shops. Each pays, or costs, money every game day.',el:'#vtp'},
+  {t:'Four kinds',p:'A private military company takes security contracts. Private roads charge tolls. Telecom towers sell internet to the homes around them. A VPN company sells privacy, but owning an ISP hurts its reputation.',el:'#vtp .vt-tabs'},
+  {t:'Start small',p:'Buying a street is the simplest start: zoom into a city and click any road. The Overview tab shows what each venture made yesterday.',el:'#vtp .vt-tabs'}]},
+];
+let CUR=null;const IC=document.createElement('div');IC.id='care-intro';IC.hidden=true;IC.setAttribute('role','dialog');IC.setAttribute('aria-live','polite');IC.innerHTML='<div class="ci-ring"></div><div class="ci-card"></div>';document.body.appendChild(IC);
+function introTick(){if(typeof G==='undefined'||!G||!ui.started){IC.hidden=true;return}
+ if(G.tut&&!G.tut.hidden&&!G.tutDone){IC.hidden=true;return}   // the main tutorial has the floor
+ if(CUR){if(!CUR.I.when()){CUR=null;IC.hidden=true;return}drawIntro();return}
+ if(!PREF.intros)return;for(const I of INTROS){if(SEEN[I.id])continue;if(I.when()){CUR={I,n:0};drawIntro();return}}}
+function drawIntro(){const{I,n}=CUR,st=I.steps[n],card=IC.querySelector('.ci-card'),ring=IC.querySelector('.ci-ring');
+ const h=`<p class="eyebrow">Tip · ${n+1} of ${I.steps.length}</p><h3>${st.t}</h3><p>${st.p}</p><div class="ci-acts"><button class="ci-skip" data-ci="off">Turn off tips</button><span>${n>0?'<button class="ghost sm" data-ci="back">Back</button>':''}<button class="btn sm" data-ci="next">${n===I.steps.length-1?'Got it':'Next'}</button></span></div>`;
+ if(card._h!==h){card._h=h;card.innerHTML=h}IC.hidden=false;
+ let el=null;for(const s of st.el.split(',')){const x=$q(s.trim());if(x&&x.offsetParent!==null){el=x;break}}
+ if(el){const r=el.getBoundingClientRect();Object.assign(ring.style,{left:r.left-5+'px',top:r.top-5+'px',width:r.width+10+'px',height:r.height+10+'px'});ring.hidden=false}else ring.hidden=true;
+ const W=innerWidth,H=innerHeight,cw=card.offsetWidth||320,ch=card.offsetHeight||160;let x=16,y=H-ch-70;
+ if(el){const r=el.getBoundingClientRect();if(r.right+cw+24<W)x=r.right+16;else if(r.left-cw-24>0)x=r.left-cw-16;else x=Math.max(16,Math.min(W-cw-16,r.left));y=Math.max(70,Math.min(H-ch-60,r.top))}
+ card.style.left=x+'px';card.style.top=y+'px'}
+IC.addEventListener('click',e=>{const t=e.target.closest('[data-ci]');if(!t||!CUR)return;const a=t.dataset.ci;
+ if(a==='off'){PREF.intros=false;savePref();SEEN[CUR.I.id]=1;LS.set('ancap.introsSeen',SEEN);CUR=null;IC.hidden=true;toast('Tips are off. Turn them back on in Menu → Comfort & access.','');return}
+ if(a==='back'){CUR.n=Math.max(0,CUR.n-1);drawIntro();return}
+ if(CUR.n<CUR.I.steps.length-1){CUR.n++;drawIntro()}else{SEEN[CUR.I.id]=1;LS.set('ancap.introsSeen',SEEN);CUR=null;IC.hidden=true}});
+setInterval(()=>{try{introTick()}catch(e){}},400);
+
+// ------------------------------------------------------------------ a way back from bankruptcy
+const peakNW=()=>Math.max(typeof START_CASH!=='undefined'?START_CASH:30000,...((G&&G.nw)||[0]));
+function restructOffer(){const owed=Math.max(0,-G.cash),buffer=Math.round(Math.max(5000,peakNW()*.05)/100)*100,loan=Math.round((owed+buffer)/100)*100;return{owed,buffer,loan,apr:.18,days:240,pay:Math.round(loan*(1+.18*240/365)/240)}}
+const legacyBonus=()=>{const sc=typeof window.startCash==='function'?startCash():30000;return Math.round(Math.min(peakNW()*.1,sc*5)/100)*100};
+if(typeof mOver==='function'){const _mo=mOver;mOver=function(){const used=(G.restruct||0),o=restructOffer(),lb=legacyBonus();
+ return`<div class="mhead"><p class="eyebrow">${dayName(G.day)}</p><h2 class="display">The bank called it in</h2></div><div class="mbody"><p>Your account stayed overdrawn for two weeks. ${esc(G.company||'Your company')} reached a peak net worth of <b class="mono">${big(peakNW())}</b>. It doesn't have to end here.</p>
+ <div class="care-opts">${used<2?`<div class="care-opt"><h3>Restructure the debt</h3><p>The bank clears your overdraft of ${big(o.owed)} and adds ${big(o.buffer)} of working capital, as a loan of <b>${big(o.loan)}</b> at ${Math.round(o.apr*100)}% a year, repaid at about ${money(o.pay)} a day over ${o.days} days. Everything you own stays yours.</p><p class="fine">${used?'This is your last restructuring this run.':'You can do this twice per run.'}</p><button class="btn" data-care="restruct">Restructure and keep playing</button></div>`:`<div class="care-opt off"><h3>Restructure the debt</h3><p>The bank won't restructure a third time.</p></div>`}
+ <div class="care-opt"><h3>Start again with a legacy bonus</h3><p>Begin a new company, with <b>${big(lb)}</b> extra starting cash for what you built (10% of your peak, up to five times the normal start). Your account, loyalty points and trophies carry over.</p><button class="ghost" data-care="legacy">Start again with ${big(lb)} extra</button></div></div></div>`}}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-care]');if(!t||typeof G==='undefined'||!G)return;const a=t.dataset.care;
+ if(a==='restruct'){if((G.restruct||0)>=2)return;const o=restructOffer();G.loans=G.loans||[];G.loans.push({bal:o.loan,apr:o.apr,pay:o.pay,day:G.day,restructure:true});G.cash+=o.loan;G.neg=0;G.over=false;G.restruct=(G.restruct||0)+1;
+  news(`${G.company||'Your company'} agreed a debt restructuring with the bank: ${big(o.loan)} at ${Math.round(o.apr*100)}%`,'warn');save();closeModal();toast('Restructured. Cut costs: the repayments start tomorrow.','good');try{renderTop();renderAll()}catch(_){}}
+ if(a==='legacy'){const bonus=legacyBonus(),b=document.createElement('button');b.dataset.act='newgame2';b.style.display='none';document.body.appendChild(b);b.click();b.remove();
+  if(G){G.cash+=bonus;G.legacy=(G.legacy||0)+bonus;save();setTimeout(()=>{try{toast(`Legacy bonus: ${big(bonus)} added to your starting cash`,'good')}catch(_){}},1500)}}});
+
+// ------------------------------------------------------------------ styles
+const css=document.createElement('style');css.textContent=`
+.cs-sec{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)}
+.cs-row{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:13px}.cs-row span{min-width:110px}.cs-row input[type=range]{flex:1}.cs-row b{min-width:40px;text-align:right;font-variant-numeric:tabular-nums}
+.cs-keys{margin:10px 0}.cs-keys summary{cursor:pointer;font-weight:600;font-size:13px;padding:6px 0}.cs-key{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12.5px;border-bottom:1px solid rgba(255,255,255,.05)}.cs-key button{min-width:84px}.cs-key button.on{border-color:#ffde00!important;color:#ffde00!important}
+#care-confirm{position:fixed;inset:0;z-index:70;display:grid;place-items:center;background:rgba(0,0,0,.55)}#care-confirm[hidden]{display:none}
+.care-box{width:min(420px,calc(100vw - 32px));background:#1f2124;border:1px solid #34373c;border-radius:10px;padding:20px;color:#e7e8ea}.care-box h2{margin:0 0 8px;font-size:20px}.care-box p{color:#b9bcc2;font-size:13.5px}.care-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+#care-intro{position:fixed;inset:0;z-index:61;pointer-events:none}#care-intro[hidden]{display:none}
+.ci-ring{position:fixed;border:2px solid #ffde00;border-radius:10px;box-shadow:0 0 0 4px rgba(255,222,0,.18);pointer-events:none;transition:all .2s}
+.ci-card{position:fixed;width:min(320px,calc(100vw - 32px));pointer-events:auto;background:#1f2124;border:1px solid #3a3d42;border-top:3px solid #ffde00;border-radius:10px;padding:14px 16px;color:#e7e8ea;box-shadow:0 14px 40px rgba(0,0,0,.55)}
+.ci-card h3{margin:2px 0 6px;font-size:16px}.ci-card p{margin:0 0 8px;font-size:13px;color:#c3c6cc;line-height:1.45}.ci-card .eyebrow{color:#ffde00;font-size:10.5px;letter-spacing:.12em;margin:0}
+.ci-acts{display:flex;justify-content:space-between;align-items:center;gap:8px}.ci-acts span{display:flex;gap:6px}.ci-skip{background:none!important;border:0!important;color:#8b8f97!important;font-size:12px;padding:0!important;cursor:pointer;text-decoration:underline}
+.care-opts{display:grid;gap:10px;margin-top:12px}.care-opt{padding:12px 14px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1)}.care-opt h3{margin:0 0 6px;font-size:15px}.care-opt p{margin:0 0 8px;font-size:13px}.care-opt.off{opacity:.55}
+/* reduced motion */
+body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{animation-duration:.001s!important;animation-iteration-count:1!important;transition-duration:.001s!important;scroll-behavior:auto!important}
+/* larger text: scale the interface, not the 3D view */
+body.text-l #bar,body.text-l .panel,body.text-l #left,body.text-l #right,body.text-l .modal,body.text-l #tut,body.text-l #toasts,body.text-l #crdock,body.text-l #legend,body.text-l #ibar,body.text-l #care-intro .ci-card,body.text-l #crgame,body.text-l #crpick,body.text-l #mppanel{zoom:1.15}
+body.text-xl #bar,body.text-xl .panel,body.text-xl #left,body.text-xl #right,body.text-xl .modal,body.text-xl #tut,body.text-xl #toasts,body.text-xl #crdock,body.text-xl #legend,body.text-xl #ibar,body.text-xl #care-intro .ci-card,body.text-xl #crgame,body.text-xl #crpick,body.text-xl #mppanel{zoom:1.3}
+/* keyboard focus is always visible */
+:focus-visible{outline:2px solid #ffde00!important;outline-offset:2px!important}
+/* colour-blind-safe chips in the cart and ventures windows */
+body.cb-safe .cr-warn{color:#e69f00!important}body.cb-safe .vt-kv .bad,body.cb-safe .bad,body.cb-safe .down{color:#e69f00!important}body.cb-safe .up{color:#56b4e9!important}
+@media (max-width:640px){.cs-row span{min-width:84px}}
+`;document.head.appendChild(css);
+window.CARE={PREF,applyPrefs,INTROS,restoreBackup,restructOffer,legacyBonus};
 })();
 
 </script>

@@ -1,7 +1,5 @@
--- ANCAP LIFE · stock market, achievements, weekly league
--- Paste into Supabase → SQL Editor → New query, then press Run. Safe to run more than once.
+-- 0005 · stock market (share trades), achievements, weekly league columns
 
--- every buy or sell of a player company's shares; each game sums the last 8 days (older trades fade out)
 create table if not exists public.share_trades (
   id       bigint generated always as identity primary key,
   company  uuid not null references public.players(id) on delete cascade,
@@ -25,10 +23,3 @@ alter table public.players add column if not exists week_id text;
 alter table public.players add column if not exists week_nw numeric;
 alter table public.players add column if not exists hq_lat double precision;
 alter table public.players add column if not exists hq_lon double precision;
-
--- guest play is gone: stop anonymous sign-ins from writing to the shared world
--- (also turn off "Allow anonymous sign-ins" under Authentication → Sign In / Providers)
-drop policy if exists "insert own player" on public.players;
-create policy "insert own player" on public.players for insert with check (auth.uid() = id and coalesce((auth.jwt()->>'is_anonymous')::boolean,false) = false);
-drop policy if exists "insert own claim" on public.claims;
-create policy "insert own claim" on public.claims for insert with check (auth.uid() = owner and coalesce((auth.jwt()->>'is_anonymous')::boolean,false) = false);

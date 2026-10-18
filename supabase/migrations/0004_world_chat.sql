@@ -1,6 +1,4 @@
--- ANCAP LIFE · world chat
--- Paste into Supabase → SQL Editor → New query, then press Run. Safe to run more than once.
--- (If you haven't yet, also run ancap-life-resources.sql so the resource market is shared.)
+-- 0004 · world chat (moderation tools are added in 0010)
 
 create table if not exists public.chat_messages (
   id       bigint generated always as identity primary key,
@@ -19,7 +17,7 @@ create policy "post as yourself" on public.chat_messages for insert with check (
 drop policy if exists "delete own messages" on public.chat_messages;
 create policy "delete own messages" on public.chat_messages for delete using (auth.uid() = player);
 
--- server-side flood guard: at most 5 messages per player per 10 seconds
+-- flood guard: at most 5 messages per player per 10 seconds
 create or replace function public.chat_rate_limit() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if (select count(*) from public.chat_messages where player = new.player and at > now() - interval '10 seconds') >= 5 then
@@ -39,7 +37,4 @@ end $$;
 drop trigger if exists chat_trim on public.chat_messages;
 create trigger chat_trim after insert on public.chat_messages for each statement execute function public.chat_trim();
 
--- live updates
-do $$ begin
-  alter publication supabase_realtime add table public.chat_messages;
-exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.chat_messages; exception when duplicate_object then null; end $$;

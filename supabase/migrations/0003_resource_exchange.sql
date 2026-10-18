@@ -1,7 +1,5 @@
--- ANCAP LIFE · shared resource exchange
--- Paste into Supabase → SQL Editor → New query, then press Run. Safe to run more than once.
--- Every buy or sell by any player is one row; each game sums the last 7 days (older trades fade out)
--- so all players trade against the same prices.
+-- 0003 · shared resource exchange
+-- Every buy or sell by any player is one row; each game sums the last 7 days so all players trade against the same prices.
 
 create table if not exists public.resource_trades (
   id      bigint generated always as identity primary key,
@@ -11,6 +9,7 @@ create table if not exists public.resource_trades (
   at      timestamptz not null default now()
 );
 create index if not exists resource_trades_at_idx on public.resource_trades(at);
+create index if not exists resource_trades_player_idx on public.resource_trades(player);
 
 alter table public.resource_trades enable row level security;
 drop policy if exists "trades are public" on public.resource_trades;
@@ -18,7 +17,4 @@ create policy "trades are public" on public.resource_trades for select using (tr
 drop policy if exists "insert own trades" on public.resource_trades;
 create policy "insert own trades" on public.resource_trades for insert with check (auth.uid() = player);
 
--- Live updates: other players' trades move your prices without refreshing
-do $$ begin
-  alter publication supabase_realtime add table public.resource_trades;
-exception when duplicate_object then null; end $$;
+do $$ begin alter publication supabase_realtime add table public.resource_trades; exception when duplicate_object then null; end $$;
