@@ -2683,11 +2683,77 @@ const TREE_GEO=(()=>{const g=new THREE.IcosahedronGeometry(3.2,0);g.translate(0,
 let PROPGEO=null;
 // icube winds its faces inward (fine for double-sided materials); props use a one-sided material, so flip them outward
 function flipWinding(geo){if(geo.index)return geo;for(const k in geo.attributes){const a=geo.attributes[k],n=a.itemSize,arr=a.array;for(let i=0;i<a.count;i+=3)for(let j=0;j<n;j++){const t=arr[(i+1)*n+j];arr[(i+1)*n+j]=arr[(i+2)*n+j];arr[(i+2)*n+j]=t}a.needsUpdate=true}return geo}
+// ---------- cars: a chunky sedan modelled in the style of a stylised Unity game ----------
+// Paint is the only pure-white (neutral, bright) colour in the model; the instance tint is applied to those vertices alone (see icMat), so glass, tyres, lights and trim keep their own colours.
+function carModel(g){
+ const low=typeof GFX!=='undefined'&&GFX.tier==='low',cc=h=>new THREE.Color(h),PW=cc('#ffffff'),PWd=cc('#b4b4b4'),BK=cc('#202328'),BK2=cc('#34383f'),GL0=cc('#222d36'),GL1=cc('#506676'),CH=cc('#c9d2dc'),TY=cc('#17181b'),HUB=cc('#c4d0de'),HUB2=cc('#6f7c8a'),HL=cc('#fff1bd'),TL=cc('#d8342b'),SIGN=cc('#f4f8ff');
+ const ctr=[0,.8,0];
+ // oriented quad: wound so it faces away from the car's centre, flat normal; c0 colours the first two corners and c1 the last two (a vertical gradient)
+ const Q=(A,B,C,D,c0,c1,cin)=>{const u=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],v=[C[0]-A[0],C[1]-A[1],C[2]-A[2]];let n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];let l=Math.hypot(n[0],n[1],n[2])||1;n=[n[0]/l,n[1]/l,n[2]/l];
+  const m=[(A[0]+C[0])/2,(A[1]+C[1])/2,(A[2]+C[2])/2],ci=cin||ctr;
+  if(n[0]*(m[0]-ci[0])+n[1]*(m[1]-ci[1])+n[2]*(m[2]-ci[2])<0){n=[-n[0],-n[1],-n[2]];g.tri(A,D,C,n,c0,c1,c1,null,null,null,15);g.tri(A,C,B,n,c0,c1,c0,null,null,null,15)}
+  else{g.tri(A,B,C,n,c0,c0,c1,null,null,null,15);g.tri(A,C,D,n,c0,c1,c1,null,null,null,15)}};
+ const poly=(pts,col,cin)=>{for(let i=1;i<pts.length-1;i++){const A=pts[0],B=pts[i],C=pts[i+1],u=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],v=[C[0]-A[0],C[1]-A[1],C[2]-A[2]];let n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];const l=Math.hypot(n[0],n[1],n[2])||1;n=[n[0]/l,n[1]/l,n[2]/l];
+  const ci=cin||ctr,m=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3];if(n[0]*(m[0]-ci[0])+n[1]*(m[1]-ci[1])+n[2]*(m[2]-ci[2])<0){n=[-n[0],-n[1],-n[2]];g.tri(A,C,B,n,col,col,col,null,null,null,15)}else g.tri(A,B,C,n,col,col,col,null,null,null,15)}};
+ const box=(x0,x1,y0,y1,z0,z1,c,c2)=>{const P=(x,y,z)=>[x,y,z],ci=[(x0+x1)/2,(y0+y1)/2,(z0+z1)/2],d=c2||c;
+  Q(P(x0,y1,z0),P(x1,y1,z0),P(x1,y1,z1),P(x0,y1,z1),c,c,ci);Q(P(x0,y0,z0),P(x1,y0,z0),P(x1,y1,z0),P(x0,y1,z0),d,c,ci);Q(P(x0,y0,z1),P(x1,y0,z1),P(x1,y1,z1),P(x0,y1,z1),d,c,ci);
+  Q(P(x0,y0,z0),P(x0,y0,z1),P(x0,y1,z1),P(x0,y1,z0),d,c,ci);Q(P(x1,y0,z0),P(x1,y0,z1),P(x1,y1,z1),P(x1,y1,z0),d,c,ci)};
+ // body: a loft of cross-sections [z, half-width low, half-width high, y low, y high]
+ const S=[[-2.22,.8,.75,.36,.76],[-2.1,.88,.83,.28,.94],[-1.35,.91,.86,.26,.98],[.7,.91,.86,.26,.99],[1.45,.9,.84,.26,.91],[2.1,.87,.8,.28,.8],[2.24,.8,.72,.34,.64]];
+ const cr=s=>[[-s[1],s[3],s[0]],[s[1],s[3],s[0]],[s[2],s[4],s[0]],[-s[2],s[4],s[0]]];
+ for(let i=0;i<S.length-1;i++){const a=cr(S[i]),b=cr(S[i+1]);
+  Q(a[0],b[0],b[1],a[1],BK,BK);                                   // underside
+  Q(a[3],b[3],b[2],a[2],PW,PW);                                   // roof deck (bonnet, boot)
+  Q(a[1],b[1],b[2],a[2],PWd,PW);Q(a[0],b[0],b[3],a[3],PWd,PW)}    // flanks, darker toward the sill
+ poly(cr(S[0]).reverse(),PWd);poly(cr(S[S.length-1]),PWd);
+ // sills and bumpers
+ for(const sd of[-1,1])box(sd*.9-.014,sd*.9+.014,.26,.38,-1.55,1.55,BK2);
+ box(-.82,.82,.3,.54,2.12,2.3,BK,BK2);box(-.82,.82,.3,.54,-2.3,-2.12,BK,BK2);
+ // cabin: a tapered prism over the side profile (z, y) with the glass set into it
+ const PR=[[-1.32,.97],[-.62,1.52],[.52,1.52],[1.32,.97]],wAt=y=>.87-.15*(y-.97)/.55;
+ const side=sd=>PR.map(p=>[sd*wAt(p[1]),p[1],p[0]]);
+ poly(side(1),PW);poly(side(-1),PW);
+ Q([-wAt(1.52),1.52,-.62],[wAt(1.52),1.52,-.62],[wAt(1.52),1.52,.52],[-wAt(1.52),1.52,.52],PW,PW);              // roof
+ Q([-wAt(.97),.97,1.32],[wAt(.97),.97,1.32],[wAt(1.52),1.52,.52],[-wAt(1.52),1.52,.52],PW,PW,[0,1.2,.3]);       // screen frame
+ Q([-wAt(.97),.97,-1.32],[wAt(.97),.97,-1.32],[wAt(1.52),1.52,-.62],[-wAt(1.52),1.52,-.62],PW,PW,[0,1.2,-.3]);  // rear frame
+ const yTop=z=>{const m=.05;if(z<=-.62)return .97+(z+1.32)/.7*.55-m;if(z<=.52)return 1.52-m;return 1.52-(z-.52)/.8*.55-m};
+ const win=(sd,z0,z1)=>{const x=u=>sd*(wAt(u)+.006),yb=1.02,mid=[];const zs=[z0];for(const b of[-.62,.52])if(b>z0+.02&&b<z1-.02)zs.push(b);zs.push(z1);
+  for(let i=0;i<zs.length-1;i++){const a=zs[i],b=zs[i+1];Q([x(yb),yb,a],[x(yb),yb,b],[x(yTop(b)),yTop(b),b],[x(yTop(a)),yTop(a),a],GL0,GL1,[0,1.2,0])}};
+ for(const sd of[-1,1]){win(sd,.1,1.06);win(sd,-1.03,-.08)}
+ // windscreen and rear window
+ const sl=(z0,y0,z1,y1,t0,t1,k,nz,ny)=>{const P=t=>[z0+(z1-z0)*t+nz*.014,y0+(y1-y0)*t+ny*.014];const a=P(t0),b=P(t1);Q([-(wAt(a[1])-.08),a[1],a[0]],[wAt(a[1])-.08,a[1],a[0]],[wAt(b[1])-.08,b[1],b[0]],[-(wAt(b[1])-.08),b[1],b[0]],GL0,GL1,[0,1.2,k])};
+ sl(1.32,.97,.52,1.52,.1,.88,.3,.57,.82);sl(-1.32,.97,-.62,1.52,.1,.88,-.3,-.62,.78);
+ // door seams, handles, mirrors, lights, plates
+ for(const sd of[-1,1]){const x=sd*.913;for(const z of[-1.1,-.09,1.12])box(x-.002,x+.002,.36,.97,z-.006,z+.006,BK);box(x-.012,x+.012,.86,.89,-.34,-.14,CH);box(x-.012,x+.012,.86,.89,.38,.58,CH);
+  box(sd*1.0-.03,sd*1.0+.03,1.04,1.16,.46,.62,BK2);box(sd*.93-.04,sd*.93+.04,1.07,1.09,.5,.56,BK2);
+  box(sd*.58-.16,sd*.58+.16,.58,.7,2.27,2.31,HL);box(sd*.63-.13,sd*.63+.13,.6,.7,-2.28,-2.24,TL);box(sd*.74-.04,sd*.74+.04,.4,.5,2.29,2.31,cc('#e8a23a'))}
+ box(-.4,.4,.42,.52,2.29,2.32,CH);box(-.4,.4,.46,.49,2.3,2.33,BK);box(-.22,.22,.46,.58,-2.3,-2.26,SIGN);
+ // wheels, each inside a dark arch
+ const seg=low?6:10,r=.33,hw=.12;
+ for(const sd of[-1,1])for(const wz of[-1.32,1.32]){const x0=sd*.8,xo=sd*(.8+hw),xi=sd*(.8-hw),cy=.34;
+  // arch: dark half-disc on the body side, a little larger than the tyre
+  const arch=[];for(let i=0;i<=seg;i++){const a=Math.PI*i/seg;arch.push([sd*.9+sd*.006,cy+Math.sin(a)*.44,wz+Math.cos(a)*.44])}arch.push([sd*.9+sd*.006,cy,wz-.44]);poly([[sd*.906,cy,wz]].concat(arch),BK,[0,cy,wz]);
+  const ring=a=>[Math.cos(a),Math.sin(a)],ci=[x0,cy,wz];
+  const T3=(A,B,C,col)=>{const u=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],v=[C[0]-A[0],C[1]-A[1],C[2]-A[2]];let n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];const l=Math.hypot(n[0],n[1],n[2])||1;n=[n[0]/l,n[1]/l,n[2]/l];
+   const m=[(A[0]+B[0]+C[0])/3,(A[1]+B[1]+C[1])/3,(A[2]+B[2]+C[2])/3];if(n[0]*(m[0]-ci[0])+n[1]*(m[1]-ci[1])+n[2]*(m[2]-ci[2])<0){n=[-n[0],-n[1],-n[2]];g.tri(A,C,B,n,col,col,col,null,null,null,15)}else g.tri(A,B,C,n,col,col,col,null,null,null,15)};
+  for(let i=0;i<seg;i++){const a0=i/seg*6.2832,a1=(i+1)/seg*6.2832,p0=ring(a0),p1=ring(a1),R=(k,xx)=>[[xx,cy+p0[0]*r*k,wz+p0[1]*r*k],[xx,cy+p1[0]*r*k,wz+p1[1]*r*k]];
+   Q([xi,cy+p0[0]*r,wz+p0[1]*r],[xo,cy+p0[0]*r,wz+p0[1]*r],[xo,cy+p1[0]*r,wz+p1[1]*r],[xi,cy+p1[0]*r,wz+p1[1]*r],TY,TY,ci);
+   const w1=R(.84,xo+sd*.004),w2=R(.6,xo+sd*.008);
+   T3([xo,cy,wz],R(1,xo)[0],R(1,xo)[1],TY);T3([xo+sd*.004,cy,wz],w1[0],w1[1],HUB2);T3([xo+sd*.008,cy,wz],w2[0],w2[1],HUB)}
+ }
+}
+function carSignModel(g){ // a FOR SALE placard leaning on the windscreen (not tinted with the paint)
+ const cc=h=>new THREE.Color(h),RD=cc('#d9342b'),WH=cc('#f4f8ff'),INK=cc('#3a3f47');
+ // the windscreen runs from (z 1.32, y .97) up to (z .52, y 1.52); its outward normal in (z,y) is (.57,.82)
+ const nz=.57,ny=.82,ps=(t,x)=>[x,.97+(1.52-.97)*t+ny*.04,1.32+(.52-1.32)*t+nz*.04];
+ const quad=(t0,t1,x0,x1,col)=>{const A=ps(t0,x0),B=ps(t0,x1),C=ps(t1,x1),D=ps(t1,x0);g.tri(A,B,C,[0,ny,nz],col,col,col,null,null,null,15);g.tri(A,C,D,[0,ny,nz],col,col,col,null,null,null,15)};
+ // wound so it faces up and forward (+y, +z)
+ quad(.34,.7,-.5,-.04,WH);quad(.58,.7,-.5,-.04,RD);for(const t of[.42,.5])quad(t,t+.03,-.44,-.1,INK)}
 function propGeo(){if(PROPGEO)return PROPGEO;const mk=f=>{const g=new GB();f(g);return flipWinding(g.geo())};
  PROPGEO={cow:mk(g=>{ibox(g,0,0,.45,.95,.55,1.35,IC('#6b4a34'));ibox(g,0,1.05,.25,.3,.95,1.4,IC('#5a3d2b'));for(const x of[-.3,.3])for(const z of[-.7,.7])ibox(g,x,z,.08,.08,0,.6,IC('#3b2a1f'))}),
   sheep:mk(g=>{ibox(g,0,0,.38,.6,.35,.95,IC('#eeeae0'));ibox(g,0,.7,.16,.2,.6,.95,IC('#2b2b2b'));for(const x of[-.2,.2])for(const z of[-.4,.4])ibox(g,x,z,.05,.05,0,.38,IC('#2b2b2b'))}),
   buffalo:mk(g=>{ibox(g,0,0,.5,1,.6,1.4,IC('#4a4a4a'));ibox(g,0,1.1,.28,.32,.9,1.35,IC('#3a3a3a'));for(const x of[-.32,.32])for(const z of[-.75,.75])ibox(g,x,z,.09,.09,0,.62,IC('#2a2a2a'))}),
-  car:mk(g=>{ibox(g,0,0,.88,2.15,.28,.95,IC('#ffffff'));ibox(g,0,-.12,.8,1.15,.95,1.5,IC('#3a4652'),IC('#ffffff'));ibox(g,0,2.16,.6,.02,.6,.8,IC('#f3efe0'));ibox(g,0,-2.16,.6,.02,.6,.8,IC('#c8463a'));for(const x of[-.8,.8])for(const z of[-1.3,1.3])ibox(g,x,z,.08,.32,0,.62,IC('#222222'))})};
+  car:(()=>{const g=new GB();carModel(g);return g.geo()})(),carsign:(()=>{const g=new GB();carSignModel(g);return g.geo()})()};
  return PROPGEO}
 const LAMPMAT=new THREE.MeshBasicMaterial({color:'#9aa3ab'});
 function adTexture(k){const cv=document.createElement('canvas');cv.width=512;cv.height=208;const x=cv.getContext('2d');
@@ -2712,11 +2778,15 @@ function furnitureMeshes(list,toLocal,lod){const out=[];if(!list||!list.length)r
  for(const t in by){const arr=by[t];if(t.startsWith('bb')){out.push(inst(D.bbframe,MATS.tree,arr));out.push(inst(D.bbface,D.adMats[+t.slice(2)],arr));continue}
   if(lod<3&&(t==='bench'||t==='bin'||t==='hydrant'))continue;if(!D[t])continue;out.push(inst(D[t],MATS.tree,arr));if(t==='lamp')out.push(inst(D.lamph,LAMPMAT,arr))}
  return out}
-const CARC=['#c8463a','#2f6fa8','#e8e4d8','#2b2e33','#9aa3ab','#3a7d5c'].map(h=>new THREE.Color(h));
+const CARC=['#8c3b36','#3f6d93','#d9d4c5','#34383f','#8d959c','#4a7a5c','#a07d3c','#6e4f7a'].map(h=>new THREE.Color(h));
 // three r128 reuses one shader per material, so instanced meshes with per-instance colours need their own material copy
-const IC_MATS=new Map();function icMat(m){if(!IC_MATS.has(m)){const c=m.clone();c.onBeforeCompile=m.onBeforeCompile;if(m.customProgramCacheKey)c.customProgramCacheKey=()=>m.customProgramCacheKey()+'+ic';IC_MATS.set(m,c)}return IC_MATS.get(m)}
+const IC_MATS=new Map();function icMat(m){if(!IC_MATS.has(m)){const c=m.clone();c.onBeforeCompile=sh=>{if(m.onBeforeCompile)m.onBeforeCompile(sh);
+  // the per-instance tint applies only to paint: neutral, bright vertex colours. Glass, tyres and lights keep their own colour.
+  sh.vertexShader=sh.vertexShader.replace('#include <color_vertex>','vColor=vec3(1.0);vColor*=color;{float mn=min(color.r,min(color.g,color.b)),mx=max(color.r,max(color.g,color.b));vColor.xyz*=mix(vec3(1.0),instanceColor.xyz,step(.55,mn)*(1.-step(.035,mx-mn)));}')};c.customProgramCacheKey=()=>(m.customProgramCacheKey?m.customProgramCacheKey():'tree')+'+icpaint';IC_MATS.set(m,c)}return IC_MATS.get(m)}
 function propsMesh(list,toLocal,kind){if(!list.length)return null;const im=new THREE.InstancedMesh(propGeo()[kind],MATS.tree,list.length),dm=new THREE.Object3D();
- list.forEach((a,i)=>{const p=toLocal(a);dm.position.set(p[0],.1,-p[1]);dm.rotation.set(0,a[2],0);dm.scale.setScalar(1);dm.updateMatrix();im.setMatrixAt(i,dm.matrix);if(kind==='car')im.setColorAt(i,CARC[a[3]%CARC.length])});if(im.instanceColor)im.instanceColor.needsUpdate=true;if(im.instanceColor)im.material=icMat(im.material);im.castShadow=true;return im}
+ list.forEach((a,i)=>{const p=toLocal(a);dm.position.set(p[0],.1,-p[1]);dm.rotation.set(0,a[2],0);dm.scale.setScalar(1);dm.updateMatrix();im.setMatrixAt(i,dm.matrix);if(kind==='car')im.setColorAt(i,CARC[a[3]%CARC.length])});if(im.instanceColor)im.instanceColor.needsUpdate=true;if(im.instanceColor)im.material=icMat(im.material);im.castShadow=true;
+ if(kind==='car'){const sale=list.filter(a=>(((a[0]*31+a[1]*17)|0)&7)===0);if(sale.length){const sm=new THREE.InstancedMesh(propGeo().carsign,MATS.tree,sale.length);sale.forEach((a,i)=>{const p=toLocal(a);dm.position.set(p[0],.1,-p[1]);dm.rotation.set(0,a[2],0);dm.scale.setScalar(1);dm.updateMatrix();sm.setMatrixAt(i,dm.matrix)});const gr=new THREE.Group();gr.add(im,sm);return gr}}
+ return im}
 const TREEMAT=new THREE.MeshLambertMaterial({vertexColors:true});
 function treesMesh(trees,toLocal){
  if(!trees.length)return null;const im=new THREE.InstancedMesh(TREE_GEO,TREEMAT,trees.length),dm=new THREE.Object3D();
@@ -2931,12 +3001,20 @@ let TRAFFIC_ON=true;
 // ===================== ANCAP LIFE · INTERIORS (cutaway shop floors you lay out yourself) =====================
 // Room space: x along the street frontage (0..W), z into the building (0..D), y up from the finished floor.
 const IC=h=>new THREE.Color(h);
-function icube(gb,x0,y0,z0,x1,y1,z1,c,top){const T=top||c,s1=tint(c,.9),s2=tint(c,.78);
- gb.quad([x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1],UPN,T,15);
- gb.quad([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[0,0,-1],s1,15);
- gb.quad([x1,y0,z1],[x0,y0,z1],[x0,y1,z1],[x1,y1,z1],[0,0,1],s1,15);
- gb.quad([x0,y0,z1],[x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[-1,0,0],s2,15);
- gb.quad([x1,y0,z0],[x1,y0,z1],[x1,y1,z1],[x1,y1,z0],[1,0,0],s2,15)}
+// Chamfered boxes with a shaded base and a lit edge, so props read as moulded objects instead of flat blocks (the chamfer is skipped on the Low graphics tier)
+const ICQ=typeof GFX!=='undefined'&&GFX.tier==='low'?0:1;
+function icube(gb,x0,y0,z0,x1,y1,z1,c,top){const T=top||c,dx=x1-x0,dz=z1-z0,dy=y1-y0,s1=tint(c,.9),s2=tint(c,.78),b1=tint(s1,.74),b2=tint(s2,.74);
+ const e=ICQ&&dx>.07&&dz>.07&&dy>.07?Math.min(.02,dx*.22,dz*.22,dy*.22):0,yt=y1-e,Te=tint(T,1.1);
+ gb.quad([x0+e,y1,z0+e],[x1-e,y1,z0+e],[x1-e,y1,z1-e],[x0+e,y1,z1-e],UPN,T,15);
+ gb.quad([x0,y0,z0],[x1,y0,z0],[x1,yt,z0],[x0,yt,z0],[0,0,-1],b1,15,0,0,1,1,s1);
+ gb.quad([x1,y0,z1],[x0,y0,z1],[x0,yt,z1],[x1,yt,z1],[0,0,1],b1,15,0,0,1,1,s1);
+ gb.quad([x0,y0,z1],[x0,y0,z0],[x0,yt,z0],[x0,yt,z1],[-1,0,0],b2,15,0,0,1,1,s2);
+ gb.quad([x1,y0,z0],[x1,y0,z1],[x1,yt,z1],[x1,yt,z0],[1,0,0],b2,15,0,0,1,1,s2);
+ if(e){const h=.7071;
+  gb.quad([x0,yt,z0],[x1,yt,z0],[x1-e,y1,z0+e],[x0+e,y1,z0+e],[0,h,-h],s1,15,0,0,1,1,Te);
+  gb.quad([x1,yt,z1],[x0,yt,z1],[x0+e,y1,z1-e],[x1-e,y1,z1-e],[0,h,h],s1,15,0,0,1,1,Te);
+  gb.quad([x0,yt,z1],[x0,yt,z0],[x0+e,y1,z0+e],[x0+e,y1,z1-e],[-h,h,0],s2,15,0,0,1,1,Te);
+  gb.quad([x1,yt,z0],[x1,yt,z1],[x1-e,y1,z1-e],[x1-e,y1,z0+e],[h,h,0],s2,15,0,0,1,1,Te)}}
 // box centred on (cx,cz) with half sizes
 const ibox=(gb,cx,cz,hx,hz,y0,y1,c,top)=>icube(gb,cx-hx,y0,cz-hz,cx+hx,y1,cz+hz,c,top);
 function ilathe(gb,cx,cz,prof,col,seg){const n=seg||8;for(let k=0;k<prof.length-1;k++){const[r0,y0]=prof[k],[r1,y1]=prof[k+1];for(let i=0;i<n;i++){const a0=i/n*6.2832,a1=(i+1)/n*6.2832;
@@ -3218,10 +3296,11 @@ class PPMesh{
 // the shape sliders (Schedule-1 style): g 0 = masculine .. 1 = feminine, wt 0 = slim .. 1 = heavy, ht = height scale
 function ppTraits(o){
  let s=ppHash([o.shirt,o.skin,o.hair,o.pants,o.hs,o.hat,o.capc,o.apron,o.bag].join('|'))||1;const rnd=()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296};rnd();rnd();
- const r=[rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd()];
+ const r=[rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd(),rnd()];
  const g=Math.round((o.g!=null?o.g:r[0])*10)/10,wt=Math.round((o.wt!=null?o.wt:r[1]*r[1]*.95)*10)/10,ht=o.ht!=null?o.ht:(.93+r[2]*.14)*(1-.03*g);
  const pool=g>.6?[1,2,4,1,2,5]:g<.4?[0,3,0,5,1,3]:[0,1,2,3,4,5];
  return{g,wt,ht,hair:pool[Math.min(5,((o.hs||0)*2+(r[3]<.5?0:1)))],sl:o.sl!=null?o.sl:r[4]<.3,sh:o.sh!=null?o.sh:r[5]<.14,beard:o.beard!=null?o.beard:(g<.4&&r[6]<.3),
+  gl:o.glasses!=null?o.glasses:(r[9]<.2?1:r[9]<.3?2:0),vest:o.vest!=null?o.vest:(r[10]<.2&&!o.apron),belt:o.belt!=null?o.belt:(r[11]<.65),vc:['#8a5a1c','#2f4a6e','#4a4f57','#7a3030','#3d5a45'][Math.floor(r[11]*5)%5],
   droop:.002+r[7]*.010,tilt:(r[8]-.5)*.3,shoe:o.shoe||['#1d1d1f','#eeebe3','#3a3d44','#7a4a30','#c8463a'][Math.floor(r[2]*r[5]*5)%5]}}
 function ppClip(rings,y0,y1,grow){const out=[],at=(y)=>{for(let i=0;i<rings.length-1;i++){const a=rings[i],b=rings[i+1];if(y>=a[0]&&y<=b[0]){const t=(y-a[0])/(b[0]-a[0]||1);return[y,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]}}return[y,rings[0][1],rings[0][2]]};
  const a=at(y0);out.push([y0,a[1]+grow,a[2]+grow]);for(const r of rings)if(r[0]>y0&&r[0]<y1)out.push([r[0],r[1]+grow,r[2]+grow]);const b=at(y1);out.push([y1,b[1]+grow,b[2]+grow]);return out}
@@ -3248,7 +3327,7 @@ function ppBody(o,t){
   pm.blob(sd*ex,ey,-.1,.034,.038,.022,new THREE.Color('#f6f3ec'),{seg:14});
   pm.blob(sd*ex+look,ey-.007,-.1195,.0105,.0125,.006,new THREE.Color('#15110e'),{seg:10});
   pm.blob(sd*ex,ey+.027-t.droop,-.1004,.0358,.021,.0228,lid,{seg:14});
-  pm.blob(sd*ex,ey+.058,-.1035,.03,.0048,.008,H,{seg:10,rotZ:sd*t.tilt});
+  pm.blob(sd*ex,ey+.058,-.1035,.034,.0085,.0095,ppTint(H,.78),{seg:10,rotZ:sd*t.tilt});
  }
  pm.blob(0,1.627,-.109,.016,.022,.019,ppTint(K,.97),{seg:10});
  const mc=new THREE.Color('#8a4a42').lerp(K,.3);pm.blob(0,1.553,t.beard?-.112:-.1035,.022,.0055,.0075,mc,{seg:10});
@@ -3267,6 +3346,17 @@ function ppBody(o,t){
  else if(hs===4)hairShell(1.725,1.42,1.26,1.065,.05);
  else pm.blob(0,1.78,.04,.165,.125,.15,Hc,{seg:16});
  if(t.beard){const bc=ppTint(H,.95);pm.lathe([[1.495,.46*hx*jaw,.46*hz,-.006],[1.51,.76*hx*jaw,.78*hz,-.006],[1.535,.97*hx*jaw,.98*hz,-.004],[1.575,1.045*hx,1.045*hz,-.001],[1.6,1.05*hx,1.05*hz,0]],bc,{seg:16,n:3,a0:-95*PP_DEG,a1:95*PP_DEG});pm.blob(0,1.578,-.111,.032,.008,.011,bc,{seg:10})}
+ // glasses: thin round frames or a wrap-around visor with a white brow bar
+ if(t.gl===1){const fc=new THREE.Color('#23262b');for(const sd of[-1,1]){const pts=[];for(let i=0;i<=14;i++){const a=i/14*PP2PI;pts.push([sd*ex+Math.cos(a)*.043,ey+.002+Math.sin(a)*.039,-.124])}pm.tube(pts,.0034,fc,5);
+   pm.tube([[sd*(ex+.043),ey+.004,-.122],[sd*.104,ey+.006,-.09],[sd*(hx+.004),ey+.008,-.02]],.0032,fc,5)}
+  pm.tube([[-.012,ey+.006,-.126],[0,ey+.012,-.128],[.012,ey+.006,-.126]],.0032,fc,5)}
+ else if(t.gl===2){const rx=hx*1.02+.012,rz=hz+.034;pm.lathe([[1.638,rx,rz],[1.7,rx,rz]],new THREE.Color('#15181d'),{seg:20,n:3,a0:-1.5,a1:1.5});
+  pm.lathe([[1.696,rx+.003,rz+.003],[1.712,rx+.003,rz+.003]],new THREE.Color('#f2f2ee'),{seg:20,n:3,a0:-1.5,a1:1.5});pm.blob(0,1.646,-.136,.024,.014,.012,new THREE.Color('#f2f2ee'),{seg:8})}
+ // waistcoat: back and sides, plus two front panels that leave a V open at the chest
+ if(t.vest){const V=new THREE.Color(t.vc);pm.lathe(ppClip(TR,.86,1.31,.016),V,{seg:14,n:2.3,a0:70*PP_DEG,a1:290*PP_DEG});
+  for(const sg of[-1,1])pm.lathe(ppClip(TR,.86,1.3,.016),V,{seg:5,n:2.3,a0:sg>0?20*PP_DEG:-70*PP_DEG,a1:sg>0?70*PP_DEG:-20*PP_DEG})}
+ // belt over the shirt hem, with a buckle
+ if(t.belt&&!o.apron){pm.lathe(ppClip(TR,.78,.84,.015),new THREE.Color('#22252a'),{seg:20,n:2.3});pm.blob(0,.81,-(hipZ+.03),.024,.02,.01,new THREE.Color('#c9ccd1'),{seg:8})}
  // hats
  if(o.hat==='chef'){pm.lathe([[1.735,.124,.12],[1.77,.126,.122],[1.83,.153,.148],[1.9,.172,.166],[1.96,.162,.156],[1.99,.1,.095],[2.005,.01,.01]],new THREE.Color('#eeeeea'),{seg:20})}
  if(o.hat==='cap'){const cc=new THREE.Color(o.capc||o.shirt);pm.lathe([[1.715,.121,.117],[1.755,.122,.118],[1.8,.108,.103],[1.827,.062,.06],[1.835,.01,.01]],cc,{seg:20,n:2.4});pm.blob(0,1.745,-.118,.088,.009,.08,ppTint(cc,.92),{seg:14})}
@@ -3300,7 +3390,7 @@ function ppArm(o,t,side){
 // opts: shirt, hair, skin, pants, hat ('chef'|'cap'|null), apron colour, hs 0..2 (hair), bag; optional g, wt, ht, sl, sh, beard, shoe override the generated build
 function makePerson(o){
  const t=ppTraits(o),grp=new THREE.Group(),kk=[o.shirt,o.skin,o.hair,o.pants,o.hat||'',o.capc||'',o.apron||'',o.bag||''];
- const T=new THREE.Mesh(ppCache('b|'+kk.join('|')+'|'+[t.g,t.wt,t.hair,t.beard,t.droop.toFixed(3),t.tilt.toFixed(2)].join('|'),()=>ppBody(o,t)),BMAT);grp.add(T);
+ const T=new THREE.Mesh(ppCache('b|'+kk.join('|')+'|'+[t.g,t.wt,t.hair,t.beard,t.droop.toFixed(3),t.tilt.toFixed(2),t.gl,t.vest?t.vc:0,t.belt].join('|'),()=>ppBody(o,t)),BMAT);grp.add(T);
  const leg=ppCache('l|'+[o.pants,o.skin,t.g,t.wt,t.sh,t.shoe].join('|'),()=>ppLeg(o,t)),hipW=.085+.03*t.wt+.01*t.g,shX=.165+.028*(1-t.g)+.02*t.wt+.005;
  const mk=(geo,x,y)=>{const pv=new THREE.Group();pv.position.set(x,y,0);const m=new THREE.Mesh(geo,BMAT);pv.add(m);grp.add(pv);return pv};
  const arm=s=>ppCache('a|'+[s,o.shirt,o.skin,t.wt,t.sl].join('|'),()=>ppArm(o,t,s));
@@ -8474,6 +8564,7 @@ setInterval(()=>{if(dbx())load()},300000);
 addEventListener('beforeunload',()=>{if(pend)push(true)});
 // ---------- patch notes ----------
 const NOTES=[
+ ['2026-10-19','Better models',['Cars are rebuilt as chunky sedans with wheel arches, tinted glass, mirrors, lights and the odd FOR SALE sign','People can now wear glasses, wrap-around shades, waistcoats and belts, and have heavier eyebrows','Shop equipment and street props have rounded edges and shaded bases instead of flat blocks']],
  ['2026-10-18','Fair play, safety & comfort',['Leaderboard numbers are now checked by the server, so nobody can type in a fortune','Chat: report a message, mute or block a player, and a filter for slurs and swearing','Saves keep a backup copy you can restore from the Menu','New: Comfort & access settings (volume, key bindings, reduced motion, colour-blind-safe colours, larger text)','Short tips the first time you open the exchange, contracts, the corporation or ventures','Bankrupt? Restructure the debt or start again with a legacy bonus','Better layout on phones']],
  ['2026-10-17','Street food',['Start with a food cart: cook in a timing mini-game, set your price, upgrade it and hire a cook','New round-button dock and Layers menu']],
  ['2026-10-15','Accounts & rewards',['Account portal with player number, member since and days as player','Loyalty points from active play unlock avatar skins','Invite links, a monthly referral race and trophies that boost loyalty','Download your data or delete your account at any time']],
