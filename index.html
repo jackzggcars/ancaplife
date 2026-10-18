@@ -1296,6 +1296,8 @@ const LAST=['Adeyemi','Bauer','Chen','Dubois','Evans','Fernández','Garcia','Had
 
 // ===================== ANCAP LIFE · ECONOMY =====================
 const DAY_LEN=15,START_CASH=30000,START_DATE=Date.UTC(2026,9,12);
+// new players start with enough for a street food cart (the carts layer prices one at 3,000 in today's money)
+window.startCash=()=>{let f=1;try{f=Math.max(.25,Math.min(4,1+.025*Math.floor(worldDay())/365))}catch(e){}return Math.round(3000*f*1.45/100)*100};
 // one shared clock for every player: a game day every DAY_LEN real seconds since the world opened
 const WORLD_EPOCH=Date.UTC(2026,9,14);let CLOCK_SKEW=0;
 function worldDay(){return Math.max(0,(Date.now()+CLOCK_SKEW-WORLD_EPOCH)/(DAY_LEN*1000))}
@@ -1306,7 +1308,7 @@ const gauss=()=>(Math.random()+Math.random()+Math.random()-1.5)*1.15;
 let G=null;
 
 function newGame(company){
- const wd=Math.floor(worldDay());const g={v:2,company:company||'',day:wd,day0:wd,clock:0,cash:START_CASH,seq:1,sites:[],props:[],loans:[],mkt:{},news:[],ov:{},goals:{},neg:0,over:false,nw:[],lastProfit:0,cam:null};
+ const wd=Math.floor(worldDay());const g={v:2,company:company||'',day:wd,day0:wd,clock:0,cash:(typeof window.startCash==='function'?window.startCash():START_CASH),seq:1,sites:[],props:[],loans:[],mkt:{},news:[],ov:{},goals:{},neg:0,over:false,nw:[],lastProfit:0,cam:null};
  for(const k in SUP)g.mkt[k]={m:1+gauss()*.04,h:[]};
  return g;
 }
@@ -4324,7 +4326,7 @@ function openModal(kind){ui.modal={kind};renderModal()}
 function closeModal(){ui.modal=null;$('#modal').hidden=true}
 function renderModal(){const m=ui.modal;if(!m){$('#modal').hidden=true;return}$('#modal').hidden=false;$('#modal .modal').innerHTML={board:mBoard,skip:mSkip,next:mNext,event:mEvent,intro:mIntro,wizard:mWizard,market:mMarket,bank:mBank,goals:mGoals,menu:mMenu,construct:mConstruct,over:mOver}[m.kind]()}
 function mIntro(){return`<div class="mhead"><p class="eyebrow">A business sim on the real planet</p><h2 class="display">ANCAP LIFE</h2></div>
- <div class="mbody"><p>You start with <b class="mono">${money(START_CASH)}</b> and no premises. Zoom from orbit straight down into any city on Earth; the streets and buildings appear as you descend. Buildings outlined in glowing yellow have shop units for rent.</p>
+ <div class="mbody"><p>You start with <b class="mono">${money(typeof window.startCash==='function'?window.startCash():START_CASH)}</b>, enough for a street food cart. Zoom from orbit straight down into any city on Earth; the streets and buildings appear as you descend. Buildings outlined in glowing yellow have shop units for rent.</p>
  <p>Pick what your company does, fit it out, hire a team, price the menu and keep the shelves stocked. Rent, wages and prices follow the local economy. Profits go toward buying your building, then bare plots, then towers.</p>
  <p class="fine">London, Midtown Manhattan and central Paris use real street and building data. Everywhere else, streets and buildings are generated to fill the real extent of each town.</p>
  <label class="fld"><span>Company name</span><input id="coname" type="text" maxlength="40" value="${esc(G.company||'')}" placeholder="e.g. Corner & Co."></label></div>
@@ -9564,13 +9566,18 @@ html body.gfx-low{--gl-blur:none}
 html body #bar{background:#1a1b1e!important;border-bottom:1px solid #2c2e32!important;box-shadow:0 2px 12px rgba(0,0,0,.35)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;transform:none!important;filter:none!important}
 html body #cash{color:var(--cr-green)!important}
 html body #lp{color:var(--cr-mut)!important}
-/* bottom dock with the main tools */
-html body #bar .hb-icons{position:fixed!important;left:50%;transform:translateX(-50%);bottom:52px;z-index:24;display:flex!important;gap:4px!important;padding:6px 10px!important;border-radius:999px!important;background:rgba(26,27,30,.94);border:1px solid #34373c;box-shadow:0 8px 26px rgba(0,0,0,.5)}
-html body.gfx-low #bar .hb-icons{background:#1a1b1e}
-html body #bar .hb-icons .hb-ic{width:42px!important;height:42px!important;border-radius:50%!important;color:#c9ccd2}
-html body #bar .hb-icons .hb-ic:hover{background:rgba(255,255,255,.08)!important;color:#fff}
-html body #bar .hb-icons .hb-ic.cr-on{background:rgba(61,220,151,.16)!important;color:var(--cr-green)}
-html body #bar .hb-icons .hb-ic[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:52px;left:50%;transform:translateX(-50%);white-space:nowrap;font:600 11.5px/1 var(--f-body,system-ui);letter-spacing:.02em;color:#fff;background:#111214;border:1px solid #34373c;padding:6px 8px;border-radius:6px;pointer-events:none}
+/* bottom dock: a few round buttons for the things you use most */
+#crdock{position:fixed;left:50%;transform:translateX(-50%);bottom:50px;z-index:24;display:flex;align-items:flex-end;gap:12px;pointer-events:none}
+#crdock[hidden]{display:none}
+#crdock button{pointer-events:auto;position:relative;width:48px!important;height:48px!important;min-width:0!important;border-radius:50%!important;display:grid!important;place-items:center;padding:0!important;line-height:0!important;background:rgba(26,27,30,.94)!important;border:1px solid #3a3d42!important;color:#d7d9dd!important;box-shadow:0 6px 18px rgba(0,0,0,.45)!important;cursor:pointer;transition:transform .12s,border-color .12s,color .12s}
+#crdock button:hover{transform:translateY(-2px);border-color:#5a5e65!important;color:#fff!important}
+#crdock button svg{width:21px;height:21px}
+#crdock button.main{width:60px!important;height:60px!important;background:#2f6fe0!important;border-color:#5b8ff0!important;color:#fff!important}
+#crdock button.main svg{width:26px;height:26px}
+#crdock button[data-n]:not([data-n=""])::before{content:attr(data-n);position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#3ddc97;color:#0c1712;font:800 10px/17px var(--f-body,system-ui);box-sizing:border-box}
+#crdock button:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;font:600 11.5px/1 var(--f-body,system-ui);color:#fff;background:#111214;border:1px solid #34373c;padding:6px 8px;border-radius:6px;pointer-events:none}
+html body.cr-carttut #flhud{display:none!important}
+html body #bar #shopsbtn,html body #bar #rxbtn,html body #bar #hbgoals{display:none!important}
 html body #shopsmenu{top:auto!important;bottom:108px!important;left:50%!important;right:auto!important;transform:translateX(-50%)}
 /* map filters live behind a Layers button, top right */
 #crlayers{position:fixed;z-index:22;right:14px;top:calc(var(--bar-h,56px) + 10px);display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:7px;background:rgba(26,27,30,.94);border:1px solid #34373c;color:#d7d9dd;font:700 11px/1 var(--f-body,system-ui);letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
@@ -9592,11 +9599,20 @@ html body .vt-tabs{border-bottom:1px solid var(--cr-line);gap:10px!important}
 html body .btn:not(.ghost):not([disabled]){background:var(--cr-green)!important;border-color:var(--cr-green)!important;color:#0c1712!important}
 html body .btn:not(.ghost):not([disabled]):hover{background:#57e6a8!important;filter:none!important}
 `;document.head.appendChild(css);
+// the dock: round buttons that work the real controls, wherever those live
+const DOCK=[{id:'shopsbtn',tip:'My businesses',svg:'<path d="M4 4h16l1 5a3 3 0 0 1-2 2.8V20H5v-8.2A3 3 0 0 1 3 9zm3 9v5h4v-5zm6 0v5h4v-5z"/>'},
+ {id:'cartbtn',tip:'Food carts',main:1,svg:'<path d="M3 4h2l2.6 10.4A2 2 0 0 0 9.5 16H18v-2H9.6l-.3-1H19l2-7H6.2L5.6 4.2A2 2 0 0 0 3.7 3H3zm6 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm9 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>'},
+ {id:'rxbtn',tip:'Resource exchange',svg:'<path d="M3 20h18v2H3zM4 17l4.5-6 3.5 3.5L17 7l3 3V4h-6l2.3 2.3-4.3 5.2L8.5 8 2.4 16z"/>'},
+ {id:'hbgoals',tip:'Goals',svg:'<path d="M7 3h10v2h4v3a5 5 0 0 1-4.6 5A5 5 0 0 1 13 16v2h3v3H8v-3h3v-2a5 5 0 0 1-3.4-3A5 5 0 0 1 3 8V5h4zm-2 4v1a3 3 0 0 0 2 2.8V7zm14 0h-2v3.8A3 3 0 0 0 19 8z"/>'}];
+const dock=document.createElement('nav');dock.id='crdock';dock.hidden=true;dock.setAttribute('aria-label','Main tools');
+dock.innerHTML=DOCK.map(d=>`<button data-for="${d.id}" data-tip="${d.tip}" aria-label="${d.tip}" class="${d.main?'main':''}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${d.svg}</svg></button>`).join('');
+dock.addEventListener('click',e=>{const b=e.target.closest('[data-for]');if(!b)return;const t=document.getElementById(b.dataset.for);if(t){e.stopPropagation();t.click()}});
+document.body.appendChild(dock);
 const lb=document.createElement('button');lb.id='crlayers';lb.hidden=true;lb.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 8l11 6 11-6-11-6zm0 14.2L3.2 11.4 1 12.6l11 6 11-6-2.2-1.2L12 16.2zm0 4L3.2 15.4 1 16.6l11 6 11-6-2.2-1.2L12 20.2z"/></svg>Layers';
 lb.addEventListener('click',()=>document.body.classList.toggle('cr-layers'));document.body.appendChild(lb);
 const fps=document.createElement('div');fps.id='crfps';fps.hidden=true;document.body.appendChild(fps);
 let fr=0,ft=performance.now();(function f(now){fr++;if(now-ft>1000){fps.textContent=Math.round(fr*1000/(now-ft))+' fps';fr=0;ft=now}requestAnimationFrame(f)})(ft);
-setInterval(()=>{const on=!!(typeof G!=='undefined'&&G&&ui.started);lb.hidden=!(on&&ui.street);fps.hidden=!on;
+setInterval(()=>{const on=!!(typeof G!=='undefined'&&G&&ui.started);lb.hidden=!(on&&ui.street);fps.hidden=!on;dock.hidden=!on;for(const b of dock.querySelectorAll('[data-for]')){const t=document.getElementById(b.dataset.for);b.style.display=t?'':'none';b.dataset.n=t&&t.dataset.n?t.dataset.n:''}
  const bar=document.getElementById('bar');if(bar)document.documentElement.style.setProperty('--bar-h',bar.offsetHeight+'px');
  for(const b of document.querySelectorAll('#bar .hb-icons .hb-ic'))if(!b.dataset.tip)b.dataset.tip=b.getAttribute('aria-label')||b.title||'';
  for(const b of document.querySelectorAll('#bar .hb-icons .hb-ic[title]'))b.removeAttribute('title')},800);
@@ -9754,7 +9770,7 @@ function grill(c){const T=CT[c.type],w=Math.max(.09,.16+c.upg.grill*.015-Math.mi
 function gloop(now){if(!GS||GM.hidden)return;if(!GS.done){const dt=Math.min(.05,(now-(GS.lt||now))/1000);GS.lt=now;GS.pos+=GS.dir*GS.speed*dt;if(GS.pos>1){GS.pos=1;GS.dir=-1}if(GS.pos<0){GS.pos=0;GS.dir=1}const m=document.getElementById('gmm');if(m)m.style.left=(GS.pos*100)+'%'}requestAnimationFrame(gloop)}
 function gStop(){if(!GS)return;if(GS.done){const c=GS.c;if(c.ingr>=1&&c.prepped<capOf(c)-1)grill(c);else{GM.hidden=true;renderCart()}return}GS.done=true;const c=GS.c,T=CT[c.type],mid=GS.z0+GS.w/2,off=Math.abs(GS.pos-mid)/(GS.w/2);let res,mult;
  if(off<=.3){res='Perfect!';mult=1.5;c.streak++;c.best=Math.max(c.best||0,c.streak)}else if(off<=1){res='Good';mult=1;c.streak=0}else if(off<=1.8){res='A bit off';mult=.6;c.streak=0}else{res=GS.pos<GS.z0?'Undercooked':'Burnt!';mult=.25;c.streak=0}
- const n=Math.max(1,Math.min(Math.round(batchOf(c)*mult),capOf(c)-Math.floor(c.prepped),Math.floor(c.ingr)));c.prepped+=n;c.ingr-=n;save();
+ const n=Math.max(1,Math.min(Math.round(batchOf(c)*mult),capOf(c)-Math.floor(c.prepped),Math.floor(c.ingr)));c.prepped+=n;c.ingr-=n;c.made=(c.made||0)+n;save();
  document.getElementById('gmr').innerHTML=`<b class="${mult>=1?'up':'down'}">${res}</b> +${n} ${T.item} ready`;document.getElementById('gmst').textContent=c.streak;document.getElementById('gmgo').textContent=c.ingr>=1&&c.prepped<capOf(c)-1?'Cook another':'Done'}
 GM.addEventListener('click',e=>{const t=e.target.closest('[data-g]');if(!t){if(e.target.closest('.cr-gb'))gStop();return}if(t.dataset.g==='x'){GM.hidden=true;renderCart();return}gStop()});
 document.addEventListener('keydown',e=>{if(!GM.hidden&&(e.code==='Space'||e.key==='Enter')){e.preventDefault();gStop()}});
@@ -9778,7 +9794,7 @@ LP.addEventListener('click',e=>{const t=e.target.closest('[data-l]');if(!t)retur
 setInterval(()=>{if(!LP.hidden)renderList()},2000);
 const db=document.createElement('button');db.id='cartbtn';db.className='ghost sm';db.setAttribute('aria-label','Food carts');db.innerHTML='<span class="hb-svg"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M3 4h2l2.6 10.4A2 2 0 0 0 9.5 16H18v-2H9.6l-.3-1H19l2-7H6.2L5.6 4.2A2 2 0 0 0 3.7 3H3zm6 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm9 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></span><span>Carts</span>';
 db.addEventListener('click',()=>{if(LP.hidden){renderList();LP.hidden=false}else LP.hidden=true});
-setInterval(()=>{db.hidden=!(G&&ui.started);const ic=document.querySelector('#bar .hb-icons');if(ic&&db.parentNode!==ic){db.classList.add('hb-ic');ic.insertBefore(db,ic.firstChild)}else if(!ic&&!db.parentNode)document.body.appendChild(db)},1000);
+db.style.display='none';document.body.appendChild(db);
 if(typeof netWorth==='function'){const _nw=netWorth;netWorth=function(){let v=_nw();for(const c of C())v+=c.paid*.5+Object.values(c.upg).reduce((a,l)=>a+l,0)*400;return v}}
 
 const css=document.createElement('style');css.textContent=`
@@ -9812,7 +9828,7 @@ const css=document.createElement('style');css.textContent=`
 .cr-cand{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:10px;align-items:center}.cr-cand img{width:56px;height:66px;object-fit:cover;border-radius:6px;background:#30333a}.cr-cand small{display:block;color:#8b8f97;font-size:11.5px}.cr-wage{color:#3ddc97}
 .cr-li{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;padding:10px 12px!important;margin:6px 0;background:#26282c!important;border:1px solid #303338!important;border-radius:7px!important;color:#e7e8ea!important}.cr-li small{display:block;color:#8b8f97;font-size:11.5px}.cr-li .up{color:#3ddc97}
 .cr-dot{width:11px;height:11px;border-radius:3px;display:inline-block}
-#crgame,#crpick{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(0,0,0,.55)}#crgame[hidden],#crpick[hidden]{display:none}
+#crgame,#crpick{position:fixed;inset:0;z-index:58;display:grid;place-items:center;background:rgba(0,0,0,.55)}#crgame[hidden],#crpick[hidden]{display:none}
 .cr-gm{position:relative;width:min(400px,calc(100vw - 32px));background:#1f2124;border:1px solid #34373c;border-radius:10px;padding:18px;text-align:center;color:#e7e8ea;box-shadow:0 20px 50px rgba(0,0,0,.6)}.cr-gm .cr-x{position:absolute;right:10px;top:8px}
 .cr-gm h3{margin:0 0 4px;font-size:20px}.cr-gm p{color:#8b8f97;font-size:12.5px;margin:0 0 12px}
 .cr-gs{display:flex;align-items:baseline;gap:6px;justify-content:center;margin-bottom:10px}.cr-gs b{font-size:22px;color:#3ddc97}.cr-gs small{color:#8b8f97}.cr-gs span{margin-left:auto;color:#f2b62a;font-size:12px}
@@ -9827,7 +9843,37 @@ const css=document.createElement('style');css.textContent=`
 .cr-go{width:100%;margin-top:14px;padding:13px!important;background:#f1f1ef!important;color:#111!important;border:0!important;border-radius:7px!important;font:700 15px/1 var(--f-body,system-ui)!important;cursor:pointer}.cr-go[disabled]{opacity:.5}
 body.cr-placing #gl{cursor:crosshair!important}
 `;document.head.appendChild(css);
-window.CARTS={C,tick,openCart,openPicker,startPlace,pavementAt,grill,gStop,CT,LIVEC,sync3d};
+// ---------------------------------------------------------------- the first-run tutorial starts you with a food cart
+const GOAL=25000;
+const c0=()=>C()[0];
+const TUTC=[
+ {t:'Welcome to ANCAP LIFE',p:()=>`You start with ${k0(G.cash)}. That's enough for a street food cart, and that's where every empire starts. Run the cart, save ${k0(GOAL)}, and you can lease your first shop.`,el:()=>null,next:true},
+ {t:'Pick a city',p:()=>'Choose a city from this list to fly there. You can also scroll into any town on Earth yourself.',el:()=>$c('#left:not([hidden]) .crow'),done:()=>ui.street||C().length>0},
+ {t:'Get a food cart',p:()=>LP.hidden?'Your main tools live in the round buttons at the bottom of the screen. Click the blue cart button.':'This is your list of carts. Click New cart.',el:()=>!LP.hidden?$c('#crlist [data-l="new"]'):$c('#crdock [data-for="cartbtn"]'),done:()=>!PK.hidden||!!PLACE||C().length>0},
+ {t:'Choose your food',p:()=>'Pick what to sell. Food marked LOCAL is a favourite in this city and sells better here. Then click Set up.',el:()=>$c('#crpick .cr-go'),modal:true,done:()=>!!PLACE||C().length>0,back:()=>PK.hidden&&!PLACE&&!C().length?2:null},
+ {t:'Park it',p:()=>'Move over the map and click a pavement right next to a street. Busy streets in the centre get the most customers.',el:()=>null,done:()=>C().length>0,back:()=>!PLACE&&!C().length&&PK.hidden?2:null},
+ {t:'Cook your first batch',p:()=>'Nothing sells until it\'s cooked. Click the cook button.',el:()=>P.hidden?null:$c('#cartp [data-k="cook"]'),done:()=>!GM.hidden||(c0()&&c0().made>0),openCart:true},
+ {t:'Time it right',p:()=>'Stop the marker in the green band. The bright middle is perfect and cooks a bigger batch. Press Space or click. Cook a couple of batches, then close this.',el:()=>$c('#crgame .cr-gb'),modal:true,done:()=>GM.hidden&&c0()&&c0().made>0},
+ {t:'Customers are coming',p:()=>{const c=c0();return c&&c.sold?`You've sold ${c.sold} so far. People walk up all the time and each sale is cash in your pocket. Your earnings per minute are shown here.`:'Give it a few seconds. People walking past will stop and buy.'},el:()=>$c('#cartp .cr-big'),next:()=>c0()&&c0().sold>0,openCart:true},
+ {t:'Set your price',p:()=>'Drag the slider. Near the green arrow is the best price. Go higher and fewer people buy; go lower and you sell more but earn less on each one.',el:()=>$c('#cartp .cr-slider'),next:true,openCart:true},
+ {t:'Keep it clean and stocked',p:()=>'Every sale makes the cart a bit dirtier, which lowers appeal. Wipe it down now and then. When ingredients run low, restock.',el:()=>$c('#cartp .cr-acts'),next:true,openCart:true},
+ {t:'Upgrades',p:()=>'Open the Upgrades tab. Better kit raises appeal, lets you charge more and cook bigger batches.',el:()=>$c('#cartp .cr-tabs [data-t="upg"]'),done:()=>ST.tab==='upg',openCart:true},
+ {t:'Let someone run it',p:()=>'Later, hire a worker in the Worker tab. They cook, clean and restock for you, even while you\'re offline. Wages come out every minute.',el:()=>$c('#cartp .cr-tabs [data-t="worker"]'),next:true,openCart:true},
+ {t:'Save up for a shop',p:()=>`Now earn ${k0(GOAL)}. You have ${k0(G.cash)} (${Math.min(100,Math.round(G.cash/GOAL*100))}%). Keep cooking, upgrade, or open a second cart on another busy street.`,el:()=>$c('#bar .money')||$c('#moneybox'),done:()=>G.cash>=GOAL,free:true},
+];
+if(typeof tutTick==='function'){const _tt=tutTick;tutTick=function(dt,force){
+ if(G&&ui.started&&!G.tutDone&&!G.sites.length&&!G.cartTutDone&&(!G.tut||(G.tut.phase==='find'&&G.tut.step===0&&!G.tut.seen)))G.tut={phase:'cart',step:0};
+ document.body.classList.toggle('cr-carttut',!!(G&&G.tut&&G.tut.phase==='cart'));
+ if(!(G&&G.tut&&G.tut.phase==='cart'))return _tt(dt,force);
+ tutT+=dt;if(!force&&tutT<.25)return;tutT=0;const el=$c('#tut');if(!ui.started){el.hidden=true;return}
+ if(G.sites.length){G.cartTutDone=true;G.tut=null;return _tt(dt,true)}
+ let st=TUTC[G.tut.step];if(!st){G.cartTutDone=true;G.tut={phase:'find',step:1,seen:1};save();try{toast('You can afford a shop now. Let\'s find one.','good')}catch(e){}return _tt(dt,true)}
+ let guard=0;while(guard++<10){const b=st.back&&st.back();if(b!=null&&b<G.tut.step){G.tut.step=b;st=TUTC[b];continue}if(st.done&&st.done()&&G.tut.step<TUTC.length){G.tut.step++;st=TUTC[G.tut.step];if(!st)return tutTick(1,true);continue}break}
+ if(st.openCart&&P.hidden&&c0()&&GM.hidden&&PK.hidden){openCart(c0().id)}
+ if(ui.modal){el.hidden=true;return}
+ el.hidden=false;const canNext=st.next===true||(typeof st.next==='function'&&st.next());
+ tutDraw(el,{title:st.t,text:st.p(),target:st.el(),label:`Food cart · ${G.tut.step+1} of ${TUTC.length}`,n:G.tut.step+1,pc:(G.tut.step+1)/TUTC.length,next:canNext,wait:!!st.done,modal:!!st.modal})}}
+window.CARTS={ST,C,tick,openCart,openPicker,startPlace,pavementAt,grill,gStop,CT,LIVEC,sync3d};
 })();
 
 </script>
