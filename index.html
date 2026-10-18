@@ -9407,6 +9407,8 @@ function vRoads(){const v=VT(),s=ST.selRoad;let h='';
    <dl class="vt-kv"><dt>Traffic</dt><dd class="mono">≈${s.cars.toLocaleString()} cars/day</dd><dt>Upkeep</dt><dd class="mono">${kmoney(roadUp(s))}/day</dd><dt>Likely profit</dt><dd class="mono ${est>0?'up':'down'}">≈${kmoney(est)}/day</dd></dl>
    ${other?`<p class="warn">${esc(typeof netCompany==='function'?netCompany(other.owner):'Another player')} owns this road.</p>`:`<button class="btn wide" data-v="buyroad" ${G.cash<s.price?'disabled':''}>Buy the road · ${big(s.price)}</button>`}</div>`}}
  else h+=`<div class="vt-hint">🛣️ <span>Zoom into a city and <b>click any street</b> to see what it would cost to own. Owners put up a toll booth and keep the road repaired.</span></div>`;
+ if(v.roads.length){const worn=v.roads.filter(r=>r.cond<99),all=worn.reduce((t,r)=>t+repairCost(r),0);
+  h+=`<div class="vt-head" style="margin-top:14px"><div><b>Resurface every road</b><small>${worn.length?`${worn.length} road${worn.length>1?'s':''} below full condition`:'All your roads are in perfect condition'}</small></div><button class="btn sm" data-v="repairall" ${!worn.length||G.cash<all?'disabled':''}>${worn.length?'Resurface all · '+big(all):'Nothing to do'}</button></div>`}
  if(v.roads.length)h+=`<h3 class="vt-h3">Your roads</h3>`+v.roads.map(r=>`<button class="vt-row ${s&&s.key===r.key?'on':''}" data-v="selroad" data-k="${esc(r.key)}"><span><b>${esc(r.name)}</b><small>${esc(r.place)} · toll ${money(r.toll,2)} · ${Math.round(r.cond)}% condition</small></span><span class="mono ${r.today>=0?'up':'down'}">${kmoney(r.today||0)}</span></button>`).join('');
  return h}
 
@@ -9457,6 +9459,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-v]');if(!t
   case'buyroad':if(ST.selRoad)buyRoad(ST.selRoad);break;
   case'sellroad':sellRoad(k);ST.selRoad=null;break;
   case'selroad':ST.selRoad=v.roads.find(r=>r.key===k)||null;try{const r=ST.selRoad;if(r&&typeof flyTo==='function')flyTo(r.lat,r.lon,Math.min(CAM.dist,900))}catch(e){}ovTick();break;
+  case'repairall':{const worn=v.roads.filter(r=>r.cond<99),all=worn.reduce((t,r)=>t+repairCost(r),0);if(!worn.length)break;if(pay(all)){for(const r of worn)r.cond=100;vmsg(`Resurfaced ${worn.length} road${worn.length>1?'s':''} for ${kmoney(all)}`,'good')}break}
   case'repair':{const r=v.roads.find(x=>x.key===k);if(r&&pay(repairCost(r))){r.cond=100;vmsg(`${r.name} resurfaced`,'good')}break}
   case'tower':buildTower(k,t.dataset.t);break;
   case'vpnfound':vpnFound(($v('#vt-vpnname')||{}).value);break;
