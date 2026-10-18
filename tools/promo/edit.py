@@ -23,6 +23,7 @@ for cand in ('Poppins-Black.ttf', 'Poppins-ExtraBold.ttf'):
     p = Path('/usr/share/fonts/truetype/google-fonts') / cand
     if p.exists(): FONT = str(p)
 URL = 'ancaplife.vercel.app'
+VO = '--no-vo' not in sys.argv
 
 # -------------------------------------------------------------------------------- the cut (cuts land on the 120 BPM beat)
 # shot, out-seconds, source window (0..1 of the captured shot), speed curve ('lin' | 'ramp' = slow start, fast end)
@@ -64,6 +65,13 @@ def captions(hook):
         (19.10, 20.00, '$1 BILLION', 'big'),
         (20.00, 23.00, 'PLAY FREE|in your browser', 'cta'),
     ]
+# voice-over: (start, end, spoken line). The hook line is spoken from HOOKS. Each line is sped up to fit its slot.
+def voiceover(hook):
+    spoken = hook.replace('$0', 'zero dollars').replace('POV:', 'P.O.V.,').replace('$1 BILLION', 'a billion dollar')
+    return [(0.05, 1.55, spoken), (1.6, 3.0, "I'm already worth forty-eight million."), (3.05, 5.0, 'Day one. One tiny shop.'),
+            (5.05, 6.5, 'P.O.V., you lease a shop'), (6.5, 8.0, 'in Times Square!'), (8.05, 10.4, 'Hire staff. Watch profits jump.'),
+            (10.55, 12.9, 'Build your own tower.'), (13.05, 15.0, 'Next stop. Tokyo.'), (15.05, 17.2, 'The real Earth. Real streets.'),
+            (17.25, 19.0, 'Every block is for sale.'), (19.05, 20.0, 'A billion dollars!'), (20.15, 22.9, 'Play free in your browser. Link in bio!')]
 # sound cues: (time, sfx, gain)
 def cues():
     c = [(0.0, 'boom', .8)]
@@ -83,7 +91,7 @@ PUNCH = [
     (1.55, 3.0, 1.0, 1.22, 540, 330),     # zoom into the net worth counter
     (19.0, 20.0, 1.0, 1.15, 540, 330),
 ]
-FLASH_AT = [3.0, 5.0, 8.0, 10.5, 13.0, 15.0, 20.0]    # 2-frame white flash on these cuts
+FLASH_AT = []    # optional 2-frame white flash on these cut times (off: it read as a glitch)
 SHAKE = [(20.0, .35, 14)]                            # (time, seconds, pixels)
 
 # -------------------------------------------------------------------------------- frames
@@ -154,7 +162,7 @@ def render(hook_i=0, out=None):
     total = sum(t[1] for t in TIMELINE); n = int(round(total * FPS))
     caps = captions(HOOKS[hook_i]); out = out or OUTD / f'ancap-life-promo{"" if hook_i == 0 else f"-hook{hook_i+1}"}.mp4'
     wav = OUTD / 'promo-audio.wav'
-    audio.write_wav(wav, audio.mix(total, cues(), riser=RISER))
+    audio.write_wav(wav, audio.mix(total, cues(), riser=RISER, vo=voiceover(HOOKS[hook_i]) if VO else None))
     ff = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}', '-r', str(FPS), '-i', '-',
                            '-i', str(wav), '-c:v', 'libx264', '-preset', 'slow', '-crf', '17', '-pix_fmt', 'yuv420p', '-profile:v', 'high',
                            '-af', 'loudnorm=I=-14:TP=-1.0:LRA=9', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-shortest', '-movflags', '+faststart', str(out)], stdin=subprocess.PIPE)

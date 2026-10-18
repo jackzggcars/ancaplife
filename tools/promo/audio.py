@@ -124,8 +124,34 @@ def boom():
     return x * .9
 SFX = {'kaching': kaching, 'coin': coin, 'tick': tick, 'pop': pop, 'whoosh': whoosh, 'boom': boom}
 
-def mix(sec, cues, riser=None, intro_beats=2, music_gain=.62, duck=.45):
-    """cues: list of (time, name, gain)"""
+# ------------------------------------------------------------------ voice-over (Kokoro TTS, runs offline once the model files are downloaded)
+VOICE = 'am_puck'
+KOKORO_DIR = __import__('os').environ.get('KOKORO_DIR', '/tmp/kok')
+_kok = None
+def voice_line(text, max_sec, voice=VOICE):
+    """speak one line, speeding up (to 1.5x) so it fits in max_sec; returns mono float array at SR"""
+    global _kok
+    import os
+    if _kok is None:
+        from kokoro_onnx import Kokoro
+        _kok = Kokoro(os.path.join(KOKORO_DIR, 'kokoro-v1.0.onnx'), os.path.join(KOKORO_DIR, 'voices-v1.0.bin'))
+    sp = 1.12
+    for _ in range(6):
+        y, sr = _kok.create(text, voice=voice, speed=sp, lang='en-us')
+        y = np.asarray(y, dtype=float)
+        nz = np.where(np.abs(y) > .01)[0]
+        if len(nz): y = y[max(0, nz[0] - int(.02 * sr)):nz[-1] + int(.06 * sr)]
+        if len(y) / sr <= max_sec or sp >= 1.5: break
+        sp = min(1.5, sp * (len(y) / sr) / max_sec * 1.03)
+    t_old = np.arange(len(y)) / sr; t_new = np.arange(int(len(y) / sr * SR)) / SR
+    y = np.interp(t_new, t_old, y)
+    y = y / (np.abs(y).max() + 1e-9)
+    # presence: gentle high-shelf boost and soft compression so it cuts through the music
+    y = y + .35 * hp_fast(y, 2500)
+    return np.tanh(y * 1.6) / np.tanh(1.6)
+
+def mix(sec, cues, riser=None, intro_beats=2, music_gain=.62, duck=.45, vo=None, vo_gain=.95):
+    """cues: list of (time, name, gain); vo: list of (start, end, text)"""
     m = music(sec, riser=riser, intro_beats=intro_beats) * music_gain
     fx = np.zeros(len(m) + 2 * SR); duckenv = np.ones(len(m))
     cache = {}
@@ -137,7 +163,13 @@ def mix(sec, cues, riser=None, intro_beats=2, music_gain=.62, duck=.45):
             a, b = i, min(len(m), i + int(.35 * SR))
             if a < len(m):
                 ramp = np.linspace(duck, 1, b - a); duckenv[a:b] = np.minimum(duckenv[a:b], ramp)
-    out = m * duckenv + fx[:len(m)]
+    voice = np.zeros(len(m)); vduck = np.ones(len(m))
+    for (a, b, text) in (vo or []):
+        y = voice_line(text, max(.5, b - a - .08)); i = int(a * SR); j = min(len(m), i + len(y))
+        voice[i:j] += y[:j - i] * vo_gain
+        k0, k1 = max(0, i - int(.06 * SR)), min(len(m), j + int(.12 * SR)); vduck[k0:k1] = np.minimum(vduck[k0:k1], .38)
+    vduck = np.convolve(vduck, np.ones(int(.05 * SR)) / int(.05 * SR), 'same')   # smooth the ducking
+    out = m * duckenv * vduck + fx[:len(m)] * (.6 + .4 * vduck) + voice
     # end: fade the last 0.4 s slightly so the loop point is clean
     k = int(.25 * SR); out[-k:] *= np.linspace(1, .7, k)
     peak = np.abs(out).max(); out = out / peak * .89 if peak > 0 else out
