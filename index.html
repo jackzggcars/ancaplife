@@ -8496,7 +8496,7 @@ body:has(#modal:not([hidden])) .fl-lvl,body:has(#modal:not([hidden])) .fl-obj{vi
 // Every menu panel can be dragged by its top edge. When a panel opens it finds a spot where it doesn't cover
 // another open panel (the player can still drag panels over each other on purpose; those stay where they are put).
 (function(){
-const LIST=[['#modal .modal',90],['#right',80],['#left',70],['#invp',60],['#mppanel',55],['#elp',52],['#vtp',50],['#ibar',40],['#flhud',30]];
+const LIST=[['#modal .modal',90],['#right',80],['#left',70],['#invp',60],['#mppanel',55],['#cartp',58],['#crlist',57],['#elp',52],['#vtp',50],['#ibar',40],['#flhud',30]];
 const PRIO=new Map(LIST.map(([s,p])=>[s,p]));
 const moved=new WeakSet(),wasVis=new WeakMap();
 const TOP=()=>{const b=document.getElementById('bar');return b?Math.max(52,b.getBoundingClientRect().bottom+6):56};
@@ -9578,7 +9578,9 @@ html body #lp{color:var(--cr-mut)!important}
 #crdock button:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;font:600 11.5px/1 var(--f-body,system-ui);color:#fff;background:#111214;border:1px solid #34373c;padding:6px 8px;border-radius:6px;pointer-events:none}
 html body.cr-carttut #flhud{display:none!important}
 html body #bar #shopsbtn,html body #bar #rxbtn,html body #bar #hbgoals{display:none!important}
-html body #shopsmenu{top:auto!important;bottom:108px!important;left:50%!important;right:auto!important;transform:translateX(-50%)}
+html body #shopsmenu{top:auto!important;bottom:112px!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;transition:none!important}
+html body #shopsmenu:not([hidden]){animation:crUp .18s ease-out!important}
+@keyframes crUp{0%{opacity:0;transform:translate(-50%,12px)}100%{opacity:1;transform:translate(-50%,0)}}
 /* map filters live behind a Layers button, top right */
 #crlayers{position:fixed;z-index:22;right:14px;top:calc(var(--bar-h,56px) + 10px);display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:7px;background:rgba(26,27,30,.94);border:1px solid #34373c;color:#d7d9dd;font:700 11px/1 var(--f-body,system-ui);letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
 #crlayers:hover{color:#fff;border-color:#4a4d53}#crlayers svg{width:15px;height:15px}
@@ -9798,7 +9800,7 @@ db.style.display='none';document.body.appendChild(db);
 if(typeof netWorth==='function'){const _nw=netWorth;netWorth=function(){let v=_nw();for(const c of C())v+=c.paid*.5+Object.values(c.upg).reduce((a,l)=>a+l,0)*400;return v}}
 
 const css=document.createElement('style');css.textContent=`
-.cr-win{position:fixed;z-index:23;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 170px);overflow:auto;top:calc(var(--bar-h,56px) + 14px);left:50%;transform:translateX(-50%);background:#1f2124!important;border:1px solid #34373c!important;border-radius:9px!important;box-shadow:0 14px 40px rgba(0,0,0,.55)!important;color:#e7e8ea;padding:0!important;font:14px/1.4 var(--f-body,system-ui)}
+.cr-win{position:fixed;z-index:23;width:min(440px,calc(100vw - 24px));max-height:calc(100vh - 170px);overflow:auto;top:calc(var(--bar-h,56px) + 14px);left:calc(50vw - min(220px, 50vw - 12px));background:#1f2124!important;border:1px solid #34373c!important;border-radius:9px!important;box-shadow:0 14px 40px rgba(0,0,0,.55)!important;color:#e7e8ea;padding:0!important;font:14px/1.4 var(--f-body,system-ui)}
 .cr-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px 6px}.cr-head b{font-size:15px;font-weight:600}
 .cr-x{background:none!important;border:0!important;color:#8b8f97!important;font-size:15px;cursor:pointer;padding:4px 6px!important}.cr-x:hover{color:#fff!important}
 .cr-tabs{display:flex;gap:18px;padding:0 14px;border-bottom:1px solid #2f3237}
@@ -9859,7 +9861,7 @@ const TUTC=[
  {t:'Keep it clean and stocked',p:()=>'Every sale makes the cart a bit dirtier, which lowers appeal. Wipe it down now and then. When ingredients run low, restock.',el:()=>$c('#cartp .cr-acts'),next:true,openCart:true},
  {t:'Upgrades',p:()=>'Open the Upgrades tab. Better kit raises appeal, lets you charge more and cook bigger batches.',el:()=>$c('#cartp .cr-tabs [data-t="upg"]'),done:()=>ST.tab==='upg',openCart:true},
  {t:'Let someone run it',p:()=>'Later, hire a worker in the Worker tab. They cook, clean and restock for you, even while you\'re offline. Wages come out every minute.',el:()=>$c('#cartp .cr-tabs [data-t="worker"]'),next:true,openCart:true},
- {t:'Save up for a shop',p:()=>`Now earn ${k0(GOAL)}. You have ${k0(G.cash)} (${Math.min(100,Math.round(G.cash/GOAL*100))}%). Keep cooking, upgrade, or open a second cart on another busy street.`,el:()=>$c('#bar .money')||$c('#moneybox'),done:()=>G.cash>=GOAL,free:true},
+ {t:'Save up for a shop',p:()=>`Now earn ${k0(GOAL)}. You have ${k0(G.cash)} (${Math.min(100,Math.round(G.cash/GOAL*100))}%). Keep cooking, upgrade, or open a second cart on another busy street.`,el:()=>$c('#bar .money')||$c('#moneybox'),done:()=>G.cash>=GOAL,free:true,hide:true},
 ];
 if(typeof tutTick==='function'){const _tt=tutTick;tutTick=function(dt,force){
  if(G&&ui.started&&!G.tutDone&&!G.sites.length&&!G.cartTutDone&&(!G.tut||(G.tut.phase==='find'&&G.tut.step===0&&!G.tut.seen)))G.tut={phase:'cart',step:0};
@@ -9871,8 +9873,10 @@ if(typeof tutTick==='function'){const _tt=tutTick;tutTick=function(dt,force){
  let guard=0;while(guard++<10){const b=st.back&&st.back();if(b!=null&&b<G.tut.step){G.tut.step=b;st=TUTC[b];continue}if(st.done&&st.done()&&G.tut.step<TUTC.length){G.tut.step++;st=TUTC[G.tut.step];if(!st)return tutTick(1,true);continue}break}
  if(st.openCart&&P.hidden&&c0()&&GM.hidden&&PK.hidden){openCart(c0().id)}
  if(ui.modal){el.hidden=true;return}
+ if(st.hide&&G.tut.hidden){el.hidden=true;return}
  el.hidden=false;const canNext=st.next===true||(typeof st.next==='function'&&st.next());
- tutDraw(el,{title:st.t,text:st.p(),target:st.el(),label:`Food cart · ${G.tut.step+1} of ${TUTC.length}`,n:G.tut.step+1,pc:(G.tut.step+1)/TUTC.length,next:canNext,wait:!!st.done,modal:!!st.modal})}}
+ tutDraw(el,{title:st.t,text:st.p(),target:st.hide?null:st.el(),label:`Food cart · ${G.tut.step+1} of ${TUTC.length}`,n:G.tut.step+1,pc:(G.tut.step+1)/TUTC.length,next:canNext,wait:!!st.done&&!st.hide,modal:!!st.modal,btn:st.hide?['crtuthide','Hide until then']:null})}}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-act="crtuthide"]');if(!t||!G||!G.tut)return;e.stopPropagation();G.tut.hidden=true;$c('#tut').hidden=true;save();try{toast(`The tutorial comes back when you reach ${k0(GOAL)}`,'')}catch(_){}},true);
 window.CARTS={ST,C,tick,openCart,openPicker,startPlace,pavementAt,grill,gStop,CT,LIVEC,sync3d};
 })();
 
