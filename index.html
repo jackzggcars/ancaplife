@@ -2675,7 +2675,7 @@ const ROADCOL={major:new THREE.Color('#3a3d43'),minor:new THREE.Color('#43464d')
 function roofColorFor(lot){const st=lotState(lot);if(st.st==='build')return new THREE.Color('#d4a347');return null}
 // status is shown as a soft coloured glow around the building (ground halo, rising haze, bright crown), never by repainting the roof
 const GLOWC={player:new THREE.Color('#ffffff'),lease:new THREE.Color('#ffde00'),sale:new THREE.Color('#2fd3e6'),rival:new THREE.Color('#ff4b3e'),other:new THREE.Color('#c86bff')};
-function glowColorFor(lot){const st=lotState(lot).st;if(st==='player')return GLOWC.player;if(st==='taken')return ui.show.players?GLOWC.other:null;if((st==='lease'||st==='sale'||st==='rival')&&ui.show[st])return GLOWC[st];return null}
+function glowColorFor(lot){const st=lotState(lot).st;if(st==='player')return GLOWC.player;if(st==='taken'){const c=typeof netOther==='function'?netOther(lot.key):null;if(ui.show.rival&&c&&c.biz_type)return GLOWC.rival;return ui.show.players?GLOWC.other:null}if((st==='lease'||st==='sale')&&ui.show[st])return GLOWC[st];return null}
 const GLOWMAT=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,fog:false});
 // pull a lot's own triangles out of the chunk's building mesh (exact shape, roof and all)
 function lotShell(L,lot,off){if(!L||!L.meshes)return null;for(const m of L.meshes){const recs=m.userData&&m.userData.recs;if(!recs)continue;const rec=recs.find(r=>r.lot.key===lot.key);if(!rec)continue;
@@ -4270,7 +4270,7 @@ function renderTop(){
  const sb=$('#shopsbtn');sb.hidden=!G.sites.length&&!G.props.length;sb.textContent=G.sites.length?`My shops (${G.sites.length})`:'My property';
  $('#mapctl').hidden=!!ui.interior||!ui.started;$('#northbtn').style.transform=`rotate(${-CAM.heading}rad)`;
  const lg=$('#legend');lg.hidden=!ui.street||!!ui.interior;
- if(ui.street){const LAY=[['lease','For lease','Shops you can rent','#ffde00'],['sale','For sale','Buildings you can buy','#2fd3e6'],['rooms','Rooms to rent','Homes with rooms for tenants','#ff7ac8'],['plot','Build land','Empty plots you can build on','#4fd36a'],['rival','Competitors','Rival shops of your kind','#ff4b3e'],['players',"Players' buildings",'Other players, by company name','#c86bff']],nOn=LAY.filter(l=>ui.show[l[0]]).length;
+ if(ui.street){const LAY=[['lease','For lease','Shops you can rent','#ffde00'],['sale','For sale','Buildings you can buy','#2fd3e6'],['rooms','Rooms to rent','Homes with rooms for tenants','#ff7ac8'],['plot','Build land','Empty plots you can build on','#4fd36a'],['rival','Competitors','Shops run by other players','#ff4b3e'],['players',"Players' buildings",'Other players, by company name','#c86bff']],nOn=LAY.filter(l=>ui.show[l[0]]).length;
   const lh=`<div class="lg-h"><b>Map layers</b><small>${nOn?nOn+' of '+LAY.length+' on':'All off'} · tap to switch</small></div>`+LAY.map(([k,t,d,c])=>`<button data-act="legend" data-id="${k}" class="lg-row ${ui.show[k]?'on':''}" role="switch" aria-checked="${!!ui.show[k]}"><i style="background:${(window.LEGC&&LEGC[k])||c}" aria-hidden="true"></i><span class="lg-t"><b>${t}</b><small>${d}</small></span><span class="lg-sw" aria-hidden="true">${ui.show[k]?'ON':'OFF'}</span></button>`).join('')+(nOn?`<button data-act="legend" data-id="_off" class="lg-off">Turn all off</button>`:'');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
  const hint=$('#hint'),showHint=ui.started&&ui.street&&!ui.interior&&!ui.selLot&&!G.sites.length&&!ui.modal&&!G.tut;hint.hidden=!showHint;
  if(showHint){const hh=`Buildings glowing <b style="color:#ffde00">yellow</b> have a shop for lease. Click one to see the rent.`;if(hint._h!==hh){hint._h=hh;hint.innerHTML=hh}}
@@ -4307,7 +4307,7 @@ function worldPanel(){
 function liveLotsInView(){const out=[];for(const L of LIVE.values()){if(L.lod<1||L.kind==='empty')continue;for(const lot of lotsOf(L))if(!lot.hidden)out.push(lot)}return out}
 function areaPanel(){
  const E=econAt(CAM.lat,CAM.lon),lots=liveLotsInView();let n={lease:0,sale:0,plot:0,rival:0};const lease=[];
- for(const l of lots){const s=lotState(l).st;if(n[s]!=null)n[s]++;if(s==='lease'&&l.sqm>=35)lease.push(l)}
+ for(const l of lots){const ls=lotState(l),s=ls.st;if(s==='taken'&&ls.net){const c=netOther(l.key);if(c&&c.biz_type)n.rival++}else if(n[s]!=null&&s!=='rival')n[s]++;if(s==='lease'&&l.sqm>=35)lease.push(l)}
  lease.forEach(l=>l._d=distM(l.lat,l.lon,CAM.lat,CAM.lon));lease.sort((a,b)=>a._d-b._d);
  const real=CITIES.find(c=>c.real&&inRealCoverage(CAM.lat,CAM.lon)===c.real);
  return`<div class="pad"><p class="eyebrow">${esc(E.country)}${real?' · real map data':''}</p><h2 class="h">${esc(E.place)}</h2>
