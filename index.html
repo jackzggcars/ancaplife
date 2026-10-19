@@ -10462,6 +10462,10 @@ document.addEventListener('input',e=>{const t=e.target;if(t&&t.dataset&&t.datase
 document.addEventListener('focusin',e=>{if(e.target&&e.target.dataset&&e.target.dataset.ask)C.freeze=true});document.addEventListener('focusout',e=>{if(e.target&&e.target.dataset&&e.target.dataset.ask)C.freeze=false});
 setInterval(()=>{if(!live()||!ui||!ui.modal||ui.modal.kind!=='resmkt'||C.view!=='cards'||PK)return;refreshListings(true).then(()=>{if(!C.freeze&&!C.busy)rerender()});},6000);
 
+// the dock hides behind any open menu; its own check runs every 0.8 s, which made it pop in and out late. Follow the menu instantly instead.
+(function(){const m=document.getElementById('modal');if(!m||!window.MutationObserver)return;
+ new MutationObserver(()=>{try{const d=document.getElementById('crdock');if(d)d.hidden=!!ui.modal||!(typeof G!=='undefined'&&G&&ui.started);
+  if(m.hidden){const a=document.activeElement;if(a&&a!==document.body&&a.blur&&!/INPUT|TEXTAREA/.test(a.tagName))a.blur()}}catch(e){}}).observe(m,{attributes:true,attributeFilter:['hidden']})})();
 // ---------- badge, gift button, top-bar button, inventory strip ----------
 function badge(){try{const n=unopened().length,b=document.getElementById('rxbtn');if(b){b.dataset.n=n||'';b.title='The Market';b.setAttribute('aria-label','The Market')}
  let g=document.getElementById('cardgift');if(n&&!g){g=document.createElement('button');g.id='cardgift';g.type='button';g.innerHTML='<span class="cg-i"></span><b>Free card pack</b><small>Tap to open</small>';g.onclick=()=>{const r=unopened()[0];if(r)openPack(r)};document.body.appendChild(g)}
@@ -10612,7 +10616,7 @@ const st=document.createElement('style');st.textContent=`
 @media (prefers-reduced-motion:reduce){.pk,.pk-rays,.pk-sheen,.pk-hint{animation:none!important}.tc-in{transition:none}}
 body.pk-open #cardgift{display:none}
 /* gift button */
-#cardgift{position:fixed;z-index:60;left:50%;bottom:calc(86px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;align-items:center;gap:9px;background:rgba(20,20,22,.88);backdrop-filter:blur(10px);border:1px solid #ffde00;color:#fff;border-radius:999px;padding:8px 16px 8px 10px;font:600 13px var(--f-body,sans-serif);cursor:pointer;box-shadow:0 8px 28px rgba(0,0,0,.5),0 0 0 0 rgba(255,222,0,.5);animation:cgpulse 2s infinite}
+#cardgift{position:fixed;z-index:60;left:50%;bottom:calc(132px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;align-items:center;gap:9px;background:rgba(20,20,22,.88);backdrop-filter:blur(10px);border:1px solid #ffde00;color:#fff;border-radius:999px;padding:8px 16px 8px 10px;font:600 13px var(--f-body,sans-serif);cursor:pointer;box-shadow:0 8px 28px rgba(0,0,0,.5),0 0 0 0 rgba(255,222,0,.5);animation:cgpulse 2s infinite}
 #cardgift[hidden]{display:none}
 #cardgift .cg-i{width:22px;height:30px;border-radius:3px;background:linear-gradient(135deg,#ffe600 0 49%,#0a0a0a 51%);box-shadow:0 0 0 1px #000;transform:rotate(-8deg)}
 #cardgift b{color:#ffde00}#cardgift small{color:#a8abb2;font-size:11px}
@@ -10645,6 +10649,8 @@ body.pk-open #cardgift{display:none}
 .cd-inv .mini{display:grid;place-items:center;width:26px;height:36px;border-radius:4px;font:800 10px var(--f-body,sans-serif);color:#111;background:#c9ced6}
 .cd-inv .mini.r-uncommon{background:#e3c46d}.cd-inv .mini.r-rare{background:#4aa3ff}.cd-inv .mini.r-ultra{background:linear-gradient(135deg,#ff62d6,#4effea,#ffe14e)}
 .cd-inv .cd-more{font:700 10px var(--f-body,sans-serif);color:#ffde00;align-self:center}
+@media (max-width:640px){#cardgift{bottom:calc(122px + env(safe-area-inset-bottom,0px))}}
+#modal .modal:focus,#modal .modal-back:focus,#modal:focus{outline:none!important}
 @media (max-width:560px){.cd-grid{grid-template-columns:repeat(2,1fr);gap:14px 6px}.cd-it .tc{--w:min(176px,41vw)!important}.mk-sw{margin-left:14px}}
 `;document.head.appendChild(st);
 C.cardEl=cardEl;window.CARDS_DEFS=DEFS;window.CARDS_OPEN=openPack;window.CARDS_VIEW=viewCard;
