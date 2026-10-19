@@ -65,6 +65,7 @@ index.html          the game
 terms.html          terms of service
 privacy.html        privacy policy
 data/               map data
+vendor/             local copies of three.js and supabase-js, used only if their CDNs fail to load
 media/              logo, front-page video and images
 supabase/           database migrations, tests and one-off scripts
 tools/              scripts that build the city and transport data

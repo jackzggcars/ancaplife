@@ -602,8 +602,26 @@ body{font-family:var(--f-body);font-size:14px;line-height:1.45;font-feature-sett
  <div id="loading"><img class="ld-logo" src="media/logo.png" alt="Ancap Life" width="300" height="290"><div class="bar2"><i></i></div><p>Loading the planet…</p></div>
 </div>
 <script>window.__PACKED=true</script>
+<script>
+// Recovery card: shown when the game cannot start or stops drawing (a blank dark page is the worst outcome). Reloads once by itself, then asks.
+(function(){var T0=Date.now();
+ window.__recover=function(msg,auto){try{var k='ancap.autoreload',last=+(sessionStorage.getItem(k)||0);if(auto!==false&&Date.now()-last>120000){sessionStorage.setItem(k,String(Date.now()));location.reload();return}}catch(e){}
+  if(document.getElementById('recover'))return;var d=document.createElement('div');d.id='recover';d.setAttribute('role','alertdialog');
+  d.style.cssText='position:fixed;inset:0;z-index:99999;background:#0b0b0d;color:#f4f1e8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font:16px/1.5 system-ui,sans-serif;text-align:center;padding:24px';
+  d.innerHTML='<b style="font-size:22px;color:#ffde00">Something went wrong</b><span style="max-width:420px;color:#c9c6bd"></span><button style="background:#ffde00;color:#0b0b0d;border:0;border-radius:8px;padding:12px 22px;font:700 16px system-ui,sans-serif;cursor:pointer">Reload the game</button><span style="font-size:13px;color:#8d8a82">Your progress is saved.</span>';
+  d.children[1].textContent=(msg||'The game could not start.')+' Reloading usually fixes it.';d.querySelector('button').onclick=function(){location.reload()};document.body.appendChild(d)};
+ // still on the loading screen after 30 s, or the game has stopped drawing frames while the tab is visible (45 s on the loading screen)
+ setTimeout(function(){if(window.__PROMO)return;var l=document.getElementById('loading');if(l&&!l.classList.contains('done'))window.__recover('Loading is taking too long.')},45000);
+ var lf=-1,still=0;setInterval(function(){if(window.__PROMO||document.hidden||document.getElementById('loading'))return;var f=window.__frames||0;if(f===lf){if(++still>=3)window.__recover('The game stopped responding.',false)}else{still=0;lf=f}},4000);
+ window.addEventListener('error',function(e){var t=e&&e.target;if(t&&t.tagName==='SCRIPT'&&/three|supabase/.test(t.src||''))window.__scriptFail=(window.__scriptFail||0)+1},true);
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>if(!window.THREE)document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"><\/script>')</script>
+<script>if(!window.THREE)document.write('<script src="vendor/three.min.js"><\/script>')</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>if(!window.supabase)document.write('<script src="https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"><\/script>')</script>
+<script>if(!window.supabase)document.write('<script src="vendor/supabase.js"><\/script>')</script>
 <script>
 // ===================== ANCAP LIFE · GEOGRAPHY (no DOM, no THREE) =====================
 const R_E=6371000,D2R=Math.PI/180;
@@ -1681,6 +1699,8 @@ const GFX=(()=>{let pref='auto',fps30=false;try{pref=localStorage.getItem('ancap
 GFX.dpr=Math.min(GFX.maxDpr,window.devicePixelRatio||1);
 const renderer=new THREE.WebGLRenderer({canvas,antialias:GFX.tier==='high',logarithmicDepthBuffer:true,powerPreference:GFX.tier==='low'?'default':'high-performance'});
 renderer.setPixelRatio(GFX.dpr);
+canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();window.__ctxLost=Date.now();setTimeout(()=>{if(window.__ctxLost){try{save()}catch(_){}try{window.__recover('The graphics were interrupted.')}catch(_){}}},4000)},false);
+canvas.addEventListener('webglcontextrestored',()=>{window.__ctxLost=0},false);
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const scene=new THREE.Scene();
 // floating origin: everything lives under WR, shifted so the point under the camera sits at (0,0,0);
@@ -4164,21 +4184,28 @@ function selectLot(lot){
 
 // ===================== MAIN LOOP =====================
 let last=performance.now(),chunkTick=0,uiTick=0;
-function loop(now){
- if(now-last<GFX.cap-.5){requestAnimationFrame(loop);return}const t0w=performance.now();
- const dt=Math.min(.05,(now-last)/1000);last=now;
- if(FLIGHT){FLIGHT.t+=dt;const k=Math.min(1,FLIGHT.t/FLIGHT.dur);FLIGHT.step(k);if(k>=1){const f=FLIGHT;FLIGHT=null;ui.busy=false;f.then&&f.then()}}
+// One bad frame must never stop the game: the next frame is always scheduled first, and each stage of a frame is isolated,
+// so an error in (say) the chunk streamer can't stop the scene being drawn. Repeated failure shows a reload card.
+let LOOPERR={n:0,seen:new Set(),streak:0};
+function loopErr(e,stage){LOOPERR.n++;const k=stage+':'+(e&&e.message||e);if(!LOOPERR.seen.has(k)&&LOOPERR.seen.size<20){LOOPERR.seen.add(k);try{console.error('frame error in '+stage,e)}catch(_){}}}
+function stg(stage,f){try{f();return true}catch(e){loopErr(e,stage);return false}}
+function loop(now){requestAnimationFrame(loop);frame(now)}
+function frame(now){
+ if(now-last<GFX.cap-.5)return;const t0w=performance.now();
+ const dt=Math.min(.05,(now-last)/1000);last=now;let bad=0;
+ if(!stg('flight',()=>{if(FLIGHT){FLIGHT.t+=dt;const k=Math.min(1,FLIGHT.t/FLIGHT.dur);FLIGHT.step(k);if(k>=1){const f=FLIGHT;FLIGHT=null;ui.busy=false;f.then&&f.then()}}}))bad++,FLIGHT=null,ui.busy=false;
  // the world never pauses: everyone is on the same day, and a day ticks over every DAY_LEN seconds
- if(G&&!G.over&&ui.started&&!ui.catching){const w=worldDay(),wd=Math.floor(w);G.clock=w-wd;
+ stg('clock',()=>{if(G&&!G.over&&ui.started&&!ui.catching){const w=worldDay(),wd=Math.floor(w);G.clock=w-wd;
   if(wd-G.day>3&&typeof catchUp==='function')catchUp(wd);else{let n=0;while(G.day<wd&&n<3){n++;simDay();afterDay()}}}
- if(G){const cw=(G.clock*100).toFixed(1);if(cw!==loop.cw){loop.cw=cw;$('#clockfill').style.width=cw+'%'}}
- if(VIS.cycle)VIS.phase=(VIS.phase+dt/VIS.period)%1;camTick(dt);zoomTick(dt);updateCamera();updateLights();updateLayers();updatePatch();
- qualityTick(dt*Math.min(1,16.7/GFX.cap),now);updateChunks(now);updateLandmarks();interiorTick(dt,now);trafficTick(dt);tutTick(dt);cashTick(dt);if(!ui.interior)GLOWMAT.opacity=.78+.22*Math.sin(now*.0032);
- renderer.render(scene,camera);
- updateLabels(dt);updateStreetMode();
- if(now-uiTick>1200){uiTick=now;if(G&&ui.started){renderTop();if(ui.street&&!ui.selLot)renderLeftSoft()}}
+ if(G){const cw=(G.clock*100).toFixed(1);if(cw!==loop.cw){loop.cw=cw;$('#clockfill').style.width=cw+'%'}}});
+ if(!stg('camera',()=>{if(VIS.cycle)VIS.phase=(VIS.phase+dt/VIS.period)%1;camTick(dt);zoomTick(dt);updateCamera();updateLights();updateLayers();updatePatch()}))bad++;
+ if(!stg('world',()=>{qualityTick(dt*Math.min(1,16.7/GFX.cap),now);updateChunks(now);updateLandmarks();interiorTick(dt,now);trafficTick(dt);tutTick(dt);cashTick(dt);if(!ui.interior)GLOWMAT.opacity=.78+.22*Math.sin(now*.0032)}))bad++;
+ if(!stg('render',()=>renderer.render(scene,camera)))bad++;
+ stg('labels',()=>{updateLabels(dt);updateStreetMode()});
+ stg('hud',()=>{if(now-uiTick>1200){uiTick=now;if(G&&ui.started){renderTop();if(ui.street&&!ui.selLot)renderLeftSoft()}}});
  GFX.work=GFX.work*.9+(performance.now()-t0w)*.1;
- requestAnimationFrame(loop);
+ window.__frames=(window.__frames||0)+1;
+ LOOPERR.streak=bad?LOOPERR.streak+1:0;if(LOOPERR.streak===240)try{window.__recover&&window.__recover('The game hit a problem it could not recover from.')}catch(_){}
 }
 function updateStreetMode(){
  const st=camAlt()<30000;
@@ -4646,7 +4673,7 @@ function closeBusiness(s){
 async function boot(){
  resize();
  const ld=$('#loading');
- try{await loadWorld()}catch(e){ld.querySelector('p').textContent='The map data could not be loaded. Reload the page to try again.';return}
+ try{await loadWorld()}catch(e){try{await new Promise(r=>setTimeout(r,1500));await loadWorld()}catch(e2){ld.querySelector('p').textContent='The map data could not be loaded. Reload the page to try again.';try{window.__recover('The map data could not be loaded.')}catch(_){}return}}
  buildGlobe();
  ld.querySelector('p').textContent='Checking your account…';
  await authInit();
@@ -4658,7 +4685,7 @@ async function boot(){
  ui.started=false;renderAll();showFront();if(AUTH.urlErr){authMsg(AUTH.urlErr,'err');try{history.replaceState(null,'',location.pathname)}catch(e){}}if(authed())netStart();else netBoard();
  updateCamera();requestAnimationFrame(t=>{last=t;loop(t)});
 }
-boot();
+boot().catch(e=>{console.error('boot failed',e);try{window.__recover('The game could not finish loading.')}catch(_){}});
 
 // ANCAP LIFE · event portraits, the decision modal and the first-business tutorial
 // ===================== PORTRAITS =====================
@@ -4921,17 +4948,18 @@ async function authInit(){
  try{const hp=new URLSearchParams((location.hash||'').replace(/^#/,'')+'&'+(location.search||'').replace(/^\?/,'')),ed=hp.get('error_description');if(ed)AUTH.urlErr=/expired|invalid/i.test(ed)?'That email link has expired or was already used. Request a new one.':ed.replace(/\+/g,' ')}catch(e){}
  if(!window.supabase||!window.supabase.createClient)return;
  try{
-  const db=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  // the default cross-tab lock can wait forever if another tab died holding it, which left the game on a dead screen; a plain pass-through lock avoids that
+  const db=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,lock:async(n,t,fn)=>await fn()}});
   AUTH.db=db;NET.db=db;
   db.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY'){AUTH.mode='newpass';if(typeof renderFront==='function')renderFront(true)}});
-  const{data:{session}}=await db.auth.getSession();
+  let session=null;try{const gs=await Promise.race([db.auth.getSession(),new Promise((_,rej)=>setTimeout(()=>rej(new Error('getSession timed out')),8000))]);session=gs&&gs.data&&gs.data.session}catch(e){console.warn('Session check failed',e)}
   AUTH.user=session?session.user:null;
   if(authed())SKEY=SKEY0+'.'+AUTH.user.id;
  }catch(e){console.warn('Accounts unavailable',e);AUTH.db=null}
 }
 // game data lives in the account: table public.saves (see supabase-setup.sql); the browser copy is a cache
 async function cloudLoad(){
- try{const r=await AUTH.db.from('saves').select('data,updated_at').eq('user_id',AUTH.user.id).maybeSingle();if(r.error)throw r.error;AUTH.cloud='ok';return r.data}
+ try{const r=await Promise.race([AUTH.db.from('saves').select('data,updated_at').eq('user_id',AUTH.user.id).maybeSingle(),new Promise((_,rej)=>setTimeout(()=>rej(new Error('cloud save timed out')),10000))]);if(r.error)throw r.error;AUTH.cloud='ok';return r.data}
  catch(e){AUTH.cloud='off';console.warn('Cloud save unavailable',e);return null}
 }
 async function pickSave(){
@@ -8564,7 +8592,7 @@ setInterval(()=>{if(dbx())load()},300000);
 addEventListener('beforeunload',()=>{if(pend)push(true)});
 // ---------- patch notes ----------
 const NOTES=[
- ['2026-10-19','Better models',['Cars are rebuilt as chunky sedans with wheel arches, tinted glass, mirrors, lights and the odd FOR SALE sign','People can now wear glasses, wrap-around shades, waistcoats and belts, and have heavier eyebrows','Shop equipment and street props have rounded edges and shaded bases instead of flat blocks']],
+ ['2026-10-19','Better models',['Cars are rebuilt as chunky sedans with wheel arches, tinted glass, mirrors, lights and the odd FOR SALE sign','People can now wear glasses, wrap-around shades, waistcoats and belts, and have heavier eyebrows','Shop equipment and street props have rounded edges and shaded bases instead of flat blocks','Fixed a rare black screen when opening the game: one bad frame can no longer stop the game drawing, a stuck sign-in check times out, and the game has backup copies of its libraries']],
  ['2026-10-18','Fair play, safety & comfort',['Leaderboard numbers are now checked by the server, so nobody can type in a fortune','Chat: report a message, mute or block a player, and a filter for slurs and swearing','Saves are versioned and checked, so an old tab or device can no longer overwrite newer progress','New: Comfort & access settings (volume, key bindings, reduced motion, colour-blind-safe colours, larger text)','Short tips the first time you open the exchange, contracts, the corporation or ventures','Bankrupt? Restructure the debt or start again with a legacy bonus','Better layout on phones']],
  ['2026-10-17','Street food',['Start with a food cart: cook in a timing mini-game, set your price, upgrade it and hire a cook','New round-button dock and Layers menu']],
  ['2026-10-15','Accounts & rewards',['Account portal with player number, member since and days as player','Loyalty points from active play unlock avatar skins','Invite links, a monthly referral race and trophies that boost loyalty','Download your data or delete your account at any time']],
