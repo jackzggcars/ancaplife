@@ -2675,7 +2675,7 @@ const ROADCOL={major:new THREE.Color('#3a3d43'),minor:new THREE.Color('#43464d')
 function roofColorFor(lot){const st=lotState(lot);if(st.st==='build')return new THREE.Color('#d4a347');return null}
 // status is shown as a soft coloured glow around the building (ground halo, rising haze, bright crown), never by repainting the roof
 const GLOWC={player:new THREE.Color('#ffffff'),lease:new THREE.Color('#ffde00'),sale:new THREE.Color('#2fd3e6'),rival:new THREE.Color('#ff4b3e'),other:new THREE.Color('#c86bff')};
-function glowColorFor(lot){const st=lotState(lot).st;if(st==='player')return GLOWC.player;if(st==='taken')return GLOWC.other;if((st==='lease'||st==='sale'||st==='rival')&&ui.show[st])return GLOWC[st];return null}
+function glowColorFor(lot){const st=lotState(lot).st;if(st==='player')return GLOWC.player;if(st==='taken')return ui.show.players?GLOWC.other:null;if((st==='lease'||st==='sale'||st==='rival')&&ui.show[st])return GLOWC[st];return null}
 const GLOWMAT=new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,fog:false});
 // pull a lot's own triangles out of the chunk's building mesh (exact shape, roof and all)
 function lotShell(L,lot,off){if(!L||!L.meshes)return null;for(const m of L.meshes){const recs=m.userData&&m.userData.recs;if(!recs)continue;const rec=recs.find(r=>r.lot.key===lot.key);if(!rec)continue;
@@ -4081,7 +4081,7 @@ const footLabel=l=>l>1.25?'Prime high street':l>1?'Busy street':l>.75?'Steady si
 const dshort=d=>dayName(d);
 const altLabel=a=>a>=1e6?Math.round(a/1e3).toLocaleString('en-US')+' km':a>=1e4?Math.round(a/1e3)+' km':a>=1e3?(a/1e3).toFixed(1)+' km':Math.round(a)+' m';
 
-const ui={selLot:null,selKey:null,site:null,tab:'overview',speed:1,busy:false,modal:null,show:{lease:1,sale:1,rival:0,rooms:1,plot:1},confirm:null,wiz:null,floors:null,street:false};
+const ui={selLot:null,selKey:null,site:null,tab:'overview',speed:1,busy:false,modal:null,show:{lease:1,sale:1,rival:0,rooms:1,plot:1,players:1},confirm:null,wiz:null,floors:null,street:false};
 const SKEY0='groundfloor.save.v2';let SKEY=SKEY0;
 // ---------- saves: a version number with step-by-step upgrades, and a last-known-good backup ----------
 // SAVE_V is the save format. Bump it and add an entry to SAVE_MIG whenever the shape of G changes; each step takes a save
@@ -4224,8 +4224,17 @@ window.onNews=(t,k)=>{if(k!=='warn'&&k!=='goal'&&k!=='good')return;const n=perfo
 
 // ===================== LABELS =====================
 const labelsEl=$('#labels');const LBL=[];let lblCand=[],lblT=0;
+// company names over other players' buildings (the Players layer); the building's own name shows once you click it
+function playerLabelCands(){const out=[];if(typeof NET==='undefined'||!NET.on||!ui.show||!ui.show.players||!ui.street||ui.interior)return out;
+ const alt=camAlt(),rad=Math.min(4000,Math.max(450,alt*1.7)),dl=rad/111000,dn=dl/Math.max(.2,Math.cos(CAM.lat*D2R)),found=[];
+ for(const c of NET.claims.values()){if(c.owner===NET.uid||c.lat==null||c.lon==null)continue;const k=String(c.lot_key);if(!k.includes('#')||k.includes(':'))continue;
+  const dy=c.lat-CAM.lat,dx=c.lon-CAM.lon;if(Math.abs(dy)>dl||Math.abs(dx)>dn)continue;found.push([dy*dy+dx*dx*.5,c])}
+ found.sort((a,b)=>a[0]-b[0]);
+ for(const[,c]of found.slice(0,70)){const lot=lotByKey(c.lot_key);out.push({name:netCompany(c.owner),lat:c.lat,lon:c.lon,h:(lot?lotH(lot):10)+6,pl:1,pk:String(c.lot_key)})}
+ return out}
 function labelCandidates(){
  const alt=camAlt(),out=[];
+ if(alt<=9000)return playerLabelCands();
  if(alt>3.5e5){for(const c of CITIES)out.push({name:c.name,lat:c.lat,lon:c.lon,feat:c,n:G?G.sites.filter(s=>s.p.place===c.name).length:0,real:!!c.real});
   for(const p of WORLD.places){if(p.pop<6e6)break;if(CITIES.some(c=>distM(c.lat,c.lon,p.lat,p.lon)<80000))continue;out.push({name:p.name,lat:p.lat,lon:p.lon})}}
  else if(alt>9000){const minPop=alt>1.5e5?1.5e6:alt>4e4?3e5:1e5,rad=Math.max(60000,alt*4);
@@ -4238,11 +4247,11 @@ function updateLabels(dt){
  const w=window.innerWidth,h=window.innerHeight,cp=camera.position,placed=[];
  for(let i=0;i<LBL.length;i++){const L=LBL[i],c=lblCand[i];
   if(!c){L.d.style.display='none';continue}
-  const key=c.name+(c.n||'')+(c.small?'s':'');if(L.key!==key){L.key=key;L.d.className='clabel'+(c.small?' small':'')+(c.feat?' feat':'')+(c.lm?' lm':'');L.d.innerHTML=c.lm?`<button data-act="flylm" data-id="${c.lm.id}">${esc(c.name)}<small>${c.lm.yr} · ${c.lm.h} m</small></button>`:`<button data-act="flyll" data-lat="${c.lat}" data-lon="${c.lon}" data-real="${c.real?1:0}">${esc(c.name)}${c.real?'<i>3D</i>':''}${c.n?`<b>${c.n}</b>`:''}</button>`}
+  const key=c.name+(c.n||'')+(c.small?'s':'')+(c.pk||'');if(L.key!==key){L.key=key;L.d.className='clabel'+(c.small?' small':'')+(c.feat||c.pl?' feat':'')+(c.pl?' pl':'')+(c.lm?' lm':'');L.d.innerHTML=c.pl?`<button data-act="plsel" data-key="${esc(c.pk)}" title="Click to see this building">${esc(c.name)}</button>`:c.lm?`<button data-act="flylm" data-id="${c.lm.id}">${esc(c.name)}<small>${c.lm.yr} · ${c.lm.h} m</small></button>`:`<button data-act="flyll" data-lat="${c.lat}" data-lon="${c.lon}" data-real="${c.real?1:0}">${esc(c.name)}${c.real?'<i>3D</i>':''}${c.n?`<b>${c.n}</b>`:''}</button>`}
   const p=ecef(c.lat,c.lon,c.h||3000),n=p.clone().normalize(),facing=n.dot(cp.clone().sub(p).normalize());
   if(facing<.05){L.d.style.display='none';continue}
   const s=p.sub(ORIGIN).project(camera);if(s.z>1||Math.abs(s.x)>1.05||Math.abs(s.y)>1.05){L.d.style.display='none';continue}
-  const px=(s.x*.5+.5)*w,py=(-s.y*.5+.5)*h;if(placed.some(q=>Math.abs(q[0]-px)<(c.feat?90:110)&&Math.abs(q[1]-py)<22)){L.d.style.display='none';continue}placed.push([px,py]);
+  const px=(s.x*.5+.5)*w,py=(-s.y*.5+.5)*h;if(placed.some(q=>Math.abs(q[0]-px)<(c.pl?Math.max(70,c.name.length*9):c.feat?90:110)&&Math.abs(q[1]-py)<(c.pl?24:22))){L.d.style.display='none';continue}placed.push([px,py]);
   L.d.style.display='';L.d.style.opacity=clamp(facing*5,0,1);L.d.style.transform=`translate(${((s.x*.5+.5)*w).toFixed(1)}px,${((-s.y*.5+.5)*h).toFixed(1)}px)`}
 }
 
@@ -4261,7 +4270,8 @@ function renderTop(){
  const sb=$('#shopsbtn');sb.hidden=!G.sites.length&&!G.props.length;sb.textContent=G.sites.length?`My shops (${G.sites.length})`:'My property';
  $('#mapctl').hidden=!!ui.interior||!ui.started;$('#northbtn').style.transform=`rotate(${-CAM.heading}rad)`;
  const lg=$('#legend');lg.hidden=!ui.street||!!ui.interior;
- if(ui.street){const lh=[['lease','For lease','#ffde00'],['sale','For sale','#2fd3e6'],['rooms','Rooms to rent','#ff7ac8'],['plot','Build land','#4fd36a'],['rival','Competitors','#ff4b3e']].map(([k,t,c])=>`<button data-act="legend" data-id="${k}" class="${ui.show[k]?'on':''}" aria-pressed="${!!ui.show[k]}"><i style="background:${(window.LEGC&&LEGC[k])||c}" aria-hidden="true"></i>${t}</button>`).join('');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
+ if(ui.street){const LAY=[['lease','For lease','Shops you can rent','#ffde00'],['sale','For sale','Buildings you can buy','#2fd3e6'],['rooms','Rooms to rent','Homes with rooms for tenants','#ff7ac8'],['plot','Build land','Empty plots you can build on','#4fd36a'],['rival','Competitors','Rival shops of your kind','#ff4b3e'],['players',"Players' buildings",'Other players, by company name','#c86bff']],nOn=LAY.filter(l=>ui.show[l[0]]).length;
+  const lh=`<div class="lg-h"><b>Map layers</b><small>${nOn?nOn+' of '+LAY.length+' on':'All off'} · tap to switch</small></div>`+LAY.map(([k,t,d,c])=>`<button data-act="legend" data-id="${k}" class="lg-row ${ui.show[k]?'on':''}" role="switch" aria-checked="${!!ui.show[k]}"><i style="background:${(window.LEGC&&LEGC[k])||c}" aria-hidden="true"></i><span class="lg-t"><b>${t}</b><small>${d}</small></span><span class="lg-sw" aria-hidden="true">${ui.show[k]?'ON':'OFF'}</span></button>`).join('')+(nOn?`<button data-act="legend" data-id="_off" class="lg-off">Turn all off</button>`:'');if(lg._h!==lh){lg._h=lh;lg.innerHTML=lh}}
  const hint=$('#hint'),showHint=ui.started&&ui.street&&!ui.interior&&!ui.selLot&&!G.sites.length&&!ui.modal&&!G.tut;hint.hidden=!showHint;
  if(showHint){const hh=`Buildings glowing <b style="color:#ffde00">yellow</b> have a shop for lease. Click one to see the rent.`;if(hint._h!==hh){hint._h=hh;hint.innerHTML=hh}}
  renderShops();
@@ -4544,7 +4554,8 @@ document.addEventListener('click',e=>{
   case 'space':stopFlight();flyTo(CAM.lat,CAM.lon,2.2e7);break;
   case 'north':{const h=CAM.heading%(2*Math.PI);CAM.heading=h;ROT.h=Math.abs(h)>Math.PI?Math.sign(h)*2*Math.PI:0;ROT.t=CAM.tiltU;break}
   case 'speed':ui.speed=+t.dataset.speed;renderTop();break;
-  case 'legend':ui.show[id]=!ui.show[id];recolorAll();renderTop();break;
+  case 'legend':if(id==='_off'){for(const k in ui.show)ui.show[k]=0}else ui.show[id]=!ui.show[id];recolorAll();renderTop();break;
+  case 'plsel':{const L=lotByKey(t.dataset.key);if(L){selectLot(L);const c=NET.claims.get(t.dataset.key);if(c&&c.lat!=null&&camAlt()>1800)flyTo(c.lat,c.lon,900)}break}
   case 'desel':selectLot(null);break;
   case 'interior':{const st=G.sites.find(x=>x.id===id);if(!st)break;if(ui.interior&&ui.interior.site===st)exitInterior();else{ui.site=st.id;enterInterior(st)}renderSite();break}
   case 'iexit':exitInterior();renderSite();break;
@@ -8592,6 +8603,7 @@ setInterval(()=>{if(dbx())load()},300000);
 addEventListener('beforeunload',()=>{if(pend)push(true)});
 // ---------- patch notes ----------
 const NOTES=[
+ ['2026-10-19','Players layer & clearer Layers menu',["New layer: Players' buildings. Other players' buildings glow purple and show their company name on the map; click one to see the building",'The Layers menu now has ON and OFF switches, a line about what each layer shows, a count on the Layers button and a Turn all off button']],
  ['2026-10-19','Better models',['Cars are rebuilt as chunky sedans with wheel arches, tinted glass, mirrors, lights and the odd FOR SALE sign','People can now wear glasses, wrap-around shades, waistcoats and belts, and have heavier eyebrows','Shop equipment and street props have rounded edges and shaded bases instead of flat blocks','Fixed a rare black screen when opening the game: one bad frame can no longer stop the game drawing, a stuck sign-in check times out, and the game has backup copies of its libraries']],
  ['2026-10-18','Fair play, safety & comfort',['Leaderboard numbers are now checked by the server, so nobody can type in a fortune','Chat: report a message, mute or block a player, and a filter for slurs and swearing','Saves are versioned and checked, so an old tab or device can no longer overwrite newer progress','New: Comfort & access settings (volume, key bindings, reduced motion, colour-blind-safe colours, larger text)','Short tips the first time you open the exchange, contracts, the corporation or ventures','Bankrupt? Restructure the debt or start again with a legacy bonus','Better layout on phones']],
  ['2026-10-17','Street food',['Start with a food cart: cook in a timing mini-game, set your price, upgrade it and hire a cook','New round-button dock and Layers menu']],
@@ -9772,6 +9784,30 @@ html body #shopsmenu:not([hidden]){animation:crUp .18s ease-out!important}
 html body #legend{left:auto!important;right:14px!important;transform:none!important;top:calc(var(--bar-h,56px) + 50px)!important;bottom:auto!important;flex-direction:column!important;align-items:stretch!important;flex-wrap:nowrap!important;width:190px!important;max-width:190px!important;padding:8px!important;gap:4px!important;border-top:1px solid #34373c!important;z-index:22!important}
 html body #legend button{justify-content:flex-start!important;width:100%!important;text-align:left}
 html body:not(.cr-layers) #legend{display:none!important}
+/* layers menu: a titled list of switches, each with what it shows and a clear ON/OFF state */
+html body #legend{width:268px!important;max-width:calc(100vw - 20px)!important;padding:0!important;gap:0!important;overflow:hidden!important;border-radius:9px!important}
+html body #legend .lg-h{display:flex;flex-direction:column;gap:2px;padding:11px 14px 9px;border-bottom:1px solid #2c2e33}
+html body #legend .lg-h b{font:800 11px/1 var(--f-body,system-ui);letter-spacing:.14em;text-transform:uppercase;color:#f1f2f4}
+html body #legend .lg-h small{font:500 11.5px/1.3 var(--f-body,system-ui);color:#9a9ea6;margin-top:3px}
+html body #legend button.lg-row{display:flex!important;align-items:center!important;gap:11px!important;padding:9px 12px 9px 11px!important;border:0!important;border-left:3px solid transparent!important;border-radius:0!important;background:transparent!important;transform:none!important;box-shadow:none!important;font:inherit!important;letter-spacing:0!important;text-transform:none!important;color:#7e828b!important}
+html body #legend button.lg-row:hover{background:rgba(255,255,255,.04)!important}
+html body #legend button.lg-row.on{border-left-color:#ffde00!important;background:rgba(255,222,0,.075)!important;color:#fff!important}
+html body #legend .lg-row i{width:13px;height:13px;border-radius:4px;flex:none;opacity:.35;margin:0}
+html body #legend .lg-row.on i{opacity:1}
+html body #legend .lg-t{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;text-align:left}
+html body #legend .lg-t b{font:700 13px/1.15 var(--f-body,system-ui);text-transform:none;letter-spacing:0}
+html body #legend .lg-t small{font:400 11px/1.25 var(--f-body,system-ui);color:#8d9199;white-space:normal}
+html body #legend .lg-row.on .lg-t small{color:#c3c6cc}
+html body #legend .lg-sw{flex:none;min-width:38px;text-align:center;font:800 10px/1 var(--f-mono,ui-monospace,monospace);letter-spacing:.08em;padding:4px 7px;border-radius:999px;background:#2a2c31;color:#868a92}
+html body #legend .lg-row.on .lg-sw{background:#ffde00;color:#101010}
+html body #legend button.lg-off{justify-content:center!important;border:0!important;border-top:1px solid #2c2e33!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:none!important;padding:10px 12px!important;color:#b9bcc3!important;font:700 11px/1 var(--f-body,system-ui)!important;letter-spacing:.1em!important;text-transform:uppercase!important}
+html body #legend button.lg-off:hover{color:#fff!important}
+/* the Layers button shows how many layers are on */
+#crlayers .lb-n{display:none;margin-left:2px;padding:3px 6px;border-radius:999px;background:#ffde00;color:#101010;font:800 10px/1 var(--f-mono,ui-monospace,monospace);letter-spacing:.04em}
+#crlayers.has-on .lb-n{display:inline-block}
+/* player-building labels: the same look as the map's name labels, in the players' purple */
+.clabel.pl button::before{background:#c86bff!important}
+.clabel.pl button{font-size:15px!important}
 html body.cr-layers #crlayers{color:var(--cr-green);border-color:rgba(255,222,0,.45)}
 html body #hint{bottom:112px!important;top:auto!important}
 /* ticker: quiet dark strip */
@@ -9802,7 +9838,7 @@ html body .btn:not(.ghost):not([disabled]):hover{background:#fff06a!important;fi
  #crfps{display:none!important}
  #crdock{gap:10px;bottom:46px}#crdock button{width:46px!important;height:46px!important}#crdock button.main{width:56px!important;height:56px!important}
  #crlayers{top:auto;bottom:332px;right:8px;padding:0;width:40px;height:40px;justify-content:center;font-size:0;letter-spacing:0;border-radius:8px}#crlayers svg{width:18px;height:18px}
- html body #legend{width:180px!important;max-width:180px!important;top:auto!important;bottom:380px!important;right:8px!important}
+ html body #legend{width:250px!important;max-width:calc(100vw - 16px)!important;top:auto!important;bottom:380px!important;right:8px!important;max-height:calc(100vh - 392px - var(--bar-h,56px))!important;overflow-y:auto!important}html body #legend .lg-h{padding:8px 12px 6px}html body #legend .lg-h small{margin-top:1px}html body #legend button.lg-row{padding:6px 10px 6px 9px!important;gap:9px!important}html body #legend .lg-t small{font-size:10.5px}html body #legend button.lg-off{padding:8px 12px!important}#crlayers{position:fixed}#crlayers .lb-n{position:absolute;top:-6px;right:-6px;font-size:9px;padding:3px 5px}
  /* the tutorial card sits under the top bar so it never covers the dock */
  html body #tut .tut-card{top:calc(var(--bar-h,48px) + 8px)!important;bottom:auto!important;left:10px!important;right:10px!important;width:auto!important;max-width:none!important}
  html body #tut .tut-arrow{display:none!important}
@@ -9820,11 +9856,11 @@ const dock=document.createElement('nav');dock.id='crdock';dock.hidden=true;dock.
 dock.innerHTML=DOCK.map(d=>`<button data-for="${d.id}" data-tip="${d.tip}" aria-label="${d.tip}" class="${d.main?'main':''}"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${d.svg}</svg></button>`).join('');
 dock.addEventListener('click',e=>{const b=e.target.closest('[data-for]');if(!b)return;const t=document.getElementById(b.dataset.for);if(t){e.stopPropagation();t.click()}});
 document.body.appendChild(dock);
-const lb=document.createElement('button');lb.id='crlayers';lb.hidden=true;lb.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 8l11 6 11-6-11-6zm0 14.2L3.2 11.4 1 12.6l11 6 11-6-2.2-1.2L12 16.2zm0 4L3.2 15.4 1 16.6l11 6 11-6-2.2-1.2L12 20.2z"/></svg>Layers';
+const lb=document.createElement('button');lb.id='crlayers';lb.hidden=true;lb.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 1 8l11 6 11-6-11-6zm0 14.2L3.2 11.4 1 12.6l11 6 11-6-2.2-1.2L12 16.2zm0 4L3.2 15.4 1 16.6l11 6 11-6-2.2-1.2L12 20.2z"/></svg>Layers<span class="lb-n"></span>';
 lb.addEventListener('click',()=>document.body.classList.toggle('cr-layers'));document.body.appendChild(lb);
 const fps=document.createElement('div');fps.id='crfps';fps.hidden=true;document.body.appendChild(fps);
 let fr=0,ft=performance.now();(function f(now){fr++;if(now-ft>1000){fps.textContent=Math.round(fr*1000/(now-ft))+' fps';fr=0;ft=now}requestAnimationFrame(f)})(ft);
-setInterval(()=>{const on=!!(typeof G!=='undefined'&&G&&ui.started);lb.hidden=!(on&&ui.street);fps.hidden=!on;dock.hidden=!on||!!ui.modal||(innerWidth<=640&&[...document.querySelectorAll('#cartp,#crlist,#vtp,#elp')].some(x=>!x.hidden))||!!(document.getElementById('crgame')&&!document.getElementById('crgame').hidden)||!!(document.getElementById('crpick')&&!document.getElementById('crpick').hidden);for(const b of dock.querySelectorAll('[data-for]')){const t=document.getElementById(b.dataset.for);b.style.display=t?'':'none';b.dataset.n=t&&t.dataset.n?t.dataset.n:''}
+setInterval(()=>{const on=!!(typeof G!=='undefined'&&G&&ui.started);{const n=on?Object.keys(ui.show).filter(k=>ui.show[k]).length:0,bn=lb.querySelector('.lb-n');if(bn){bn.textContent=n;lb.classList.toggle('has-on',n>0);lb.setAttribute('aria-label','Layers menu, '+n+' on')}}lb.hidden=!(on&&ui.street);fps.hidden=!on;dock.hidden=!on||!!ui.modal||(innerWidth<=640&&[...document.querySelectorAll('#cartp,#crlist,#vtp,#elp')].some(x=>!x.hidden))||!!(document.getElementById('crgame')&&!document.getElementById('crgame').hidden)||!!(document.getElementById('crpick')&&!document.getElementById('crpick').hidden);for(const b of dock.querySelectorAll('[data-for]')){const t=document.getElementById(b.dataset.for);b.style.display=t?'':'none';b.dataset.n=t&&t.dataset.n?t.dataset.n:''}
  const bar=document.getElementById('bar');if(bar)document.documentElement.style.setProperty('--bar-h',bar.offsetHeight+'px');
  for(const b of document.querySelectorAll('#bar .hb-icons .hb-ic'))if(!b.dataset.tip)b.dataset.tip=b.getAttribute('aria-label')||b.title||'';
  for(const b of document.querySelectorAll('#bar .hb-icons .hb-ic[title]'))b.removeAttribute('title')},800);
